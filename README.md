@@ -28,6 +28,7 @@ uv run pytest           # all tests should pass
 
 ```bash
 uv run python -m sales_insights.generator.masters --as-of 2026-10-01   # master data -> staging/masters/ (see docs/master_data.md)
+uv run python -m sales_insights.generator.history --as-of 2026-10-01   # 18-month invoices -> staging/history/ (see docs/invoice_data.md)
 ```
 
 ## Folder map

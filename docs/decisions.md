@@ -14,3 +14,4 @@ One line per decision: date, decision, why, who. Newest at the bottom.
 | 1 Oct 2026 | Model the dummy data on the reference SAP O2C extract: Sri Lanka, LKR, SAP column names and codes (replaces the fictional India electronics setting) | Demo looks like the company's own data; real data can replace it with little mapping | Navtej |
 | 1 Oct 2026 | Stories v2: Southern weak, Weedicide +8% from 1 Apr 2026, new HEX1LTR (15 Jun 2026), HGL400ML returns spike (1 Jul 2026), MC6001LT stockout in Western from 23 Oct | Known answers for Genie tests; kept in `generator/stories.py` | Navtej |
 | 1 Oct 2026 | Reference extract kept in git-ignored `reference/`; never committed | Repo is public | Navtej |
+| 1 Oct 2026 | Invoice history uses the reference's 74 columns plus one added column `reference_invoice_number` | Returns and cancellations must point at the invoice they reverse | Navtej |
