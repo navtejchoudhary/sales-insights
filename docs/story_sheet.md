@@ -19,7 +19,7 @@ Modelled on the company's reference SAP order-to-cash extract: a Sri Lankan comp
 | Sales offices / reps | 11 offices, 36 reps | One office per province, two in Western and Southern |
 | Lookups | companies, plants, storage locations, channels, divisions, customer groups, product groups, product types | |
 
-History: 18 months of invoice lines ending **yesterday**. Daily drops continue from today.
+History: 18 months of invoice lines ending **yesterday** (~43,000 lines, `generator/history.py`, see `invoice_data.md`). Daily drops continue from today.
 
 ## Planted stories
 
@@ -27,7 +27,7 @@ History: 18 months of invoice lines ending **yesterday**. Daily drops continue f
 |---|---|---|---|
 | 1 | Demand peaks before the **Maha** (Sep–Nov) and **Yala** (Mar–May) cultivation seasons | Seasonal curve in history generator | History + live days |
 | 2 | A few products bring most revenue (80/20) | `POPULARITY_SKEW = 1.1` | History |
-| 3 | **Southern** province steadily underperforms | Demand × 0.85 | History |
+| 3 | **Southern** province steadily underperforms (weakest revenue per customer, ~45% below the others: fewer distributors plus lower order frequency). **Northern** is the strongest, as in the reference where one Jaffna wholesaler dominates | Demand × 0.85 | History |
 | 4 | **Weedicide** (`2CHE06`) price rise: revenue up, units down | +8% from 1 Apr 2026 (start of FY2026) | History |
 | 5 | New product **HEX FUNGICIDE 1LTR** (`HEX1LTR`) ramps up slowly | Launch 15 Jun 2026 | History |
 | 6 | Returns spike on **HGL INSECTICIDE 400ML** (`HGL400ML`): leaking bottles | From 1 Jul 2026 | History (return credit memos) |
@@ -66,3 +66,5 @@ History: 18 months of invoice lines ending **yesterday**. Daily drops continue f
 
 - [ ] Sponsor approves the business setting and stories
 - [ ] Confirm attach-rate definition (see `kpi_definitions.md`)
+
+![Planted stories in the history](img/history_stories.png)

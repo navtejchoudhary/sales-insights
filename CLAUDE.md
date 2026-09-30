@@ -19,7 +19,7 @@ Timeline:
 - Generator (plain Python: NumPy, pandas) writes CSV/JSON like an outside source system. Use the fixed name lists in `generator/masters.py`, NOT Faker (output must be identical across library versions).
 - Story settings live ONLY in `src/sales_insights/generator/stories.py`.
 - Masters once: products, customers, regions/cities, channels, sales reps.
-- History: 18 months of order lines ending YESTERDAY (simulated dates are real dates; generator takes an end date).
+- History: 18 months of invoice lines ending YESTERDAY, in the reference extract's 74 columns + `reference_invoice_number` (links ZARE returns and S1 cancellations to the invoice they reverse). See `docs/invoice_data.md` for document types and sign rules.
 - Daily drop: `staging/business_date=YYYY-MM-DD/` with
   - `orders_YYYYMMDD.csv` — new order lines
   - `changes_YYYYMMDD.csv` — cancellations, returns, price corrections to older orders
