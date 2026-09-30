@@ -8,6 +8,10 @@ metastore_db/
 derby.log
 *.pptx
 
+# Reference extracts from the company: never commit (repo is public)
+reference/
+*o2c*.csv
+
 # Secrets and credentials
 .env
 .env.*

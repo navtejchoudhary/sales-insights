@@ -45,9 +45,7 @@ class Config:
         return str(p if p.is_absolute() else REPO_ROOT / p)
 
 
-def load_config(
-    profile: str | None = None, config_file: Path | str = DEFAULT_CONFIG
-) -> Config:
+def load_config(profile: str | None = None, config_file: Path | str = DEFAULT_CONFIG) -> Config:
     profile = profile or os.environ.get("SALES_PROFILE", "local")
     with open(config_file, encoding="utf-8") as fh:
         raw = yaml.safe_load(fh)

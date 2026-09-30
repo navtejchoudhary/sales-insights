@@ -1,0 +1,5 @@
+# Project-wide lint/format settings
+line-length = 120
+
+[format]
+skip-magic-trailing-comma = true
