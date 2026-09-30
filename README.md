@@ -27,8 +27,10 @@ uv run pytest           # all tests should pass
 ## Generate data
 
 ```bash
-uv run python -m sales_insights.generator.masters --as-of 2026-10-01   # master data -> staging/masters/ (see docs/master_data.md)
-uv run python -m sales_insights.generator.history --as-of 2026-10-01   # 18-month invoices -> staging/history/ (see docs/invoice_data.md)
+uv run python -m sales_insights.generator.masters    # master data -> staging/masters/ (see docs/master_data.md)
+uv run python -m sales_insights.generator.history    # 18-month invoices -> staging/history/ (see docs/invoice_data.md)
+uv run python -m sales_insights.generator.simulate --from 2026-10-01 --to 2026-10-29   # daily drops -> staging/business_date=.../
+uv run python -m sales_insights.drip.drip --date 2026-10-01                           # deliver one day -> landing/
 ```
 
 ## Folder map

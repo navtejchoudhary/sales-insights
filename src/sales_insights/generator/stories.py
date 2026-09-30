@@ -42,3 +42,18 @@ RETURNS_SPIKE_FROM = date(2026, 7, 1)
 HERO_PRODUCT_ID = "MC6001LT"
 STOCKOUT_PROVINCE = "Western"
 STOCKOUT_FROM = date(2026, 10, 23)
+
+
+# ---------------------------------------------------------------------------
+# Delivery and schema dirt in the daily feed (tests the pipeline, not the business)
+# ---------------------------------------------------------------------------
+
+# A new column appears in the daily files from this date (schema evolution)
+SCHEMA_CHANGE_FROM = date(2026, 10, 22)
+NEW_COLUMN = "sales_rep_id"
+
+# The feed misses one day; that day's folder arrives together with the next day's
+MISSING_DELIVERY_DAY = date(2026, 10, 18)
+
+# Every Monday, Sunday's orders file is delivered a second time (same file name)
+REDELIVERY_WEEKDAY = 0  # Monday

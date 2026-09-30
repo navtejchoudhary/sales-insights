@@ -16,8 +16,8 @@ manifest, so silver-layer tests can prove each one gets fixed.
 Same seed + same as-of date = byte-identical files.
 
 Run:
-    uv run python -m sales_insights.generator.masters --as-of 2026-10-01
-    uv run python -m sales_insights.generator.masters --as-of 2026-10-01 --no-dirt
+    uv run python -m sales_insights.generator.masters            # as-of = simulation_start in config
+    uv run python -m sales_insights.generator.masters --no-dirt
 """
 
 from __future__ import annotations
@@ -740,8 +740,8 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument(
         "--as-of",
         type=date.fromisoformat,
-        default=date.today(),
-        help="Reference date (YYYY-MM-DD). History ends the day before.",
+        default=date.fromisoformat(cfg.business["simulation_start"]),
+        help="Simulation start (YYYY-MM-DD) from config. History ends the day before.",
     )
     parser.add_argument("--seed", type=int, default=cfg.business["random_seed"])
     parser.add_argument("--out", type=Path, default=Path(cfg.path(cfg.staging_path)))
