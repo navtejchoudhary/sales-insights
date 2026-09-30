@@ -1,0 +1,37 @@
+# One config file, two profiles. Code never hardcodes paths or catalog names.
+# Choose the profile with the env var SALES_PROFILE (default: local).
+
+profiles:
+  local:
+    # Runs on a Mac with PySpark + delta-spark. Paths are relative to the repo root.
+    staging_path: staging            # generator writes every business day here
+    landing_path: landing            # drip copies one day here (manifest last)
+    lake_path: lake                  # local Delta tables live here
+    catalog: null                    # no Unity Catalog locally
+    schemas:
+      bronze: bronze
+      silver: silver
+      gold: gold
+      ops: ops
+    processed_files_log: lake/ops/_processed_files   # stands in for the Auto Loader checkpoint
+
+  dev:
+    # Azure Databricks trial workspace (from 15 Oct). Unity Catalog names.
+    staging_path: /Volumes/sales_dev/raw/staging
+    landing_path: /Volumes/sales_dev/raw/landing
+    lake_path: null                  # tables are managed by Unity Catalog
+    catalog: sales_dev
+    schemas:
+      bronze: bronze
+      silver: silver
+      gold: gold
+      ops: ops
+    processed_files_log: null        # Auto Loader keeps its own checkpoint
+
+# Business settings shared by all profiles
+business:
+  timezone: Asia/Kolkata
+  fiscal_year_start_month: 4         # Indian fiscal year: April-March
+  history_months: 18
+  reconciliation_tolerance_pct: 0.1
+  random_seed: 20261001

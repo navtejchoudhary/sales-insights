@@ -1,0 +1,30 @@
+# Local data — generated, never commit
+staging/
+landing/
+lake/
+output/
+spark-warehouse/
+metastore_db/
+derby.log
+*.pptx
+
+# Secrets and credentials
+.env
+.env.*
+*.pem
+.databrickscfg
+
+# Databricks bundle state
+.databricks/
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+.pytest_cache/
+.ruff_cache/
+
+# Mac / editors
+.DS_Store
+.vscode/
+.idea/
