@@ -24,6 +24,12 @@ uv sync                 # install the exact package versions from uv.lock
 uv run pytest           # all tests should pass
 ```
 
+## Generate data
+
+```bash
+uv run python -m sales_insights.generator.masters --as-of 2026-10-01   # master data -> staging/masters/ (see docs/master_data.md)
+```
+
 ## Folder map
 
 | Folder | What lives there |

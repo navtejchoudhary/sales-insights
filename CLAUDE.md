@@ -15,7 +15,9 @@ Timeline:
 
 ## Data: dummy, story-driven, deliberately dirty
 - NO real data in the MVP. No S3, Delta Sharing or S/4HANA.
-- Generator (plain Python: NumPy, pandas, Faker) writes CSV/JSON like an outside source system.
+- The generator is modelled on a reference SAP O2C billing extract (Sri Lanka, LKR). Keep its column names and code values (10-digit customer IDs, district region codes, sales offices, divisions, material types). The reference file lives in `reference/` and is git-ignored: NEVER commit it or copy rows from it (the repo is public).
+- Generator (plain Python: NumPy, pandas) writes CSV/JSON like an outside source system. Use the fixed name lists in `generator/masters.py`, NOT Faker (output must be identical across library versions).
+- Story settings live ONLY in `src/sales_insights/generator/stories.py`.
 - Masters once: products, customers, regions/cities, channels, sales reps.
 - History: 18 months of order lines ending YESTERDAY (simulated dates are real dates; generator takes an end date).
 - Daily drop: `staging/business_date=YYYY-MM-DD/` with
@@ -30,8 +32,8 @@ Timeline:
 ## Architecture
 landing → bronze → silver → gold → reconciliation → metric views → dashboard / Genie / alerts → insights job → SupervisorAgent + deck job
 - bronze: append as-is, all columns as STRING, plus `source_file` and `load_ts`; unknown columns go to a rescued-data column
-- silver: cast types, standardise text (e.g. Bengaluru/Bangalore/BLR), dedupe on `order_id` + `line_no`, MERGE change files (latest change wins), bad rows to `silver.quarantine` with a reason
-- gold: `fact_sales` (order-line grain) + `dim_product`, `dim_customer`, `dim_region`, `dim_date`, `dim_channel`; rebuild only dates touched by late/changed rows
+- silver: cast types, standardise text (e.g. COLOMBO 10 / COLOMBO - 10 / Colombo 10 → canonical name from `cities.csv`), left-pad customer IDs to 10 digits, keep the latest record per key by `last_updated_timestamp`, dedupe on `order_id` + `line_no`, MERGE change files (latest change wins), bad rows to `silver.quarantine` with a reason
+- gold: `fact_sales` (order-line grain) + `dim_product`, `dim_customer`, `dim_region` (district → province), `dim_date`, `dim_channel`; rebuild only dates touched by late/changed rows
 - reconciliation: gold daily totals vs manifest totals minus quarantined rows; pass within 0.1%, otherwise FAIL loudly; results to `ops.dq_results`
 - Locally, a processed-files log stands in for the Auto Loader checkpoint
 
@@ -52,7 +54,7 @@ landing → bronze → silver → gold → reconciliation → metric views → d
 - snake_case; keys end `_id`; dates end `_date`; timestamps end `_ts`; money ends `_amount`
 - Money DECIMAL(18,2), never float. Quantities DECIMAL(18,3).
 - Every gold table and column gets a plain-English comment (Genie depends on them).
-- Indian fiscal year: April–March.
+- Fiscal year April–March, labelled by its start year (April 2026 = FY2026 period 1), as in the reference extract. Currency LKR. Timezone Asia/Colombo.
 - Every dirt type needs a passing unit test. Tests use small in-test fixtures, not full generated history.
 
 ## Folder layout

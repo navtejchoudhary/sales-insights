@@ -30,8 +30,10 @@ profiles:
 
 # Business settings shared by all profiles
 business:
-  timezone: Asia/Kolkata
-  fiscal_year_start_month: 4         # Indian fiscal year: April-March
+  timezone: Asia/Colombo
+  country: LK
+  currency: LKR
+  fiscal_year_start_month: 4         # fiscal year April-March; FY is labelled by its start year (Apr 2026 = FY2026 period 1)
   history_months: 18
   reconciliation_tolerance_pct: 0.1
   random_seed: 20261001

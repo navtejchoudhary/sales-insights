@@ -17,9 +17,7 @@ def _running_on_databricks() -> bool:
     return "DATABRICKS_RUNTIME_VERSION" in os.environ
 
 
-def get_spark(
-    cfg: Config | None = None, app_name: str = "sales-insights"
-) -> SparkSession:
+def get_spark(cfg: Config | None = None, app_name: str = "sales-insights") -> SparkSession:
     cfg = cfg or load_config()
 
     if _running_on_databricks():
@@ -34,17 +32,10 @@ def get_spark(
         SparkSession.builder.appName(app_name)
         .master("local[*]")
         .config("spark.sql.extensions", "io.delta.sql.DeltaSparkSessionExtension")
-        .config(
-            "spark.sql.catalog.spark_catalog",
-            "org.apache.spark.sql.delta.catalog.DeltaCatalog",
-        )
+        .config("spark.sql.catalog.spark_catalog", "org.apache.spark.sql.delta.catalog.DeltaCatalog")
         .config("spark.sql.warehouse.dir", warehouse)
-        .config(
-            "spark.sql.session.timeZone", cfg.business.get("timezone", "Asia/Kolkata")
-        )
-        .config(
-            "spark.sql.shuffle.partitions", "4"
-        )  # small local data; keeps tests fast
+        .config("spark.sql.session.timeZone", cfg.business.get("timezone", "Asia/Colombo"))
+        .config("spark.sql.shuffle.partitions", "4")  # small local data; keeps tests fast
         .config("spark.ui.showConsoleProgress", "false")
     )
     spark = configure_spark_with_delta_pip(builder).getOrCreate()
