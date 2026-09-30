@@ -90,13 +90,16 @@ def test_document_type_signs(x):
     assert (returns["credit_amount"].astype(float) == -returns["rev"]).all()
     cancels = x[x["invoice_type"] == "S1"]
     assert (cancels["qty"] < 0).all() and (cancels["net_sales"] == "0.00").all()
+    corrections = x[x["invoice_type"] == "ZACR"]
+    assert len(corrections) > 0
+    assert (corrections["qty"] == 0).all() and (corrections["rev"] < 0).all()
     foc = x[x["invoice_type"] == "ZFOC"]
     assert (foc["rev"] == -foc["tax_amount"].astype(float)).all()
 
 
 def test_returns_and_cancellations_point_to_earlier_invoices(df):
     sales = df[df["invoice_type"] == "ZAOR"].drop_duplicates("invoice_number").set_index("invoice_number")
-    for doc in ("ZARE", "S1"):
+    for doc in ("ZARE", "S1", "ZACR"):
         rev = df[df["invoice_type"] == doc]
         assert len(rev) > 0
         assert rev["reference_invoice_number"].isin(sales.index).all()
@@ -204,5 +207,5 @@ def test_written_files_and_manifest(tmp_path):
     assert len(back) == manifest["control_totals"]["lines"]
     assert back["revenue"].astype(float).sum() == pytest.approx(manifest["control_totals"]["revenue"], abs=0.01)
     day = back[back["invoice_date"] == "2026-09-15"]
-    assert manifest["control_totals"]["by_day"]["2026-09-15"]["lines"] == len(day)
+    assert manifest["control_totals"]["by_invoice_date"]["2026-09-15"]["lines"] == len(day)
     assert back["customer_id"].str.fullmatch(r"\d{10}").all()  # leading zeros survive CSV

@@ -34,6 +34,7 @@ business:
   country: LK
   currency: LKR
   fiscal_year_start_month: 4         # fiscal year April-March; FY is labelled by its start year (Apr 2026 = FY2026 period 1)
+  simulation_start: "2026-10-01"     # first live day; history = the 18 months before it. Never change mid-project.
   history_months: 18
   reconciliation_tolerance_pct: 0.1
   random_seed: 20261001

@@ -27,7 +27,7 @@ History: 18 months of invoice lines ending **yesterday** (~43,000 lines, `genera
 |---|---|---|---|
 | 1 | Demand peaks before the **Maha** (Sep–Nov) and **Yala** (Mar–May) cultivation seasons | Seasonal curve in history generator | History + live days |
 | 2 | A few products bring most revenue (80/20) | `POPULARITY_SKEW = 1.1` | History |
-| 3 | **Southern** province steadily underperforms (weakest revenue per customer, ~45% below the others: fewer distributors plus lower order frequency). **Northern** is the strongest, as in the reference where one Jaffna wholesaler dominates | Demand × 0.85 | History |
+| 3 | **Southern** province steadily underperforms (weakest revenue per customer, roughly 35% below the others: fewer distributors plus lower order frequency). **Northern** is the strongest, as in the reference where one Jaffna wholesaler dominates | Demand × 0.85 | History |
 | 4 | **Weedicide** (`2CHE06`) price rise: revenue up, units down | +8% from 1 Apr 2026 (start of FY2026) | History |
 | 5 | New product **HEX FUNGICIDE 1LTR** (`HEX1LTR`) ramps up slowly | Launch 15 Jun 2026 | History |
 | 6 | Returns spike on **HGL INSECTICIDE 400ML** (`HGL400ML`): leaking bottles | From 1 Jul 2026 | History (return credit memos) |
@@ -48,19 +48,19 @@ History: 18 months of invoice lines ending **yesterday** (~43,000 lines, `genera
 | Blank product group | 5% of products | Fill from product family or "Unassigned" |
 | Mixed-case product description | 8% of products | Upper-case |
 
-### In daily invoice files (next steps)
+### In daily files (`generator/dirt.py`, `generator/simulate.py`, `drip/drip.py`)
 
-| Dirt | Starting rate |
-|---|---|
-| Duplicate invoice lines | 1–2% |
-| Late invoices dated 1–7 days back | ~3% |
-| Cancellations (`S1`) and return credit memos (`ZARE`) against older invoices | every day |
-| Blank product / plant / sales office codes (as in the reference) | ~1% |
-| Zero-priced lines (free of charge, `ZFOC`) | <1% |
-| Invalid values (bad date, negative quantity on a normal invoice) | <0.5% → quarantine |
-| Same file delivered twice | once a week |
-| Missing day, delivered next day | once |
-| New column appears | once, ~22 Oct |
+| Dirt | Rate / schedule | Silver must |
+|---|---|---|
+| Duplicate lines (exact copies) | 1.5% of order lines, 1% of change lines | Dedupe on `invoice_number` + `invoice_item` |
+| Late invoices (dated 1–7 days before arrival) | ~3% of live invoices | Load into the right `invoice_date`; rebuild those gold dates |
+| Returns, cancellations, price corrections against older invoices | every day | MERGE: latest change wins |
+| City spelling variants | 5% of order lines | Map to `cities.csv` |
+| Blank `sales_office` / `plant` / `storage_location` / `customer_group` / `product_group` | 2% of order lines | Fill from master data |
+| Invalid `invoice_date` (`01/10/2026`, `2026-13-05`, `0000-00-00`) or negative quantity on a `ZAOR` | 0.4% of order lines | Quarantine with a reason |
+| Same file delivered twice | Every Monday, Sunday's orders file again (same name) | Load once (exactly-once ingestion) |
+| Missing day | 18 Oct arrives on 19 Oct | Catch up; nothing lost |
+| New column `sales_rep_id` | From 22 Oct | Schema evolution, no failure |
 
 ## Open decisions
 

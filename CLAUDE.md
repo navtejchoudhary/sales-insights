@@ -24,7 +24,8 @@ Timeline:
   - `orders_YYYYMMDD.csv` — new order lines
   - `changes_YYYYMMDD.csv` — cancellations, returns, price corrections to older orders
   - `manifest_YYYYMMDD.json` — WRITTEN LAST: row counts, control totals (orders, gross, net revenue), list of dirt injected
-- Fixed random seed per date: re-running a day produces identical files.
+- Fixed random seed per date AND per invoice (see engine.py docstring): any day can be rebuilt alone and is byte-identical. Never introduce a shared random stream across days.
+- `simulation_start` (config) is fixed at 2026-10-01; generators default to it. Never change it mid-project.
 - `drip --date` copies `staging/<date>/` to `landing/<date>/`, manifest last.
 - Planted stories and dirt rates live in `docs/story_sheet.md`. Every dirt injection is logged in the manifest.
 - Answer key: `genie/answer_key.csv` — 25–30 questions with expected answers computed from the generator.
@@ -62,8 +63,8 @@ landing → bronze → silver → gold → reconciliation → metric views → d
 config/config.yaml        local + dev profiles (paths, catalog, schema names)
 docs/                     story_sheet.md, kpi_definitions.md, decisions.md, day15_checklist.md, setup_mac.md
 src/sales_insights/common/     config.py (load_config), spark.py (get_spark) — ALWAYS use these
-src/sales_insights/generator/  masters, history, simulate_day, dirt injectors, manifest
-src/sales_insights/drip/       staging -> landing copy (manifest last)
+src/sales_insights/generator/  stories.py (settings), masters.py, engine.py (shared per-day sales + per-invoice fates), history.py, simulate.py (daily drops), dirt.py
+src/sales_insights/drip/       drip.py: staging -> landing copy (manifest last; missing day, Monday redelivery)
 src/sales_insights/pipeline/   bronze.py, silver.py, gold.py, reconcile.py, run_pipeline.py
 src/sales_insights/insights/   variance, top movers (Phase 2)
 src/sales_insights/deck/       python-pptx deck generator (Phase 3)
