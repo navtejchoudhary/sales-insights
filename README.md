@@ -38,6 +38,7 @@ uv run python -m sales_insights.pipeline.silver                                 
 uv run python -m sales_insights.pipeline.gold                                          # rebuild the gold star schema from silver
 uv run python -m sales_insights.pipeline.reconcile                                     # prove gold matches the manifests (exit 1 on failure)
 uv run python -m sales_insights.semantic.kpis                                          # KPI views + check they match the metric view (docs/kpi_definitions.md)
+uv run python -m sales_insights.semantic.answer_key                                    # Genie answer key + planted-story checks (genie/README.md)
 ```
 
 ## Folder map

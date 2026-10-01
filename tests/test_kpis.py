@@ -118,7 +118,12 @@ def _line(number, kind, day, cust, prod, qty, rev, item="10", cancelled_by=None,
 
 @pytest.fixture(scope="module")
 def lake(spark, cfg, tmp_path_factory):
-    lake = Lake(spark, cfg, root=tmp_path_factory.mktemp("kpis") / "lake")
+    return build_tiny_gold(spark, cfg, tmp_path_factory.mktemp("kpis") / "lake")
+
+
+def build_tiny_gold(spark, cfg, root):
+    """The tiny world from the module docstring, as gold tables (also used by test_genie.py)."""
+    lake = Lake(spark, cfg, root=root)
     d = date
     lines = [
         _line("9251005001", "ZAOR", d(2025, 10, 5), "1", "P1", "10", "1000.00"),

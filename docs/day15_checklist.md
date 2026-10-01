@@ -28,3 +28,8 @@ Run in the morning, before any build work. Record go / no-go per row and tell An
 - [ ] `SELECT month, MEASURE(net_revenue) FROM sales_dev.gold.sales_metrics GROUP BY ALL` returns the same numbers as `kpi_sales_monthly`
 - [ ] Metric view shows field and measure descriptions in Catalog Explorer; Genie can use it
 - [ ] Note the SQL warehouse runtime version; if 18.1+, try a window measure for month-on-month growth
+
+## Genie (see genie/README.md)
+
+- [ ] Genie agent "Sales Insights" created with the 5 data assets, instructions, sample questions and 5 example queries from `genie/space.yaml`
+- [ ] 25 benchmarks added from `genie/answer_key.csv`; benchmark run; score recorded in `docs/decisions.md` (target 80%)
