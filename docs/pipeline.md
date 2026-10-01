@@ -13,6 +13,7 @@ uv run python -m sales_insights.pipeline.bronze              # loads whatever is
 uv run python -m sales_insights.pipeline.silver              # rebuilds clean silver tables from bronze
 uv run python -m sales_insights.pipeline.gold                # rebuilds the gold star schema from silver
 uv run python -m sales_insights.pipeline.reconcile           # gold vs manifests; exit code 1 if anything fails
+uv run python -m sales_insights.semantic.kpis                # KPI views; must match the metric view (docs/kpi_definitions.md)
 ```
 
 Tables live under `lake/<schema>/<table>` locally (path-based Delta) and as `sales_dev.<schema>.<table>` on

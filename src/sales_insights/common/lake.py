@@ -33,6 +33,12 @@ class Lake:
             return str(self.root / self.cfg.schemas[layer] / name)
         return self.cfg.table(layer, name)
 
+    def sql_name(self, layer: str, name: str) -> str:
+        """How SQL refers to the table: delta.`/abs/path` locally, catalog.schema.table on Databricks."""
+        if self.by_path:
+            return f"delta.`{Path(self.location(layer, name)).resolve()}`"
+        return self.location(layer, name)
+
     def exists(self, layer: str, name: str) -> bool:
         if self.by_path:
             return (Path(self.location(layer, name)) / "_delta_log").is_dir()
