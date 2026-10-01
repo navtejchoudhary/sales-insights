@@ -1,5 +1,13 @@
 # Project-wide lint/format settings
 line-length = 120
 
+[lint]
+# Explicit rule list, so lint results do not change when ruff's built-in defaults change between versions.
+#   E4/E7/E9, F  pycodestyle errors + pyflakes (ruff's classic defaults)
+#   I            import order          B    likely bugs (bugbear)        C4   cleaner comprehensions
+#   DTZ          timezone-aware dates  BLE  no silent catch-all except   FURB modern Python idioms
+#   RUF          ruff's own checks     UP   up-to-date syntax for Python 3.12
+select = ["E4", "E7", "E9", "F", "I", "B", "C4", "DTZ", "BLE", "FURB", "RUF", "UP"]
+
 [format]
 skip-magic-trailing-comma = true

@@ -37,6 +37,7 @@ landing → bronze → silver → gold → reconciliation → metric views → d
 - gold: FULL REBUILD. Star schema `fact_sales` (invoice-line grain) + `dim_customer`, `dim_product`, `dim_region` (district → province), `dim_date` (whole fiscal years, cultivation season), `dim_channel`. Every table/column description lives ONLY in `pipeline/gold_model.py` (`with_comments` refuses undocumented columns); regenerate `docs/gold_model.md` after changing it
 - reconciliation: per (delivery, file kind, invoice date) gold vs `ops.manifest_totals` (which already exclude injected dirt), lines/invoices/revenue within 0.1%; results to `ops.reconciliation` + `ops.dq_results`; CLI exits 1 on FAIL
 - semantic layer: every KPI defined ONCE in `sql/metric_views/sales_metrics.yaml` (metric view YAML 1.1); `sql/kpis/*.sql` is the readable twin; `semantic/kpis.py` proves both agree (locally the metric view is compiled to plain SQL by `semantic/metric_views.py`). Change a formula in BOTH places. See `docs/kpi_definitions.md`
+- insights: `insights/job.py` = like-for-like periods (`periods.py`, never a part month vs a whole month) + rules in plain Python (`analysis.py`: headline, movers, stock-outs, unusual days) over small Spark aggregates (`data.py`) -> `gold.insights`; narrative = template sentences, optionally reworded by `ai_query` on Databricks with a number check (`narrative.py`); weekly deck `deck/deck.py` (python-pptx, native charts) -> `output/`. See `docs/insights.md`
 - `ops.processed_files` (bronze's file log) works on both Mac and Databricks volumes; Auto Loader is optional
 
 ## PORTABILITY RULES (most important)
@@ -69,8 +70,8 @@ src/sales_insights/generator/  stories.py (settings), masters.py, engine.py (sha
 src/sales_insights/drip/       drip.py: staging -> landing copy (manifest last; missing day, Monday redelivery)
 src/sales_insights/pipeline/   bronze.py, silver.py, gold.py, reconcile.py, run_pipeline.py
 src/sales_insights/semantic/    metric_views.py (load/compile/publish metric view), kpis.py (KPI views + agreement check), answer_key.py (Genie benchmarks)
-src/sales_insights/insights/   variance, top movers (Phase 2)
-src/sales_insights/deck/       python-pptx deck generator (Phase 3)
+src/sales_insights/insights/   periods.py, analysis.py, data.py, narrative.py, job.py (Phase 2)
+src/sales_insights/deck/       deck.py: python-pptx weekly deck from DeckData (Phase 3)
 sql/kpis/                 KPI SQL views
 sql/metric_views/         metric view YAML drafts
 genie/                    space.yaml (agent config), benchmarks.yaml (questions + SQL), answer_key.csv (generated), README.md (setup)

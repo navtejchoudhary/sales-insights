@@ -33,3 +33,9 @@ Run in the morning, before any build work. Record go / no-go per row and tell An
 
 - [ ] Genie agent "Sales Insights" created with the 5 data assets, instructions, sample questions and 5 example queries from `genie/space.yaml`
 - [ ] 25 benchmarks added from `genie/answer_key.csv`; benchmark run; score recorded in `docs/decisions.md` (target 80%)
+
+## Insights job
+
+- [ ] `business.narrative_model` endpoint exists under Serving (else set it to null: template sentences are used)
+- [ ] Insights job writes `gold.insights`; the deck is written to a volume and opens in PowerPoint
+- [ ] Optional: `ai_forecast` and `ai_detect_anomalies` run on `gold.fact_sales` daily revenue; if yes, add as extra findings
