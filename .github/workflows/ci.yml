@@ -1,0 +1,30 @@
+# Automatic checks on every pull request and on every change to main.
+# Runs the same commands as on the Mac: style check, format check, quick tests (no Spark, so no Java needed).
+# The full Spark test suite (~15 min) stays a local step before merging big changes: `uv run pytest`.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+      - name: Install exact versions from uv.lock
+        run: uv sync --locked
+      - name: Style check
+        run: uv run ruff check .
+      - name: Format check
+        run: uv run ruff format --check .
+      - name: Quick tests
+        run: uv run pytest -m "not spark"

@@ -48,3 +48,5 @@ One line per decision: date, decision, why, who. Newest at the bottom.
 | 1 Oct 2026 | Databricks jobs run the uploaded source through `bundle/run.py` instead of a wheel | A wheel would try to install PySpark on serverless and would not contain config/, sql/ and genie/ | Navtej |
 | 1 Oct 2026 | One-task daily job (the whole pipeline) on serverless environment 6, 06:30 Asia/Colombo | Same behaviour as the Mac; split into tasks later only if needed | Navtej |
 | 1 Oct 2026 | During Stage B the simulated date is the real date: the daily job processes today's business date | The demo-week stories (stock-out from 23 Oct) appear live | Navtej |
+| 1 Oct 2026 | Removed unused `faker` and `matplotlib`; `sales-pipeline` command runs the pipeline | Fewer dependencies to clash on Databricks; no placeholder commands | Navtej |
+| 1 Oct 2026 | GitHub Actions CI on every pull request: ruff check, format check, quick tests (`-m "not spark"`) against `uv.lock` | A neutral machine checks every change; full Spark suite stays a local step | Navtej |

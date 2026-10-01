@@ -1,5 +1,7 @@
 # Sales Insights MVP
 
+[![CI](https://github.com/navtejchoudhary/sales-insights/actions/workflows/ci.yml/badge.svg)](https://github.com/navtejchoudhary/sales-insights/actions/workflows/ci.yml)
+
 A QuickSight-style insights MVP on Azure Databricks: plain-English questions (Genie), a governed KPI layer (metric views), an AI/BI dashboard, automatic weekly insights and a generated PowerPoint deck.
 
 Plan: *Databricks Insights MVP — Execution Plan* (30 Sep 2026). Demo: 29–30 Oct 2026.
@@ -23,6 +25,7 @@ New to the project? Follow `docs/setup_mac.md` first. Then:
 uv sync                 # install the exact package versions from uv.lock
 uv run pytest           # all tests should pass (about 8 minutes: Spark tests)
 uv run pytest -m "not spark"   # quick run while working (seconds): skips every test that starts Spark
+uv run sales-pipeline --date 2026-10-06   # same as python -m sales_insights.pipeline.run_pipeline
 ```
 
 ## Run everything

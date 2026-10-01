@@ -1,7 +1,7 @@
 [project]
 name = "sales-insights"
 version = "0.1.0"
-description = "Add your description here"
+description = "Sales insights MVP on Azure Databricks: medallion lakehouse, governed KPIs (metric view), Genie preparation, automatic insights and a weekly deck, on story-driven SAP-style dummy data."
 readme = "README.md"
 authors = [
     { name = "Navtej Choudhary", email = "navtejchoudhary88@gmail.com" }
@@ -9,8 +9,6 @@ authors = [
 requires-python = ">=3.12"
 dependencies = [
     "delta-spark==4.0.*",
-    "faker>=40.40.0",
-    "matplotlib>=3.11.2",
     "numpy>=2.5.3",
     "pandas>=3.0.6",
     "pyspark==4.0.*",
@@ -19,7 +17,7 @@ dependencies = [
 ]
 
 [project.scripts]
-sales-insights = "sales_insights:main"
+sales-pipeline = "sales_insights.pipeline.run_pipeline:main"
 
 [build-system]
 requires = ["uv_build>=0.12.19,<0.13.0"]
