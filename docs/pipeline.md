@@ -11,6 +11,8 @@ uv run python -m sales_insights.drip.drip --initial          # once: master data
 uv run python -m sales_insights.drip.drip --date 2026-10-01  # each business day
 uv run python -m sales_insights.pipeline.bronze              # loads whatever is new in landing/
 uv run python -m sales_insights.pipeline.silver              # rebuilds clean silver tables from bronze
+uv run python -m sales_insights.pipeline.gold                # rebuilds the gold star schema from silver
+uv run python -m sales_insights.pipeline.reconcile           # gold vs manifests; exit code 1 if anything fails
 ```
 
 Tables live under `lake/<schema>/<table>` locally (path-based Delta) and as `sales_dev.<schema>.<table>` on
@@ -87,3 +89,57 @@ product groups filled, **quarantine equals the manifests' invalid rows exactly**
 
 The tests prove more against the manifests: silver's daily revenue and line count equal the manifests'
 control totals exactly, history equals the history file, and every dirty row listed is fixed or quarantined.
+
+## Gold (`pipeline/gold.py`, descriptions in `pipeline/gold_model.py`)
+
+A **star schema**: one fact table of transactions surrounded by dimension tables that describe them.
+This is the standard shape for BI tools and for Genie, because every question becomes
+"sum a measure from the fact, grouped by attributes of the dimensions".
+
+```
+            dim_date (date)        dim_customer (customer_id)
+                     \              /
+   dim_channel ---- gold.fact_sales ---- dim_product (product_id)
+                     /
+            dim_region (district_code)
+```
+
+| Table | Grain (one row per) | Rows (1-5 Oct data) |
+|---|---|---|
+| `gold.fact_sales` | invoice line | same as `silver.invoice_lines` |
+| `gold.dim_customer` | customer | 600 |
+| `gold.dim_product` | product | 40 |
+| `gold.dim_region` | district (with province) | 25 |
+| `gold.dim_channel` | distribution channel | 3 |
+| `gold.dim_date` | calendar day, whole fiscal years | 730 for FY2025-FY2026 |
+
+Key design points:
+
+- **One revenue measure that is always right**: `net_revenue_amount`. Returns, cancellations and price
+  corrections are negative rows, so a plain SUM over any period is true net revenue. Its four parts
+  (`invoiced_revenue_amount`, `returns_amount`, `cancellations_amount`, `price_corrections_amount`) always
+  add up to it, which makes questions like "how much did returns cost us?" a single SUM.
+- **Margin** from the product's standard cost: `cost_amount` = quantity x standard cost,
+  `margin_amount` = net revenue - cost (draft KPI, to confirm with Anil).
+- **Clear names**: codes end `_code`, money ends `_amount`, dates end `_date`; SAP names are kept in the
+  descriptions so people who know SAP can still find them.
+- **Descriptions everywhere**: every table and column has a plain-English description in `gold_model.py`.
+  Locally they are stored as Delta column comments; on Databricks `Lake.describe` also runs
+  `COMMENT ON TABLE` and `ALTER COLUMN ... COMMENT`, which is what Genie and Catalog Explorer read.
+  `docs/gold_model.md` (the data dictionary) is generated from the same file; a test fails if it is stale.
+- **dim_date** covers whole fiscal years (April-March), with fiscal period and quarter, Monday-start weeks
+  and the Sri Lankan cultivation season (Maha Sep-Mar, Yala May-Aug, April in between; set in config).
+- **Full rebuild** each run, like silver.
+
+## Reconciliation (`pipeline/reconcile.py`)
+
+Proves gold matches what the source system says it sent. For every
+(delivery, file kind, invoice date) the manifests promise lines, invoices and revenue; gold must match
+each within `reconciliation_tolerance_pct` (0.1%). The manifests already leave out the duplicate and
+invalid rows they injected, so a correct pipeline matches **exactly**; the tolerance only absorbs rounding.
+
+- `ops.reconciliation`: one row per compared group per run (kept, so you can see history)
+- `ops.dq_results`: one PASS/FAIL row per delivery (`check_name = 'reconciliation'`)
+- The command exits with code 1 and prints the failing groups, so a scheduled job turns red.
+
+A group missing on either side fails too (gold has rows nobody sent, or lost rows that were sent).

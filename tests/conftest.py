@@ -5,6 +5,17 @@ import pytest
 from sales_insights.common.config import load_config
 
 
+def pytest_configure(config):
+    config.addinivalue_line("markers", "spark: starts a local Spark session (slow). Quick run: pytest -m 'not spark'")
+
+
+def pytest_collection_modifyitems(items):
+    """Every test that needs Spark (directly or through another fixture) is marked `spark` automatically."""
+    for item in items:
+        if "spark" in getattr(item, "fixturenames", ()):
+            item.add_marker(pytest.mark.spark)
+
+
 @pytest.fixture(scope="session")
 def cfg():
     return load_config("local")

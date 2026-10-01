@@ -55,3 +55,20 @@ class Lake:
             writer.save(self.location(layer, name))
         else:
             writer.saveAsTable(self.location(layer, name))
+
+    def describe(self, layer: str, name: str, description: str, column_comments: dict[str, str]) -> None:
+        """Table and column comments in Unity Catalog (Genie and Catalog Explorer show them).
+
+        Locally the column comments already travel inside the Delta schema (see gold_model.with_comments);
+        plain local Spark has no catalog to hold a table comment, so this is a no-op there.
+        """
+        if self.by_path:
+            return
+        table = self.location(layer, name)
+
+        def q(text: str) -> str:
+            return text.replace("\\", "\\\\").replace("'", "\\'")
+
+        self.spark.sql(f"COMMENT ON TABLE {table} IS '{q(description)}'")
+        for col, text in column_comments.items():
+            self.spark.sql(f"ALTER TABLE {table} ALTER COLUMN `{col}` COMMENT '{q(text)}'")

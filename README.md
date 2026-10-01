@@ -21,7 +21,8 @@ New to the project? Follow `docs/setup_mac.md` first. Then:
 
 ```bash
 uv sync                 # install the exact package versions from uv.lock
-uv run pytest           # all tests should pass
+uv run pytest           # all tests should pass (about 8 minutes: Spark tests)
+uv run pytest -m "not spark"   # quick run while working (seconds): skips every test that starts Spark
 ```
 
 ## Generate data
@@ -34,6 +35,8 @@ uv run python -m sales_insights.drip.drip --initial                             
 uv run python -m sales_insights.drip.drip --date 2026-10-01                           # deliver one day -> landing/
 uv run python -m sales_insights.pipeline.bronze                                        # load new landing files -> bronze (see docs/pipeline.md)
 uv run python -m sales_insights.pipeline.silver                                        # rebuild clean silver tables from bronze
+uv run python -m sales_insights.pipeline.gold                                          # rebuild the gold star schema from silver
+uv run python -m sales_insights.pipeline.reconcile                                     # prove gold matches the manifests (exit 1 on failure)
 ```
 
 ## Folder map
