@@ -10,6 +10,7 @@ staging/ --drip--> landing/ --bronze--> bronze.* --silver--> silver.* --gold--> 
 uv run python -m sales_insights.drip.drip --initial          # once: master data + history backfill
 uv run python -m sales_insights.drip.drip --date 2026-10-01  # each business day
 uv run python -m sales_insights.pipeline.bronze              # loads whatever is new in landing/
+uv run python -m sales_insights.pipeline.silver              # rebuilds clean silver tables from bronze
 ```
 
 Tables live under `lake/<schema>/<table>` locally (path-based Delta) and as `sales_dev.<schema>.<table>` on
@@ -41,3 +42,48 @@ Rules:
   Otherwise bronze writes a WAIT row and tries again next run.
 - **Schema evolution**: new source columns are added to the table (`mergeSchema`), never an error.
 - **Manifest checks**: row count and checksum per file into `ops.dq_results`.
+
+## Silver (`pipeline/silver.py`, manifest parsing in `pipeline/manifests.py`)
+
+Turns raw text into clean, typed tables you can trust. **Rebuilt in full every run** (see decisions log):
+the same bronze always gives the same silver, and a rerun is harmless.
+
+| Table | What it holds |
+|---|---|
+| `silver.invoice_lines` | history + orders + changes, one row per `invoice_number` + `invoice_item`, typed and enriched |
+| `silver.quarantine` | rows that failed validation: key, `reasons`, `business_date`, source file, the original row as JSON |
+| `silver.customers` | one row per customer (latest version), canonical city, region, province |
+| `silver.products` | one row per product (latest version), product group always filled |
+| `silver.<lookup>` | regions, cities, plants, sales offices, sales reps and the other lookup masters |
+| `ops.manifest_totals` | what each manifest promised: lines, invoices, revenue, tax per file kind and invoice date |
+| `ops.manifest_dirt` | every dirty row each manifest says it injected (file, dirt type, key) |
+
+Order of the line rules (each is a small, separately tested function):
+
+1. **Newest file version**: if the source re-sent a file with new content, only its newest load is used
+   (a row the source removed disappears too). Bronze keeps both loads.
+2. **Dedupe** on `invoice_number` + `invoice_item`: one copy survives (`duplicate_line`).
+3. **Validate** → quarantine with reasons: `invalid_invoice_date` (dd/mm/yyyy, month 13, 0000-00-00),
+   `negative_quantity_on_invoice` (ZAOR/ZFOC with quantity < 0), `invalid_quantity`, `invalid_revenue`,
+   `unknown_invoice_type`, `missing_key`. Returns (ZARE) and cancellations (S1) are allowed to be negative.
+4. **Types**: dates `DATE`, money `DECIMAL(18,2)`, quantities and weights `DECIMAL(18,3)`, rates `DECIMAL(18,6)`.
+   Casts use `try_cast`, so bad text becomes NULL instead of crashing (Spark 4 runs in ANSI mode).
+5. **Enrich** from master data: customer IDs padded to 10 digits; city and region from the customer master
+   (fixes `city_text_variant`); blank sales office, customer group, product group and plant filled
+   (`blank_*`); blank customer group name becomes `Unassigned`.
+6. **Flags**: `is_cancelled` + `cancelled_by` on sales lines an S1 later reversed (revenue still nets
+   through the S1 rows, so nothing is double-counted); `arrival_delay_days` = business date − invoice date
+   (late arrivals; NULL for history).
+
+Master rules: customer IDs padded to 10 digits, names trimmed, latest version per key by
+`last_updated_timestamp` (`duplicate_older_version`), city spelling mapped to `cities.csv`
+(`COLOMBO - 10.` / `Colombo 10` / `colombo  10` → `COLOMBO 10`), blank region taken from the city,
+blank product group taken from the group most often seen for that product in invoice lines,
+product descriptions upper-cased.
+
+Checks written to `ops.dq_results` (layer `silver`): customer IDs unique, every customer city mapped,
+product groups filled, **quarantine equals the manifests' invalid rows exactly**, no blank required fields
+(sales office, plant, product group, customer group name, invoice date, region), line keys unique.
+
+The tests prove more against the manifests: silver's daily revenue and line count equal the manifests'
+control totals exactly, history equals the history file, and every dirty row listed is fixed or quarantined.

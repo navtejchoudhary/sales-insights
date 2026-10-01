@@ -76,7 +76,7 @@ def world(spark, cfg, tmp_path_factory):
 
     edited = landing / s.folder_name(date(2026, 10, 17)) / "orders_20261017.csv"
     lines = edited.read_text().splitlines()
-    edited.write_text("\n".join(lines + [lines[1]]) + "\n")
+    edited.write_text("\n".join([*lines, lines[1]]) + "\n")
     runs[8] = run()
 
     return {"runs": runs, "lake": lake, "staging": staging, "landing": landing}

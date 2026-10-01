@@ -33,6 +33,7 @@ uv run python -m sales_insights.generator.simulate --from 2026-10-01 --to 2026-1
 uv run python -m sales_insights.drip.drip --initial                                  # deliver masters + history once -> landing/
 uv run python -m sales_insights.drip.drip --date 2026-10-01                           # deliver one day -> landing/
 uv run python -m sales_insights.pipeline.bronze                                        # load new landing files -> bronze (see docs/pipeline.md)
+uv run python -m sales_insights.pipeline.silver                                        # rebuild clean silver tables from bronze
 ```
 
 ## Folder map

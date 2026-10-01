@@ -20,7 +20,7 @@ import argparse
 import csv
 import shutil
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 from sales_insights.generator import stories
@@ -84,7 +84,7 @@ def deliver_initial(staging: Path, landing: Path) -> list[str]:
             (landing / folder).mkdir(parents=True, exist_ok=True)
             for f in files:
                 shutil.copy2(f, landing / folder / f.name)
-                writer.writerow([datetime.now().isoformat(timespec="seconds"), "", "initial", f"{folder}/{f.name}"])
+                writer.writerow([datetime.now(UTC).isoformat(timespec="seconds"), "", "initial", f"{folder}/{f.name}"])
                 delivered.append(f"{folder}/{f.name}")
     return delivered
 
@@ -98,7 +98,7 @@ def execute(actions: list[Action], staging: Path, landing: Path) -> None:
         if new_log:
             writer.writerow(["delivered_at", "business_date", "action", "file"])
         for a in actions:
-            now = datetime.now().isoformat(timespec="seconds")
+            now = datetime.now(UTC).isoformat(timespec="seconds")
             if not a.files:
                 writer.writerow([now, a.business_date.isoformat(), a.kind, ""])
                 continue

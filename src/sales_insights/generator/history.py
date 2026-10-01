@@ -70,7 +70,7 @@ def write_history(df: pd.DataFrame, out_dir: Path, seed: int, as_of: date) -> Pa
     for month, part in df.groupby(df["invoice_date"].str[:7].str.replace("-", "")):
         path = target / f"invoices_{month}.csv"
         part.to_csv(path, index=False, lineterminator="\n")
-        files[path.name] = {"rows": int(len(part)), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        files[path.name] = {"rows": len(part), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
     manifest = {
         "kind": "history",
         "source_system": "SAP S/4HANA (simulated)",

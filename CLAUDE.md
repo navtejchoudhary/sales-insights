@@ -33,7 +33,7 @@ Timeline:
 ## Architecture
 landing → bronze → silver → gold → reconciliation → metric views → dashboard / Genie / alerts → insights job → SupervisorAgent + deck job
 - bronze: append as-is, all columns as STRING, plus `_source_file`, `_business_date`, `_load_ts`, `_run_id`, `_rescued_data`; exactly-once via `ops.processed_files` (path + SHA-256); new columns added (mergeSchema). See `docs/pipeline.md`
-- silver: cast types, standardise text (e.g. COLOMBO 10 / COLOMBO - 10 / Colombo 10 → canonical name from `cities.csv`), left-pad customer IDs to 10 digits, keep the latest record per key by `last_updated_timestamp`, dedupe on `order_id` + `line_no`, MERGE change files (latest change wins), bad rows to `silver.quarantine` with a reason
+- silver: FULL REBUILD each run (no MERGE; see decisions). Newest load of each file → dedupe on `invoice_number` + `invoice_item` → validate (bad rows to `silver.quarantine` with reasons) → `try_cast` types → enrich from masters (10-digit customer IDs, canonical city from `cities.csv`, blank codes filled) → `is_cancelled`, `arrival_delay_days`. Masters: latest version per key by `last_updated_timestamp`. Manifests parsed into `ops.manifest_totals` / `ops.manifest_dirt`; quarantine must equal the manifests' invalid rows. See `docs/pipeline.md`
 - gold: `fact_sales` (order-line grain) + `dim_product`, `dim_customer`, `dim_region` (district → province), `dim_date`, `dim_channel`; rebuild only dates touched by late/changed rows
 - reconciliation: gold daily totals vs manifest totals minus quarantined rows; pass within 0.1%, otherwise FAIL loudly; results to `ops.dq_results`
 - `ops.processed_files` (bronze's file log) works on both Mac and Databricks volumes; Auto Loader is optional

@@ -145,7 +145,7 @@ def write_day(drop: DayDrop, out_dir: Path, seed: int, as_of: date) -> Path:
         path = target / f"{kind}_{stamp}.csv"
         df.to_csv(path, index=False, lineterminator="\n")
         files[path.name] = {
-            "rows": int(len(df)),
+            "rows": len(df),
             "columns": int(df.shape[1]),
             "sha256": hashlib.sha256(path.read_bytes()).hexdigest(),
         }

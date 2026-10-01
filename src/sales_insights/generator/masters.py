@@ -26,7 +26,7 @@ import argparse
 import hashlib
 import json
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from pathlib import Path
 
 import numpy as np
@@ -597,7 +597,7 @@ def _city_variant(rng: np.random.Generator, city: str) -> str:
 
 
 def _pick(rng: np.random.Generator, index: pd.Index, rate: float) -> list[int]:
-    k = max(1, int(round(len(index) * rate)))
+    k = max(1, round(len(index) * rate))
     return sorted(int(i) for i in rng.choice(index, size=k, replace=False))
 
 
@@ -637,9 +637,9 @@ def dirty_customers(rng: np.random.Generator, df: pd.DataFrame, as_of: date) -> 
     older = df.loc[rows].copy()
     older["customer_group"], older["customer_group_name"] = "03", "Domestic"
     older["last_updated_timestamp"] = [
-        (datetime.strptime(t, "%Y-%m-%d %H:%M:%S.%f") - timedelta(days=int(rng.integers(1, 90)))).strftime(
-            "%Y-%m-%d %H:%M:%S.%f"
-        )[:-3]
+        (
+            datetime.strptime(t, "%Y-%m-%d %H:%M:%S.%f").replace(tzinfo=UTC) - timedelta(days=int(rng.integers(1, 90)))
+        ).strftime("%Y-%m-%d %H:%M:%S.%f")[:-3]
         for t in older["last_updated_timestamp"]
     ]
     record("duplicate_older_version", rows, "Same customer twice; keep the row with the latest last_updated_timestamp")
@@ -715,7 +715,7 @@ def write_masters(tables: dict[str, pd.DataFrame], dirt_log: list[dict], out_dir
     for name, df in tables.items():
         path = target / f"{name}.csv"
         df.to_csv(path, index=False, lineterminator="\n")
-        files[path.name] = {"rows": int(len(df)), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        files[path.name] = {"rows": len(df), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
 
     manifest = {
         "kind": "masters",
