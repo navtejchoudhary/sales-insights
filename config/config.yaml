@@ -14,6 +14,7 @@ profiles:
       gold: gold
       ops: ops
     processed_files_log: lake/ops/_processed_files   # stands in for the Auto Loader checkpoint
+    output_path: output              # weekly decks and pipeline reports (git-ignored)
 
   dev:
     # Azure Databricks trial workspace (from 15 Oct). Unity Catalog names.
@@ -27,6 +28,7 @@ profiles:
       gold: gold
       ops: ops
     processed_files_log: null        # Auto Loader keeps its own checkpoint
+    output_path: /Volumes/sales_dev/raw/output
 
 # Business settings shared by all profiles
 business:

@@ -9,5 +9,8 @@ line-length = 120
 #   RUF          ruff's own checks     UP   up-to-date syntax for Python 3.12
 select = ["E4", "E7", "E9", "F", "I", "B", "C4", "DTZ", "BLE", "FURB", "RUF", "UP"]
 
+[lint.isort]
+split-on-trailing-comma = false  # matches the formatter setting below
+
 [format]
 skip-magic-trailing-comma = true

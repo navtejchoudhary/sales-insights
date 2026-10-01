@@ -29,6 +29,7 @@ class Config:
     schemas: dict[str, str]
     processed_files_log: str | None
     business: dict[str, Any] = field(default_factory=dict)
+    output_path: str = "output"  # decks and run reports
 
     def schema(self, layer: str) -> str:
         """Fully qualified schema name for a layer (bronze, silver, gold, ops)."""
@@ -64,4 +65,5 @@ def load_config(profile: str | None = None, config_file: Path | str = DEFAULT_CO
         schemas=p["schemas"],
         processed_files_log=p.get("processed_files_log"),
         business=raw.get("business", {}),
+        output_path=p.get("output_path", "output"),
     )

@@ -25,7 +25,16 @@ uv run pytest           # all tests should pass (about 8 minutes: Spark tests)
 uv run pytest -m "not spark"   # quick run while working (seconds): skips every test that starts Spark
 ```
 
-## Generate data
+## Run everything
+
+```bash
+uv run python -m sales_insights.pipeline.run_pipeline --date 2026-10-06                     # one day, every step
+uv run python -m sales_insights.pipeline.run_pipeline --from 2026-10-06 --to 2026-10-29     # rehearsal, day by day
+```
+One line per step, stops at the first failure, report in `output/`. On Databricks the same code runs as
+jobs defined in `databricks.yml` + `bundle/` (first deployment: `docs/day15_runbook.md`).
+
+## Generate data (step by step)
 
 ```bash
 uv run python -m sales_insights.generator.masters    # master data -> staging/masters/ (see docs/master_data.md)

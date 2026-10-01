@@ -43,3 +43,8 @@ One line per decision: date, decision, why, who. Newest at the bottom.
 | 1 Oct 2026 | Deck built with python-pptx and native charts (not images) | Runs as a Python job on Databricks; charts stay editable | Navtej |
 | 1 Oct 2026 | `ai_forecast` / `ai_detect_anomalies` deferred to Day 15 tests; local statistical rules cover the stories | Databricks-only functions; availability on the trial unknown | Navtej |
 | 1 Oct 2026 | ruff rules listed explicitly in `ruff.toml` | ruff 0.16 (Mac) and 0.15 differ in default rules, which let lint errors through on one side only | Navtej |
+| 1 Oct 2026 | One command (`pipeline/run_pipeline.py`) runs every step and stops at the first failed check | One daily action; exactly what the Databricks job runs | Navtej |
+| 1 Oct 2026 | `databricks.yml` at the repo root (bundle standard), job definitions in `bundle/resources/` | The CLI finds it from the project folder; the bundle uploads the whole repo | Navtej |
+| 1 Oct 2026 | Databricks jobs run the uploaded source through `bundle/run.py` instead of a wheel | A wheel would try to install PySpark on serverless and would not contain config/, sql/ and genie/ | Navtej |
+| 1 Oct 2026 | One-task daily job (the whole pipeline) on serverless environment 6, 06:30 Asia/Colombo | Same behaviour as the Mac; split into tasks later only if needed | Navtej |
+| 1 Oct 2026 | During Stage B the simulated date is the real date: the daily job processes today's business date | The demo-week stories (stock-out from 23 Oct) appear live | Navtej |
