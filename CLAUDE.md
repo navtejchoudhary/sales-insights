@@ -36,6 +36,7 @@ landing → bronze → silver → gold → reconciliation → metric views → d
 - silver: FULL REBUILD each run (no MERGE; see decisions). Newest load of each file → dedupe on `invoice_number` + `invoice_item` → validate (bad rows to `silver.quarantine` with reasons) → `try_cast` types → enrich from masters (10-digit customer IDs, canonical city from `cities.csv`, blank codes filled) → `is_cancelled`, `arrival_delay_days`. Masters: latest version per key by `last_updated_timestamp`. Manifests parsed into `ops.manifest_totals` / `ops.manifest_dirt`; quarantine must equal the manifests' invalid rows. See `docs/pipeline.md`
 - gold: FULL REBUILD. Star schema `fact_sales` (invoice-line grain) + `dim_customer`, `dim_product`, `dim_region` (district → province), `dim_date` (whole fiscal years, cultivation season), `dim_channel`. Every table/column description lives ONLY in `pipeline/gold_model.py` (`with_comments` refuses undocumented columns); regenerate `docs/gold_model.md` after changing it
 - reconciliation: per (delivery, file kind, invoice date) gold vs `ops.manifest_totals` (which already exclude injected dirt), lines/invoices/revenue within 0.1%; results to `ops.reconciliation` + `ops.dq_results`; CLI exits 1 on FAIL
+- semantic layer: every KPI defined ONCE in `sql/metric_views/sales_metrics.yaml` (metric view YAML 1.1); `sql/kpis/*.sql` is the readable twin; `semantic/kpis.py` proves both agree (locally the metric view is compiled to plain SQL by `semantic/metric_views.py`). Change a formula in BOTH places. See `docs/kpi_definitions.md`
 - `ops.processed_files` (bronze's file log) works on both Mac and Databricks volumes; Auto Loader is optional
 
 ## PORTABILITY RULES (most important)
@@ -67,6 +68,7 @@ src/sales_insights/common/     config.py (load_config), spark.py (get_spark) —
 src/sales_insights/generator/  stories.py (settings), masters.py, engine.py (shared per-day sales + per-invoice fates), history.py, simulate.py (daily drops), dirt.py
 src/sales_insights/drip/       drip.py: staging -> landing copy (manifest last; missing day, Monday redelivery)
 src/sales_insights/pipeline/   bronze.py, silver.py, gold.py, reconcile.py, run_pipeline.py
+src/sales_insights/semantic/    metric_views.py (load/compile/publish metric view), kpis.py (KPI views + agreement check)
 src/sales_insights/insights/   variance, top movers (Phase 2)
 src/sales_insights/deck/       python-pptx deck generator (Phase 3)
 sql/kpis/                 KPI SQL views

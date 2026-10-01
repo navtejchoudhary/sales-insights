@@ -21,3 +21,10 @@ Run in the morning, before any build work. Record go / no-go per row and tell An
 | Genie space can be created | Phase 1 as planned | **Blocker:** escalate to Anil same day | |
 | File-arrival trigger can be set on the volume | Daily simulation as designed | Scheduled pipeline 10 min after `simulate_day` | |
 | Mac code runs unchanged | Portability works | Fix drift on 15–16 Oct | |
+
+## Semantic layer (after gold is loaded on Databricks)
+
+- [ ] `uv run python -m sales_insights.semantic.kpis` with `SALES_PROFILE=dev` (or the job) creates `gold.kpi_*` views and the metric view `gold.sales_metrics`
+- [ ] `SELECT month, MEASURE(net_revenue) FROM sales_dev.gold.sales_metrics GROUP BY ALL` returns the same numbers as `kpi_sales_monthly`
+- [ ] Metric view shows field and measure descriptions in Catalog Explorer; Genie can use it
+- [ ] Note the SQL warehouse runtime version; if 18.1+, try a window measure for month-on-month growth

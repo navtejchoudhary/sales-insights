@@ -30,3 +30,7 @@ One line per decision: date, decision, why, who. Newest at the bottom.
 | 1 Oct 2026 | One description file (`gold_model.py`) feeds column comments, the data dictionary and later Genie | Written once, never drifts | Navtej |
 | 1 Oct 2026 | Reconciliation per delivery x file x invoice date, exit code 1 on failure | Pinpoints exactly where a mismatch is; a scheduled job fails loudly | Navtej |
 | 1 Oct 2026 | Cultivation seasons in config: Maha Sep-Mar, Yala May-Aug, April 'Inter-season' (source: Wikipedia, Agriculture in Sri Lanka) | Seasonality is a key story; Genie can group by season | Navtej |
+| 1 Oct 2026 | KPIs defined once in the metric view YAML; KPI SQL kept as the readable twin; a check proves both give identical numbers | Plan rule: a KPI is done only when SQL and metric view agree. Also a fallback if metric views misbehave on the trial | Navtej |
+| 1 Oct 2026 | Metric view tested locally by compiling it to plain Spark SQL (fact LEFT JOIN dims, MEASURE() expanded) | Real metric views exist only on Databricks; the local twin catches formula mistakes two weeks earlier | Navtej |
+| 1 Oct 2026 | Invoice count = distinct paid (ZAOR) non-cancelled invoices; free-of-charge and credit notes excluded (draft) | Average invoice value should not be diluted by free goods or credit notes | Navtej |
+| 1 Oct 2026 | Growth and attach rate only in KPI SQL for now | Growth needs window measures (newer runtime, test 15 Oct); attach needs invoice-level logic | Navtej |
