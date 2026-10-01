@@ -1,0 +1,395 @@
+# Genie benchmark questions: the answer key.
+#
+# Each question has the ground-truth SQL that answers it correctly on the gold tables. On Databricks these
+# become the Genie agent's BENCHMARKS (question + SQL answer), so Genie's accuracy is scored, not guessed.
+# `uv run python -m sales_insights.semantic.answer_key` runs every query on the current gold data and writes
+# genie/answer_key.csv with the expected answers. `check` (optional) is a Python expression that must be
+# true on the result: it proves the planted story is visible in the data. `row` = first row, `rows` = all rows.
+# `needs_data_until`: the check is PENDING until the data reaches that date (demo-week stories).
+# Placeholders like $${fact_sales} are replaced with real table names.
+#
+# Conventions used by every query (the same as the metric view):
+#   net revenue  = SUM(net_revenue_amount)          (already net of returns, cancellations, price corrections)
+#   invoices     = distinct invoice_number where invoice_type = 'ZAOR' AND NOT is_cancelled
+#   fiscal year  = April-March, labelled by start year (FY2025 = 1 Apr 2025 - 31 Mar 2026)
+
+questions:
+  # ---------------------------------------------------------------- basics
+  - id: B01
+    category: basic
+    question: What was total net revenue in fiscal year 2025?
+    sql: |
+      SELECT ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+      WHERE d.fiscal_year = 2025
+    check: row['net_revenue'] > 0
+
+  - id: B02
+    category: basic
+    question: What was net revenue in September 2026?
+    sql: |
+      SELECT ROUND(SUM(net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales}
+      WHERE invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'
+
+  - id: B03
+    category: basic
+    question: How many invoices did we issue in September 2026?
+    sql: |
+      SELECT COUNT(DISTINCT invoice_number) AS invoices
+      FROM ${fact_sales}
+      WHERE invoice_type = 'ZAOR' AND NOT is_cancelled
+        AND invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'
+
+  - id: B04
+    category: basic
+    question: What was the average invoice value in fiscal year 2025?
+    sql: |
+      SELECT ROUND(SUM(f.net_revenue_amount)
+               / NULLIF(COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.invoice_number END), 0), 2)
+             AS average_invoice_value
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+      WHERE d.fiscal_year = 2025
+
+  - id: B05
+    category: basic
+    question: How many active customers did we have in September 2026 compared with September 2025?
+    sql: |
+      SELECT
+        COUNT(DISTINCT CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN customer_id END) AS sep_2026,
+        COUNT(DISTINCT CASE WHEN invoice_date BETWEEN DATE'2025-09-01' AND DATE'2025-09-30' THEN customer_id END) AS sep_2025
+      FROM ${fact_sales}
+      WHERE invoice_type = 'ZAOR' AND NOT is_cancelled
+
+  # ---------------------------------------------------------------- trends and growth
+  - id: B06
+    category: trend
+    question: Show monthly net revenue for fiscal year 2025.
+    sql: |
+      SELECT d.month_start_date AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+      WHERE d.fiscal_year = 2025
+      GROUP BY d.month_start_date ORDER BY month
+    check: len(rows) == 12
+
+  - id: B07
+    category: trend
+    question: What was month-on-month revenue growth in September 2026?
+    sql: |
+      SELECT
+        ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN net_revenue_amount END), 2) AS sep_2026,
+        ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-08-01' AND DATE'2026-08-31' THEN net_revenue_amount END), 2) AS aug_2026,
+        ROUND((SUM(CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN net_revenue_amount END)
+             / NULLIF(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-08-01' AND DATE'2026-08-31' THEN net_revenue_amount END), 0) - 1) * 100, 1)
+          AS growth_pct
+      FROM ${fact_sales}
+
+  - id: B08
+    category: trend
+    question: How did revenue in July to September 2026 compare with July to September 2025?
+    sql: |
+      SELECT
+        ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30' THEN net_revenue_amount END), 2) AS q_2026,
+        ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2025-07-01' AND DATE'2025-09-30' THEN net_revenue_amount END), 2) AS q_2025,
+        ROUND((SUM(CASE WHEN invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30' THEN net_revenue_amount END)
+             / NULLIF(SUM(CASE WHEN invoice_date BETWEEN DATE'2025-07-01' AND DATE'2025-09-30' THEN net_revenue_amount END), 0) - 1) * 100, 1)
+          AS growth_pct
+      FROM ${fact_sales}
+    check: row['growth_pct'] > 0
+
+  # ---------------------------------------------------------------- story 3: geography
+  - id: B09
+    category: story
+    story: 3 Southern province underperforms
+    question: Which province has the lowest net revenue per active customer in fiscal year 2025?
+    sql: |
+      SELECT c.province,
+             ROUND(SUM(f.net_revenue_amount)
+                 / NULLIF(COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END), 0), 2)
+               AS revenue_per_active_customer
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      JOIN ${dim_customer} c ON f.customer_id = c.customer_id
+      WHERE d.fiscal_year = 2025
+      GROUP BY c.province ORDER BY revenue_per_active_customer ASC
+    check: row['province'] == 'Southern'
+
+  - id: B10
+    category: story
+    story: 3 Northern province is strongest
+    question: Which province has the highest net revenue per active customer in fiscal year 2025?
+    sql: |
+      SELECT c.province,
+             ROUND(SUM(f.net_revenue_amount)
+                 / NULLIF(COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END), 0), 2)
+               AS revenue_per_active_customer
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      JOIN ${dim_customer} c ON f.customer_id = c.customer_id
+      WHERE d.fiscal_year = 2025
+      GROUP BY c.province ORDER BY revenue_per_active_customer DESC
+    check: row['province'] == 'Northern'
+
+  - id: B11
+    category: basic
+    question: Rank the provinces by net revenue in fiscal year 2025.
+    sql: |
+      SELECT c.province, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      JOIN ${dim_customer} c ON f.customer_id = c.customer_id
+      WHERE d.fiscal_year = 2025
+      GROUP BY c.province ORDER BY net_revenue DESC
+    check: len(rows) == 9
+
+  # ---------------------------------------------------------------- story 2: concentration
+  - id: B12
+    category: story
+    story: 2 A few products bring most revenue
+    question: What share of fiscal year 2025 net revenue came from the top 8 products?
+    sql: |
+      WITH p AS (
+        SELECT f.product_id, SUM(f.net_revenue_amount) AS revenue
+        FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+        WHERE d.fiscal_year = 2025
+        GROUP BY f.product_id
+      ), ranked AS (SELECT revenue, ROW_NUMBER() OVER (ORDER BY revenue DESC) AS rn FROM p)
+      SELECT ROUND(SUM(CASE WHEN rn <= 8 THEN revenue END) / NULLIF(SUM(revenue), 0) * 100, 1) AS top8_share_pct FROM ranked
+    check: row['top8_share_pct'] >= 60
+
+  - id: B13
+    category: basic
+    question: What were the top 5 products by net revenue in fiscal year 2025?
+    sql: |
+      SELECT p.product_description AS product, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      JOIN ${dim_product} p ON f.product_id = p.product_id
+      WHERE d.fiscal_year = 2025
+      GROUP BY p.product_description ORDER BY net_revenue DESC LIMIT 5
+    check: len(rows) == 5
+
+  # ---------------------------------------------------------------- story 4: weedicide price rise
+  - id: B14
+    category: story
+    story: 4 Weedicide price rise of 8% from 1 April 2026
+    question: By how much did the price per case of weedicide products change after 1 April 2026?
+    sql: |
+      WITH per_product AS (
+        SELECT f.product_id,
+               SUM(CASE WHEN f.invoice_date <  DATE'2026-04-01' THEN f.net_revenue_amount END)
+             / NULLIF(SUM(CASE WHEN f.invoice_date <  DATE'2026-04-01' THEN f.quantity END), 0) AS price_before,
+               SUM(CASE WHEN f.invoice_date >= DATE'2026-04-01' THEN f.net_revenue_amount END)
+             / NULLIF(SUM(CASE WHEN f.invoice_date >= DATE'2026-04-01' THEN f.quantity END), 0) AS price_after
+        FROM ${fact_sales} f JOIN ${dim_product} p ON f.product_id = p.product_id
+        WHERE p.product_group_name = 'WEEDICIDE' AND f.invoice_type = 'ZAOR'
+        GROUP BY f.product_id
+      )
+      SELECT ROUND(AVG((price_after / NULLIF(price_before, 0) - 1) * 100), 1) AS avg_price_change_pct,
+             COUNT(*) AS products
+      FROM per_product WHERE price_before IS NOT NULL AND price_after IS NOT NULL
+    check: 6 <= row['avg_price_change_pct'] <= 10
+
+  - id: B15
+    category: story
+    story: 4 Weedicide volume lags after the price rise
+    question: How did weedicide units grow from April-September 2025 to April-September 2026, compared with other crop chemicals?
+    sql: |
+      WITH u AS (
+        SELECT CASE WHEN p.product_group_name = 'WEEDICIDE' THEN 'weedicide' ELSE 'other crop chemicals' END AS grp,
+               SUM(CASE WHEN f.invoice_date BETWEEN DATE'2026-04-01' AND DATE'2026-09-30' THEN f.quantity END) AS units_2026,
+               SUM(CASE WHEN f.invoice_date BETWEEN DATE'2025-04-01' AND DATE'2025-09-30' THEN f.quantity END) AS units_2025
+        FROM ${fact_sales} f JOIN ${dim_product} p ON f.product_id = p.product_id
+        WHERE p.product_group_name IN ('WEEDICIDE', 'INSECTICIDE', 'FUNGICIDE')
+        GROUP BY 1
+      )
+      SELECT grp, ROUND((units_2026 / NULLIF(units_2025, 0) - 1) * 100, 1) AS units_growth_pct FROM u ORDER BY grp DESC
+    check: rows[0]['grp'] == 'weedicide' and rows[0]['units_growth_pct'] < rows[1]['units_growth_pct'] - 5
+
+  # ---------------------------------------------------------------- story 5: new product
+  - id: B16
+    category: story
+    story: 5 HEX FUNGICIDE 1LTR launched 15 June 2026, ramping up
+    question: When did HEX FUNGICIDE 1LTR start selling, and how have its monthly sales developed?
+    sql: |
+      SELECT d.month_start_date AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue,
+             MIN(MIN(f.invoice_date)) OVER () AS first_sale_date
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      WHERE f.product_id = 'HEX1LTR'
+      GROUP BY d.month_start_date ORDER BY month
+    check: row['first_sale_date'] >= date(2026, 6, 15) and len(rows) >= 4 and rows[3]['net_revenue'] > rows[1]['net_revenue'] > rows[0]['net_revenue']
+
+  # ---------------------------------------------------------------- story 6: returns spike
+  - id: B17
+    category: story
+    story: 6 Returns spike on HGL INSECTICIDE 400ML from 1 July 2026
+    question: Which product had the highest returns rate since 1 July 2026?
+    sql: |
+      SELECT f.product_id, p.product_description AS product,
+             ROUND(-SUM(f.returns_amount) / SUM(f.invoiced_revenue_amount) * 100, 2) AS returns_rate_pct
+      FROM ${fact_sales} f JOIN ${dim_product} p ON f.product_id = p.product_id
+      WHERE f.invoice_date >= DATE'2026-07-01'
+      GROUP BY f.product_id, p.product_description
+      HAVING SUM(f.invoiced_revenue_amount) > 0
+      ORDER BY returns_rate_pct DESC LIMIT 5
+    check: row['product_id'] == 'HGL400ML'
+
+  - id: B18
+    category: story
+    story: 6 Returns spike on HGL INSECTICIDE 400ML from 1 July 2026
+    question: How did the returns rate of HGL INSECTICIDE 400ML change after 1 July 2026?
+    sql: |
+      SELECT
+        ROUND(-SUM(CASE WHEN invoice_date <  DATE'2026-07-01' THEN returns_amount END)
+             / NULLIF(SUM(CASE WHEN invoice_date <  DATE'2026-07-01' THEN invoiced_revenue_amount END), 0) * 100, 2) AS before_pct,
+        ROUND(-SUM(CASE WHEN invoice_date >= DATE'2026-07-01' THEN returns_amount END)
+             / NULLIF(SUM(CASE WHEN invoice_date >= DATE'2026-07-01' THEN invoiced_revenue_amount END), 0) * 100, 2) AS after_pct
+      FROM ${fact_sales}
+      WHERE product_id = 'HGL400ML'
+    check: row['after_pct'] > 5 * row['before_pct']
+
+  # ---------------------------------------------------------------- story 1: seasons
+  - id: B19
+    category: story
+    story: 1 Demand peaks before Maha (Sep-Nov) and Yala (Mar-May)
+    question: Which calendar months have the highest net revenue on average?
+    sql: |
+      WITH m AS (
+        SELECT d.month_start_date, d.month, SUM(f.net_revenue_amount) AS revenue
+        FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+        WHERE f.invoice_date < DATE'2026-10-01'
+        GROUP BY d.month_start_date, d.month
+      )
+      SELECT month, ROUND(AVG(revenue), 2) AS avg_monthly_revenue FROM m GROUP BY month ORDER BY avg_monthly_revenue DESC
+    check: set(r['month'] for r in rows[:6]) == {3, 4, 5, 9, 10, 11}
+
+  - id: B20
+    category: basic
+    question: Compare net revenue in the Maha and Yala seasons of fiscal year 2025.
+    sql: |
+      SELECT d.cultivation_season, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+      WHERE d.fiscal_year = 2025
+      GROUP BY d.cultivation_season ORDER BY net_revenue DESC
+    check: row['cultivation_season'] == 'Maha'
+
+  # ---------------------------------------------------------------- customers and channels
+  - id: B21
+    category: basic
+    question: What was net revenue by distribution channel in fiscal year 2025?
+    sql: |
+      SELECT ch.distribution_channel_name AS channel, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      JOIN ${dim_channel} ch ON f.distribution_channel_code = ch.distribution_channel_code
+      WHERE d.fiscal_year = 2025
+      GROUP BY ch.distribution_channel_name ORDER BY net_revenue DESC
+    check: row['channel'] == 'General Trade'
+
+  - id: B22
+    category: basic
+    question: Which customer group generated the most net revenue in fiscal year 2025?
+    sql: |
+      SELECT c.customer_group_name AS customer_group, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      JOIN ${dim_customer} c ON f.customer_id = c.customer_id
+      WHERE d.fiscal_year = 2025
+      GROUP BY c.customer_group_name ORDER BY net_revenue DESC
+    check: row['customer_group'] == 'Distributors'
+
+  - id: B23
+    category: basic
+    question: Who were the top 10 customers by net revenue in fiscal year 2025?
+    sql: |
+      SELECT c.customer_name, c.province, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      JOIN ${dim_customer} c ON f.customer_id = c.customer_id
+      WHERE d.fiscal_year = 2025
+      GROUP BY c.customer_name, c.province ORDER BY net_revenue DESC LIMIT 10
+    check: len(rows) == 10
+
+  # ---------------------------------------------------------------- returns, cancellations, margin
+  - id: B24
+    category: basic
+    question: How much revenue did returns cost us in fiscal year 2025, and what was the returns rate?
+    sql: |
+      SELECT ROUND(-SUM(f.returns_amount), 2) AS returns_value,
+             ROUND(-SUM(f.returns_amount) / NULLIF(SUM(f.invoiced_revenue_amount), 0) * 100, 2) AS returns_rate_pct
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+      WHERE d.fiscal_year = 2025
+
+  - id: B25
+    category: basic
+    question: How many invoices were cancelled in fiscal year 2025 and what was their value?
+    sql: |
+      SELECT COUNT(DISTINCT f.invoice_number) AS cancellation_documents,
+             ROUND(-SUM(f.cancellations_amount), 2) AS cancelled_value
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+      WHERE d.fiscal_year = 2025 AND f.invoice_type = 'S1'
+
+  - id: B26
+    category: basic
+    question: What was gross margin % by product group in fiscal year 2025?
+    sql: |
+      SELECT p.product_group_name AS product_group,
+             ROUND(SUM(f.margin_amount) / NULLIF(SUM(f.net_revenue_amount), 0) * 100, 2) AS gross_margin_pct,
+             ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      JOIN ${dim_product} p ON f.product_id = p.product_id
+      WHERE d.fiscal_year = 2025
+      GROUP BY p.product_group_name ORDER BY net_revenue DESC
+
+  # ---------------------------------------------------------------- tricky: relative dates, partial months
+  - id: B27
+    category: tricky
+    question: What were sales last month?
+    notes: '"Last month" = the last COMPLETE calendar month before the latest data, not the current partial month.'
+    sql: |
+      WITH last AS (SELECT ADD_MONTHS(TRUNC(MAX(invoice_date), 'MM'), -1) AS m FROM ${fact_sales})
+      SELECT l.m AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f CROSS JOIN last l
+      WHERE TRUNC(f.invoice_date, 'MM') = l.m
+      GROUP BY l.m
+
+  - id: B28
+    category: tricky
+    question: How are sales this month compared with the same days last month?
+    notes: The current month is incomplete, so compare like-for-like (day 1 to today vs the same days last month).
+    sql: |
+      WITH b AS (SELECT MAX(invoice_date) AS today, TRUNC(MAX(invoice_date), 'MM') AS m0 FROM ${fact_sales})
+      SELECT b.m0 AS month, b.today AS data_until,
+             ROUND(SUM(CASE WHEN f.invoice_date BETWEEN b.m0 AND b.today THEN f.net_revenue_amount END), 2) AS month_to_date,
+             ROUND(SUM(CASE WHEN f.invoice_date BETWEEN ADD_MONTHS(b.m0, -1) AND ADD_MONTHS(b.today, -1)
+                            THEN f.net_revenue_amount END), 2) AS same_days_last_month
+      FROM ${fact_sales} f CROSS JOIN b
+      GROUP BY b.m0, b.today
+
+  - id: B29
+    category: tricky
+    question: Which district in Western province had the highest net revenue in fiscal year 2025?
+    sql: |
+      SELECT c.district_name AS district, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      JOIN ${dim_customer} c ON f.customer_id = c.customer_id
+      WHERE d.fiscal_year = 2025 AND c.province = 'Western'
+      GROUP BY c.district_name ORDER BY net_revenue DESC
+
+  # ---------------------------------------------------------------- story 7: live demo week
+  - id: B30
+    category: story
+    story: 7 Top seller MC600 WEEDICIDE 1LTR out of stock in Western from 23 October 2026
+    question: Have sales of MC600 WEEDICIDE 1LTR in Western province stopped since 23 October 2026?
+    needs_data_until: 2026-10-25
+    sql: |
+      SELECT
+        COALESCE(SUM(CASE WHEN f.invoice_date >= DATE'2026-10-23' AND f.invoice_type = 'ZAOR' THEN f.quantity END), 0) AS units_since_23_oct,
+        ROUND(SUM(CASE WHEN f.invoice_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22' AND f.invoice_type = 'ZAOR'
+                       THEN f.quantity END) / 30, 1) AS avg_daily_units_before
+      FROM ${fact_sales} f JOIN ${dim_customer} c ON f.customer_id = c.customer_id
+      WHERE f.product_id = 'MC6001LT' AND c.province = 'Western'
+    check: row['units_since_23_oct'] == 0 and row['avg_daily_units_before'] > 0

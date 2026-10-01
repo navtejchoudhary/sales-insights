@@ -1,6 +1,6 @@
 # Story sheet (v2 — for sponsor review)
 
-Stories are planted in the generated data so we know the right answers in advance. The answer key (`genie/answer_key.csv`) is computed from these.
+Stories are planted in the generated data so we know the right answers in advance. The answer key (`genie/answer_key.csv`) is computed from these; `genie/benchmarks.yaml` holds a check per story that must PASS on the generated data.
 
 **Single source of truth: `src/sales_insights/generator/stories.py`.** Change a story there, re-run the generators, and the data and answer key follow.
 
@@ -28,7 +28,7 @@ History: 18 months of invoice lines ending **yesterday** (~43,000 lines, `genera
 | 1 | Demand peaks before the **Maha** (Sep–Nov) and **Yala** (Mar–May) cultivation seasons | Seasonal curve in history generator | History + live days |
 | 2 | A few products bring most revenue (80/20) | `POPULARITY_SKEW = 1.1` | History |
 | 3 | **Southern** province steadily underperforms (weakest revenue per customer, roughly 35% below the others: fewer distributors plus lower order frequency). **Northern** is the strongest, as in the reference where one Jaffna wholesaler dominates | Demand × 0.85 | History |
-| 4 | **Weedicide** (`2CHE06`) price rise: revenue up, units down | +8% from 1 Apr 2026 (start of FY2026) | History |
+| 4 | **Weedicide** (`2CHE06`) price rise: price per case up ~8%, volume lags the market (Apr-Sep 2026 vs 2025: weedicide units +5% vs +17-20% for other crop chemicals) | +8% from 1 Apr 2026 (start of FY2026); demand x 0.93 | History |
 | 5 | New product **HEX FUNGICIDE 1LTR** (`HEX1LTR`) ramps up slowly | Launch 15 Jun 2026 | History |
 | 6 | Returns spike on **HGL INSECTICIDE 400ML** (`HGL400ML`): leaking bottles | From 1 Jul 2026 | History (return credit memos) |
 | 7 | **Live:** top seller **MC600 WEEDICIDE 1LTR** (`MC6001LT`) out of stock in **Western** province | From 23 Oct 2026 | Live days: alert, insights job and Genie catch it in demo week |

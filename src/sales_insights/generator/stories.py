@@ -25,7 +25,7 @@ POPULARITY_SKEW = 1.1
 WEAK_PROVINCE = "Southern"
 WEAK_PROVINCE_FACTOR = 0.85
 
-# Story 4: price increase on one product group -> revenue up, units down
+# Story 4: price increase on one product group -> price per case up, units lag the other crop chemicals
 PRICE_RISE_PRODUCT_GROUP = "2CHE06"  # WEEDICIDE
 PRICE_RISE_PCT = 8.0
 PRICE_RISE_FROM = date(2026, 4, 1)

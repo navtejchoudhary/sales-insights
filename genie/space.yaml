@@ -1,0 +1,51 @@
+# Genie agent ("Sales Insights") configuration: everything we paste into Databricks on 15 Oct.
+# Setup steps: genie/README.md. Kept small on purpose: Databricks advises five or fewer data assets and
+# few, focused text instructions; example SQL queries teach Genie the tricky cases instead.
+# Placeholders like $${fact_sales} are replaced with real table names (sales_dev.gold.*).
+
+title: Sales Insights
+description: >-
+  Ask questions about sales of our Sri Lankan crop-protection business: revenue, units, invoices,
+  customers, products, provinces, seasons, returns and margin. Data from 1 April 2025, updated daily.
+
+# Data assets (5). The metric view carries every KPI definition; the tables cover detail questions.
+data:
+  - ${sales_metrics}
+  - ${fact_sales}
+  - ${dim_customer}
+  - ${dim_product}
+  - ${dim_date}
+
+instructions: |
+  - Money is Sri Lankan rupees (LKR) excluding VAT. Round money to whole rupees and percentages to one decimal place.
+  - "Revenue" or "sales" means net revenue: MEASURE(net_revenue) in sales_metrics, or SUM(net_revenue_amount) in fact_sales. It is already net of returns, cancellations and price corrections, so never remove those rows when totalling revenue.
+  - "Invoices" or "orders" means distinct paid invoices: invoice_type = 'ZAOR' and not is_cancelled.
+  - The fiscal year runs April to March and is named by its start year: "FY2025" or "fiscal year 2025" = 1 April 2025 to 31 March 2026. "This year" means the current fiscal year.
+  - "Last month" means the last complete calendar month. The latest month is usually incomplete: say how many days it covers and compare it with the same days of the earlier period.
+  - "Region" or "area" means province (9 provinces, 25 districts). When comparing provinces or customer groups of different size, also show revenue per active customer.
+  - Always state the period you used in the answer.
+
+sample_questions:
+  - What was net revenue last month, and how does it compare with the same month last year?
+  - Which province has the lowest revenue per active customer this fiscal year?
+  - Which products have the highest returns rate since July 2026?
+  - How did weedicide prices and units change after the April 2026 price rise?
+  - Show net revenue by cultivation season for fiscal year 2025.
+
+# Example SQL queries: teach Genie the cases that are easy to get wrong (taken from the answer key).
+example_queries:
+  - question: What were sales last month?
+    from_benchmark: B27
+  - question: How are sales this month compared with the same days last month?
+    from_benchmark: B28
+  - question: Which province has the lowest net revenue per active customer in fiscal year 2025?
+    from_benchmark: B09
+  - question: Which product had the highest returns rate since 1 July 2026?
+    from_benchmark: B17
+  - question: By how much did the price per case of weedicide products change after 1 April 2026?
+    from_benchmark: B14
+
+# Benchmarks: every question in genie/benchmarks.yaml EXCEPT the example queries above
+# (testing Genie on questions it was taught would overstate its accuracy).
+benchmarks_exclude: [B09, B14, B17, B27, B28]
+target_accuracy_pct: 80

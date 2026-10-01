@@ -28,7 +28,7 @@ Timeline:
 - `simulation_start` (config) is fixed at 2026-10-01; generators default to it. Never change it mid-project.
 - `drip --date` copies `staging/<date>/` to `landing/<date>/`, manifest last.
 - Planted stories and dirt rates live in `docs/story_sheet.md`. Every dirt injection is logged in the manifest.
-- Answer key: `genie/answer_key.csv` — 25–30 questions with expected answers computed from the generator.
+- Answer key: `genie/benchmarks.yaml` — 30 questions with ground-truth SQL and a check per planted story; `python -m sales_insights.semantic.answer_key` computes `genie/answer_key.csv` from gold (story checks must PASS). Genie agent config: `genie/space.yaml`, setup: `genie/README.md`
 
 ## Architecture
 landing → bronze → silver → gold → reconciliation → metric views → dashboard / Genie / alerts → insights job → SupervisorAgent + deck job
@@ -68,12 +68,12 @@ src/sales_insights/common/     config.py (load_config), spark.py (get_spark) —
 src/sales_insights/generator/  stories.py (settings), masters.py, engine.py (shared per-day sales + per-invoice fates), history.py, simulate.py (daily drops), dirt.py
 src/sales_insights/drip/       drip.py: staging -> landing copy (manifest last; missing day, Monday redelivery)
 src/sales_insights/pipeline/   bronze.py, silver.py, gold.py, reconcile.py, run_pipeline.py
-src/sales_insights/semantic/    metric_views.py (load/compile/publish metric view), kpis.py (KPI views + agreement check)
+src/sales_insights/semantic/    metric_views.py (load/compile/publish metric view), kpis.py (KPI views + agreement check), answer_key.py (Genie benchmarks)
 src/sales_insights/insights/   variance, top movers (Phase 2)
 src/sales_insights/deck/       python-pptx deck generator (Phase 3)
 sql/kpis/                 KPI SQL views
 sql/metric_views/         metric view YAML drafts
-genie/                    instructions.md, descriptions.yaml, answer_key.csv
+genie/                    space.yaml (agent config), benchmarks.yaml (questions + SQL), answer_key.csv (generated), README.md (setup)
 bundle/                   databricks.yml (dev + prod targets), job definitions
 tests/
 staging/ landing/ lake/   LOCAL ONLY, git-ignored
