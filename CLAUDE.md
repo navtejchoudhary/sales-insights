@@ -32,17 +32,18 @@ Timeline:
 
 ## Architecture
 landing → bronze → silver → gold → reconciliation → metric views → dashboard / Genie / alerts → insights job → SupervisorAgent + deck job
-- bronze: append as-is, all columns as STRING, plus `source_file` and `load_ts`; unknown columns go to a rescued-data column
+- bronze: append as-is, all columns as STRING, plus `_source_file`, `_business_date`, `_load_ts`, `_run_id`, `_rescued_data`; exactly-once via `ops.processed_files` (path + SHA-256); new columns added (mergeSchema). See `docs/pipeline.md`
 - silver: cast types, standardise text (e.g. COLOMBO 10 / COLOMBO - 10 / Colombo 10 → canonical name from `cities.csv`), left-pad customer IDs to 10 digits, keep the latest record per key by `last_updated_timestamp`, dedupe on `order_id` + `line_no`, MERGE change files (latest change wins), bad rows to `silver.quarantine` with a reason
 - gold: `fact_sales` (order-line grain) + `dim_product`, `dim_customer`, `dim_region` (district → province), `dim_date`, `dim_channel`; rebuild only dates touched by late/changed rows
 - reconciliation: gold daily totals vs manifest totals minus quarantined rows; pass within 0.1%, otherwise FAIL loudly; results to `ops.dq_results`
-- Locally, a processed-files log stands in for the Auto Loader checkpoint
+- `ops.processed_files` (bronze's file log) works on both Mac and Databricks volumes; Auto Loader is optional
 
 ## PORTABILITY RULES (most important)
 1. ALL pipeline code (bronze, silver, gold, reconciliation, KPI SQL) uses PySpark + Delta (`delta-spark`). Never pandas or DuckDB for pipeline logic. Exception: the generator/simulator only (plain Python).
 2. Keep IO apart from logic: transform functions take DataFrames and return DataFrames. Paths and catalog names come ONLY from `config/config.yaml` with profiles `local` and `dev`.
 3. Same schema names everywhere: `bronze`, `silver`, `gold`, `ops` locally; `sales_dev.bronze` etc. on Databricks.
 4. Databricks-only features (Auto Loader, volumes, triggers, metric views, Genie, AI functions) go in thin wrappers, never mixed into transform logic.
+7. Read and write tables ONLY through `common/lake.py` (`Lake`): path-based Delta locally, Unity Catalog names on Databricks. Never hardcode a table path or name.
 5. Library versions are pinned in `pyproject.toml`. Do not upgrade without asking.
 6. SQL must be Spark SQL / Databricks SQL compatible.
 

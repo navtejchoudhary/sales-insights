@@ -1,6 +1,7 @@
-"""Drip: deliver one business day from staging/ to landing/, like a file feed would.
+"""Drip: deliver files from staging/ to landing/, like a file feed would.
 
-    uv run python -m sales_insights.drip.drip --date 2026-10-05
+    uv run python -m sales_insights.drip.drip --initial          # once: master data + history backfill
+    uv run python -m sales_insights.drip.drip --date 2026-10-05  # every day
 
 Rules (copied files keep their names; the manifest is always copied LAST):
 
@@ -62,6 +63,32 @@ def _day_files(staging: Path, d: date) -> tuple[str, ...]:
     return (*data, *manifests)  # manifest last
 
 
+INITIAL_FOLDERS = ("masters", "history")
+
+
+def deliver_initial(staging: Path, landing: Path) -> list[str]:
+    """One-time delivery of master data and the history backfill (manifest last in each folder)."""
+    delivered = []
+    landing.mkdir(parents=True, exist_ok=True)
+    with open(landing / LOG_NAME, "a", newline="", encoding="utf-8") as fh:
+        writer = csv.writer(fh)
+        if fh.tell() == 0:
+            writer.writerow(["delivered_at", "business_date", "action", "file"])
+        for folder in INITIAL_FOLDERS:
+            src = staging / folder
+            if not src.is_dir():
+                raise FileNotFoundError(f"{src} not found - run the {folder} generator first")
+            files = sorted(src.iterdir(), key=lambda p: (p.name.endswith("manifest.json"), p.name))
+            if not files or not files[-1].name.endswith("manifest.json"):
+                raise FileNotFoundError(f"{src} has no manifest - generation is incomplete")
+            (landing / folder).mkdir(parents=True, exist_ok=True)
+            for f in files:
+                shutil.copy2(f, landing / folder / f.name)
+                writer.writerow([datetime.now().isoformat(timespec="seconds"), "", "initial", f"{folder}/{f.name}"])
+                delivered.append(f"{folder}/{f.name}")
+    return delivered
+
+
 def execute(actions: list[Action], staging: Path, landing: Path) -> None:
     landing.mkdir(parents=True, exist_ok=True)
     log_path = landing / LOG_NAME
@@ -87,11 +114,18 @@ def main(argv: list[str] | None = None) -> None:
 
     cfg = load_config()
     parser = argparse.ArgumentParser(description="Deliver one business day from staging to landing.")
-    parser.add_argument("--date", type=date.fromisoformat, required=True)
+    parser.add_argument("--date", type=date.fromisoformat, help="Deliver one business day")
+    parser.add_argument("--initial", action="store_true", help="Deliver master data and history once")
     parser.add_argument("--staging", type=Path, default=Path(cfg.path(cfg.staging_path)))
     parser.add_argument("--landing", type=Path, default=Path(cfg.path(cfg.landing_path)))
     args = parser.parse_args(argv)
 
+    if args.initial:
+        files = deliver_initial(args.staging, args.landing)
+        print(f"  initial   {len(files)} files: master data and history backfill")
+        return
+    if not args.date:
+        parser.error("give --date YYYY-MM-DD or --initial")
     actions = plan(args.date, args.staging)
     execute(actions, args.staging, args.landing)
     for a in actions:

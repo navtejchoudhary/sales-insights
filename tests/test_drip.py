@@ -77,3 +77,26 @@ def test_execute_copies_and_logs(staging, tmp_path):
 def test_missing_staging_fails_clearly(tmp_path):
     with pytest.raises(FileNotFoundError, match="run the simulator"):
         drip.plan(date(2026, 10, 14), tmp_path / "empty")
+
+
+def test_initial_delivery(tmp_path):
+    staging, landing = tmp_path / "staging", tmp_path / "landing"
+    for folder, manifest in (("masters", "masters_manifest.json"), ("history", "history_manifest.json")):
+        (staging / folder).mkdir(parents=True)
+        (staging / folder / "a.csv").write_text("x\n")
+        (staging / folder / manifest).write_text("{}")
+    delivered = drip.deliver_initial(staging, landing)
+    assert delivered == [
+        "masters/a.csv",
+        "masters/masters_manifest.json",
+        "history/a.csv",
+        "history/history_manifest.json",
+    ]
+    assert (landing / "history" / "a.csv").exists()
+
+
+def test_initial_delivery_needs_manifest(tmp_path):
+    (tmp_path / "staging" / "masters").mkdir(parents=True)
+    (tmp_path / "staging" / "masters" / "a.csv").write_text("x\n")
+    with pytest.raises(FileNotFoundError, match="manifest"):
+        drip.deliver_initial(tmp_path / "staging", tmp_path / "landing")
