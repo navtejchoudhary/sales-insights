@@ -18,3 +18,5 @@ One line per decision: date, decision, why, who. Newest at the bottom.
 | 1 Oct 2026 | Shared engine with per-day and per-invoice random seeds; document numbers derived from date and invoice | Any day rebuilds alone and identically; history and daily files never disagree | Navtej |
 | 1 Oct 2026 | Daily manifest control totals exclude injected duplicates and invalid rows | Reconciliation can demand an exact match; dirt is listed row by row | Navtej |
 | 1 Oct 2026 | Added price-correction credit memos (ZACR, as in the reference) to history and daily changes | Plan requires price corrections to older orders | Navtej |
+| 1 Oct 2026 | Local Delta tables are path-based (lake/<schema>/<table>) behind a `Lake` helper; Unity Catalog names on Databricks | A plain local Spark session forgets registered tables; a local Hive metastore locks when tests and runs overlap | Navtej |
+| 1 Oct 2026 | Bronze exactly-once via our own file log (path + SHA-256) instead of relying on Auto Loader | Same code and tests on Mac and Databricks volumes; Auto Loader stays optional | Navtej |

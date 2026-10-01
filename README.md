@@ -30,7 +30,9 @@ uv run pytest           # all tests should pass
 uv run python -m sales_insights.generator.masters    # master data -> staging/masters/ (see docs/master_data.md)
 uv run python -m sales_insights.generator.history    # 18-month invoices -> staging/history/ (see docs/invoice_data.md)
 uv run python -m sales_insights.generator.simulate --from 2026-10-01 --to 2026-10-29   # daily drops -> staging/business_date=.../
+uv run python -m sales_insights.drip.drip --initial                                  # deliver masters + history once -> landing/
 uv run python -m sales_insights.drip.drip --date 2026-10-01                           # deliver one day -> landing/
+uv run python -m sales_insights.pipeline.bronze                                        # load new landing files -> bronze (see docs/pipeline.md)
 ```
 
 ## Folder map
