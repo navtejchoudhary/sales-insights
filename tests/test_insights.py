@@ -88,14 +88,27 @@ def _days(n, end=date(2026, 10, 25)):
 
 
 def test_stock_out_detects_a_regular_seller_that_stopped():
-    days = _days(31)
+    days = _days(60)
     hero = dict.fromkeys(days[:-3], 10.0)  # sold every day, then nothing for 3 days
     sometimes = dict.fromkeys(days[:-3:2], 5.0)  # sells every other day: silence is normal
     still_selling = dict.fromkeys(days, 3.0)
     data = {("MC600 WEEDICIDE 1LTR", "Western"): hero, ("SPRAYER", "Uva"): sometimes, ("HGL", "Central"): still_selling}
     out = an.stock_outs(data, days)
     assert [i.item for i in out] == ["MC600 WEEDICIDE 1LTR | Western"]
-    assert out[0].severity == 1 and "no sales in Western for 3 days (since 23 Oct)" in out[0].text
+    assert out[0].severity == 1
+    assert "no sales in Western for 3 days (last sale 22 Oct); before that it sold on 28 of 28 days" in out[0].text
+
+
+def test_a_long_stock_out_keeps_being_reported():
+    days = _days(60)
+    hero = dict.fromkeys(days[:-12], 10.0)  # silent for 12 days: the baseline is the 28 days before the last sale
+    out = an.stock_outs({("MC600 WEEDICIDE 1LTR", "Western"): hero}, days)
+    assert len(out) == 1 and "for 12 days" in out[0].text
+
+
+def test_no_alert_without_enough_history():
+    days = _days(20)
+    assert an.stock_outs({("NEW", "Western"): dict.fromkeys(days[:-3], 1.0)}, days) == []
 
 
 def test_anomaly_flags_an_unusual_day_only():

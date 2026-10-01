@@ -1,0 +1,22 @@
+# Databricks Asset Bundle: the Databricks side of this project, as code.
+#
+#   databricks bundle validate            # check this file and the resources
+#   databricks bundle deploy  -t dev      # upload code + create/update the jobs in the workspace
+#   databricks bundle run     -t dev sales_backfill        # first load: 1 Oct up to today
+#   databricks bundle run     -t dev sales_publish_semantic  # KPI views + metric view
+#
+# The workspace URL and your login come from your Databricks CLI profile (~/.databrickscfg), never from git.
+# Step-by-step first deployment: docs/day15_runbook.md
+
+bundle:
+  name: sales-insights
+
+include:
+  - bundle/resources/*.yml
+
+targets:
+  dev:
+    mode: development  # jobs are prefixed "[dev <you>]" and deployed under your user folder
+    default: true
+    presets:
+      trigger_pause_status: UNPAUSED  # development mode pauses schedules by default; the demo needs them running

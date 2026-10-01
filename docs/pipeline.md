@@ -6,6 +6,12 @@ staging/ --drip--> landing/ --bronze--> bronze.* --silver--> silver.* --gold--> 
 
 ## Daily run (local)
 
+One command does every step below in order and stops at the first failure:
+```bash
+uv run python -m sales_insights.pipeline.run_pipeline --date 2026-10-06
+```
+Step by step, for debugging:
+
 ```bash
 uv run python -m sales_insights.drip.drip --initial          # once: master data + history backfill
 uv run python -m sales_insights.drip.drip --date 2026-10-01  # each business day

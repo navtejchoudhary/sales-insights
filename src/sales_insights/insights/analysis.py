@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import statistics
 from dataclasses import asdict, dataclass
-from datetime import date
+from datetime import date, timedelta
 
 from sales_insights.insights.periods import Comparison
 
@@ -167,24 +167,34 @@ def stock_outs(
     days: list[date],
     quiet_days: int = 3,
     min_active_share: float = 0.8,
+    baseline_days: int = 28,
 ) -> list[Insight]:
-    """Products that normally sell almost every day in a province but have sold nothing for `quiet_days`.
+    """Products that normally sell almost every day in a province but have sold nothing for `quiet_days`+.
 
     daily_units[(product, province)] = {day: units invoiced}; days = every day in the window, oldest first.
-    A product selling on 80%+ of days has well under a 1% chance of three empty days by luck.
+    "Normally" is judged on the `baseline_days` up to the LAST sale, so a long stock-out keeps being reported
+    (the empty days do not dilute the baseline). A product selling on 80%+ of days has well under a 1% chance
+    of three empty days by luck.
     """
-    if len(days) <= quiet_days:
-        return []
-    history, recent = days[:-quiet_days], days[-quiet_days:]
     out = []
     for (product, province), by_day in sorted(daily_units.items()):
-        active = sum(1 for d in history if by_day.get(d, 0) > 0)
-        if active / len(history) < min_active_share or any(by_day.get(d, 0) > 0 for d in recent):
+        sold = [d for d in days if by_day.get(d, 0) > 0]
+        if not sold:
             continue
-        avg = sum(by_day.get(d, 0) for d in history) / len(history)
+        last = sold[-1]
+        silent = (days[-1] - last).days
+        if silent < quiet_days:
+            continue
+        base = [d for d in days if last - timedelta(days=baseline_days - 1) <= d <= last]
+        if len(base) < baseline_days:
+            continue  # not enough history to call this product a regular seller
+        active = sum(1 for d in base if by_day.get(d, 0) > 0)
+        if active / len(base) < min_active_share:
+            continue
+        avg = sum(by_day.get(d, 0) for d in base) / len(base)
         text = (
-            f"Possible stock-out: {product} has had no sales in {province} for {quiet_days} days "
-            f"(since {recent[0]:%d %b}); it sold on {active} of the previous {len(history)} days, "
+            f"Possible stock-out: {product} has had no sales in {province} for {silent} days "
+            f"(last sale {last:%d %b}); before that it sold on {active} of {len(base)} days, "
             f"about {avg:,.0f} cases a day."
         )
         out.append(

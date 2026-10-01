@@ -27,7 +27,7 @@ Never a part month against a whole month: that is what produced the misleading -
 |---|---|---|
 | Headline | 6 measures (net revenue, units, invoices, active customers, margin %, returns %) for each comparison; percentages change in points | 2 if revenue moved 10%+, else 3 |
 | Mover | Top 3 risers and fallers by change in net revenue, per province, product group, product, customer group, channel; changes under 1% of total revenue are ignored as noise; says what share of the total movement each explains | 2 if 30%+ of the movement or 25%+ change |
-| Possible stock-out | A product that sold on 80%+ of the previous 28 days in a province, then nothing for 3 days (chance of that by luck: well under 1%) | 1 |
+| Possible stock-out | A product that sold on 80%+ of the 28 days up to its last sale in a province, then nothing for 3+ days (chance of that by luck: well under 1%). Measured from the last sale, so a long stock-out stays reported and the message says when the last sale was | 1 |
 | Unusual day | Daily net revenue 3+ standard deviations from the same weekday over the previous 8 weeks | 2 |
 
 Findings are ranked (alerts first) and appended to `gold.insights` with a `run_id`, so the Supervisor

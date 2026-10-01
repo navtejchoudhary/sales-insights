@@ -21,7 +21,7 @@ from pathlib import Path
 from pyspark.sql import SparkSession
 from pyspark.sql import functions as F
 
-from sales_insights.common.config import REPO_ROOT, Config
+from sales_insights.common.config import Config
 from sales_insights.common.lake import Lake
 from sales_insights.insights import analysis as an
 from sales_insights.insights import data as dt
@@ -29,7 +29,7 @@ from sales_insights.insights import narrative as nr
 from sales_insights.insights import periods as pr
 
 MOVER_COMPARISONS = ["month_vs_last_year", "mtd_vs_last_year"]
-STOCK_OUT_WINDOW_DAYS = 31  # 28 days of normal selling + 3 quiet days
+STOCK_OUT_WINDOW_DAYS = 60  # 28-day baseline before the last sale + up to a month without sales
 ANOMALY_WINDOW_DAYS = 63  # 8 weeks of history + the last 7 days
 
 INSIGHTS_DESCRIPTION = (
@@ -138,7 +138,7 @@ def deck_data(fact, as_of: date, ctx: dict, insights: list[an.Insight], summary:
         "Every comparison uses periods of the same length: month to date is compared with the same days of the earlier period, never with a whole month.",
         "Net revenue = invoices minus returns, cancellations and price corrections, excluding VAT (LKR). Invoices = paid, non-cancelled invoices.",
         "Gross margin % = (net revenue - standard cost) / net revenue. Draft definition, to be confirmed.",
-        "Possible stock-out = a product that sold on at least 80% of the previous 28 days in a province, then nothing for 3 days.",
+        "Possible stock-out = a product that sold on at least 80% of the 28 days before its last sale in a province, then nothing for 3+ days.",
         reconciliation_status(lake),
         "Definitions: docs/kpi_definitions.md. Every number in this deck is computed by the pipeline; the AI only words the summary.",
     ]
@@ -182,7 +182,9 @@ def main(argv: list[str] | None = None) -> None:
     parser.add_argument("--no-deck", action="store_true", help="skip the PowerPoint deck")
     args = parser.parse_args(argv)
     cfg = load_config()
-    out = run(get_spark(cfg, app_name="insights"), cfg, deck_dir=None if args.no_deck else REPO_ROOT / "output")
+    out = run(
+        get_spark(cfg, app_name="insights"), cfg, deck_dir=None if args.no_deck else Path(cfg.path(cfg.output_path))
+    )
     ins = out["insights"]
     kinds = {k: sum(1 for i in ins if i.kind == k) for k in ("headline", "mover", "stock_out", "anomaly")}
     print(f"  run {out['run_id']}  data up to {out['as_of']}")
@@ -191,7 +193,7 @@ def main(argv: list[str] | None = None) -> None:
     for s in out["summary"]:
         print(f"    - {s}")
     if out["deck"]:
-        print(f"  deck: {Path(out['deck']).relative_to(REPO_ROOT)}")
+        print(f"  deck: {out['deck']}")
 
 
 if __name__ == "__main__":

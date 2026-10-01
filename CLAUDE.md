@@ -38,6 +38,7 @@ landing → bronze → silver → gold → reconciliation → metric views → d
 - reconciliation: per (delivery, file kind, invoice date) gold vs `ops.manifest_totals` (which already exclude injected dirt), lines/invoices/revenue within 0.1%; results to `ops.reconciliation` + `ops.dq_results`; CLI exits 1 on FAIL
 - semantic layer: every KPI defined ONCE in `sql/metric_views/sales_metrics.yaml` (metric view YAML 1.1); `sql/kpis/*.sql` is the readable twin; `semantic/kpis.py` proves both agree (locally the metric view is compiled to plain SQL by `semantic/metric_views.py`). Change a formula in BOTH places. See `docs/kpi_definitions.md`
 - insights: `insights/job.py` = like-for-like periods (`periods.py`, never a part month vs a whole month) + rules in plain Python (`analysis.py`: headline, movers, stock-outs, unusual days) over small Spark aggregates (`data.py`) -> `gold.insights`; narrative = template sentences, optionally reworded by `ai_query` on Databricks with a number check (`narrative.py`); weekly deck `deck/deck.py` (python-pptx, native charts) -> `output/`. See `docs/insights.md`
+- orchestration: `pipeline/run_pipeline.py` runs drip → bronze → silver → gold → reconcile → kpis → answer_key → insights per day, stopping at the first failed check (`--downstream last` for fast catch-up). Databricks: `databricks.yml` (repo root) + `bundle/resources/jobs.yml` (daily job 06:30 Asia/Colombo, backfill, publish_semantic) running `bundle/run.py` on serverless; first deployment `docs/day15_runbook.md`
 - `ops.processed_files` (bronze's file log) works on both Mac and Databricks volumes; Auto Loader is optional
 
 ## PORTABILITY RULES (most important)
@@ -75,7 +76,7 @@ src/sales_insights/deck/       deck.py: python-pptx weekly deck from DeckData (P
 sql/kpis/                 KPI SQL views
 sql/metric_views/         metric view YAML drafts
 genie/                    space.yaml (agent config), benchmarks.yaml (questions + SQL), answer_key.csv (generated), README.md (setup)
-bundle/                   databricks.yml (dev + prod targets), job definitions
+databricks.yml            Asset Bundle (dev target); bundle/resources/jobs.yml jobs; bundle/run.py job entry point
 tests/
 staging/ landing/ lake/   LOCAL ONLY, git-ignored
 ```
