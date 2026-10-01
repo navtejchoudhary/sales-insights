@@ -644,7 +644,7 @@ def control_totals(df: pd.DataFrame, by: str = "invoice_date") -> dict:
         tax_amount=("tax_amount", "sum"),
     )
     return {
-        "lines": int(len(df)),
+        "lines": len(df),
         "invoices": int(df["invoice_number"].nunique()),
         "revenue": round(float(num["revenue"].sum()), 2),
         "tax_amount": round(float(num["tax_amount"].sum()), 2),

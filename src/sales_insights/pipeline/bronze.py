@@ -26,7 +26,7 @@ import json
 import uuid
 from collections import defaultdict
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import UTC, datetime
 from pathlib import Path
 
 from pyspark.sql import DataFrame, SparkSession
@@ -156,7 +156,7 @@ def already_loaded(lake: Lake) -> dict[str, set[str]]:
 def run_bronze(spark: SparkSession, cfg: Config, landing: Path | None = None, lake: Lake | None = None) -> BronzeRun:
     lake = lake or Lake(spark, cfg)
     landing = landing or Path(cfg.path(cfg.landing_path))
-    run = BronzeRun(run_id=f"bronze-{datetime.now():%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}")
+    run = BronzeRun(run_id=f"bronze-{datetime.now(UTC):%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}")
 
     found = lz.discover(landing)
     run.incomplete_folders, run.unexpected_files = found.incomplete_folders, found.unexpected_files
@@ -164,7 +164,7 @@ def run_bronze(spark: SparkSession, cfg: Config, landing: Path | None = None, la
     run.skipped_already_loaded = len(seen)
     changed_paths = {f.rel_path for f in changed}
     dq: list[tuple] = []
-    now = datetime.now()
+    now = datetime.now(UTC)
 
     for folder in run.incomplete_folders:
         dq.append(
@@ -215,7 +215,9 @@ def run_bronze(spark: SparkSession, cfg: Config, landing: Path | None = None, la
         for f in files:
             actual = int(counts.get(f.rel_path, 0))
             status = "reloaded_changed_content" if f.rel_path in changed_paths else "loaded"
-            log_rows.append((run.run_id, f.rel_path, target, f.business_date, f.sha256, actual, status, datetime.now()))
+            log_rows.append(
+                (run.run_id, f.rel_path, target, f.business_date, f.sha256, actual, status, datetime.now(UTC))
+            )
             (run.reloaded_changed if status != "loaded" else run.loaded).append(f.rel_path)
             run.rows_by_target[target] += actual
             if f.expected_rows is not None:

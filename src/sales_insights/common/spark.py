@@ -37,6 +37,7 @@ def get_spark(cfg: Config | None = None, app_name: str = "sales-insights") -> Sp
         .config("spark.sql.session.timeZone", cfg.business.get("timezone", "Asia/Colombo"))
         .config("spark.sql.shuffle.partitions", "4")  # small local data; keeps tests fast
         .config("spark.ui.showConsoleProgress", "false")
+        .config("spark.driver.memory", "2g")  # default 1 GB ran at 95% heap during bronze
     )
     spark = configure_spark_with_delta_pip(builder).getOrCreate()
     spark.sparkContext.setLogLevel("WARN")
