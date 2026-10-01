@@ -38,3 +38,9 @@ business:
   history_months: 18
   reconciliation_tolerance_pct: 0.1
   random_seed: 20261001
+  # Cultivation seasons (Sri Lanka): Maha Sep-Mar, Yala May-Aug; April falls between them.
+  # Source: Wikipedia, "Agriculture in Sri Lanka" (Maha starts in September and ends in March; Yala May to August).
+  seasons:
+    Maha: [9, 10, 11, 12, 1, 2, 3]
+    Yala: [5, 6, 7, 8]
+  season_gap_label: Inter-season

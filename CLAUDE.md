@@ -34,8 +34,8 @@ Timeline:
 landing → bronze → silver → gold → reconciliation → metric views → dashboard / Genie / alerts → insights job → SupervisorAgent + deck job
 - bronze: append as-is, all columns as STRING, plus `_source_file`, `_business_date`, `_load_ts`, `_run_id`, `_rescued_data`; exactly-once via `ops.processed_files` (path + SHA-256); new columns added (mergeSchema). See `docs/pipeline.md`
 - silver: FULL REBUILD each run (no MERGE; see decisions). Newest load of each file → dedupe on `invoice_number` + `invoice_item` → validate (bad rows to `silver.quarantine` with reasons) → `try_cast` types → enrich from masters (10-digit customer IDs, canonical city from `cities.csv`, blank codes filled) → `is_cancelled`, `arrival_delay_days`. Masters: latest version per key by `last_updated_timestamp`. Manifests parsed into `ops.manifest_totals` / `ops.manifest_dirt`; quarantine must equal the manifests' invalid rows. See `docs/pipeline.md`
-- gold: `fact_sales` (order-line grain) + `dim_product`, `dim_customer`, `dim_region` (district → province), `dim_date`, `dim_channel`; rebuild only dates touched by late/changed rows
-- reconciliation: gold daily totals vs manifest totals minus quarantined rows; pass within 0.1%, otherwise FAIL loudly; results to `ops.dq_results`
+- gold: FULL REBUILD. Star schema `fact_sales` (invoice-line grain) + `dim_customer`, `dim_product`, `dim_region` (district → province), `dim_date` (whole fiscal years, cultivation season), `dim_channel`. Every table/column description lives ONLY in `pipeline/gold_model.py` (`with_comments` refuses undocumented columns); regenerate `docs/gold_model.md` after changing it
+- reconciliation: per (delivery, file kind, invoice date) gold vs `ops.manifest_totals` (which already exclude injected dirt), lines/invoices/revenue within 0.1%; results to `ops.reconciliation` + `ops.dq_results`; CLI exits 1 on FAIL
 - `ops.processed_files` (bronze's file log) works on both Mac and Databricks volumes; Auto Loader is optional
 
 ## PORTABILITY RULES (most important)
@@ -49,7 +49,7 @@ landing → bronze → silver → gold → reconciliation → metric views → d
 
 ## Local environment
 - Python 3.12 via `uv`; Java 17; PySpark 4.0.x + delta-spark 4.0.x
-- Run: `uv run python ...` · Add packages: `uv add ...` (ask first) · Tests: `uv run pytest` · Lint: `uv run ruff check . && uv run ruff format .`
+- Run: `uv run python ...` · Add packages: `uv add ...` (ask first) · Tests: `uv run pytest` (quick: `uv run pytest -m "not spark"`) · Lint: `uv run ruff check . && uv run ruff format .`
 - NEVER install `databricks-connect` in this environment — it conflicts with PySpark. It gets its own separate environment on 15 Oct.
 
 ## Coding conventions

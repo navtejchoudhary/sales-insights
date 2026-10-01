@@ -24,3 +24,9 @@ One line per decision: date, decision, why, who. Newest at the bottom.
 | 1 Oct 2026 | A re-sent file with changed content replaces its earlier load in silver (bronze keeps both) | Source corrections, including removed rows, flow through without manual clean-up | Navtej |
 | 1 Oct 2026 | Bad rows are quarantined with reasons, never fixed by guessing; the manifests' dirt list is the test oracle | Quarantine must match the source's own list exactly, so correctness is proven, not assumed | Navtej |
 | 1 Oct 2026 | Local Spark driver memory 2 GB | Bronze ran at 95% of the 1 GB default heap | Navtej |
+| 1 Oct 2026 | Gold is rebuilt in full each run (not only the dates touched by late or changed rows, as the plan said) | Same reasoning as silver: seconds at this size, always consistent, simpler to test | Navtej |
+| 1 Oct 2026 | Gold measure names follow our conventions (`net_revenue_amount`, `district_code`); SAP names live in the column descriptions | Genie and business users understand plain names; SAP users still find their terms | Navtej |
+| 1 Oct 2026 | Revenue split into four signed parts (invoiced, returns, cancellations, price corrections) that always sum to net revenue | Common questions become one SUM; impossible to double count | Navtej |
+| 1 Oct 2026 | One description file (`gold_model.py`) feeds column comments, the data dictionary and later Genie | Written once, never drifts | Navtej |
+| 1 Oct 2026 | Reconciliation per delivery x file x invoice date, exit code 1 on failure | Pinpoints exactly where a mismatch is; a scheduled job fails loudly | Navtej |
+| 1 Oct 2026 | Cultivation seasons in config: Maha Sep-Mar, Yala May-Aug, April 'Inter-season' (source: Wikipedia, Agriculture in Sri Lanka) | Seasonality is a key story; Genie can group by season | Navtej |
