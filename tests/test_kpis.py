@@ -111,7 +111,7 @@ def _line(number, kind, day, cust, prod, qty, rev, item="10", cancelled_by=None,
     source = "history/invoices_x.csv" if day < OCT else f"business_date={day}/orders_x.csv"
     return (
         number, item, kind, day, 2026, 7, c, prod, CUSTOMERS[c][0], "C001", "10", "2010", "2010",
-        Decimal(qty), Decimal(rev), Decimal(rev), Decimal("0"), cancelled_by is not None, cancelled_by, ref,
+        Decimal(qty), Decimal(rev), Decimal(rev), Decimal(0), cancelled_by is not None, cancelled_by, ref,
         source, None if day < OCT else day, 0,
     )  # fmt: skip
 

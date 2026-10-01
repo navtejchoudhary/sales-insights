@@ -60,7 +60,7 @@ def evaluate(q: Question, rows: list[dict], data_until: date | None) -> str:
         return "PENDING"
     try:
         ok = eval(q.check, {"__builtins__": {}}, {**CHECK_NAMES, "row": rows[0] if rows else {}, "rows": rows})
-    except Exception:
+    except Exception:  # noqa: BLE001 - a check that cannot even be evaluated (no rows, missing column) fails
         return "FAIL"
     return "PASS" if ok else "FAIL"
 

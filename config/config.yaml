@@ -44,3 +44,6 @@ business:
     Maha: [9, 10, 11, 12, 1, 2, 3]
     Yala: [5, 6, 7, 8]
   season_gap_label: Inter-season
+  # Databricks-hosted model that rewrites the insight sentences (ai_query). Ignored locally.
+  # Day 15: check the endpoint exists under Serving in the workspace; if not, set null (template sentences are used).
+  narrative_model: databricks-meta-llama-3-3-70b-instruct

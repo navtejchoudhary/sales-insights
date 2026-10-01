@@ -37,3 +37,9 @@ One line per decision: date, decision, why, who. Newest at the bottom.
 | 1 Oct 2026 | Genie: 5 data assets (metric view + fact + 3 dims), 7 short instructions, 5 example SQL queries, 25 benchmarks (30 questions minus the 5 taught as examples), target 80% | Databricks best practice: few assets, few instructions, examples for tricky cases; never score on taught questions | Navtej |
 | 1 Oct 2026 | No separate `genie/descriptions.yaml`: column descriptions live in `gold_model.py` (UC comments), KPI names and synonyms in the metric view | One source per fact; Genie reads both | Navtej |
 | 1 Oct 2026 | Story 4 reworded to what the data shows: weedicide price +8%, units grow far less than other chemicals (+5% vs +17-20%), not an absolute fall | Overall business growth (+12% units) outweighs the 0.93 demand factor; the story stays detectable and is checked by benchmark B15 | Navtej |
+| 1 Oct 2026 | Insights compare like-for-like periods only (month to date vs the same days earlier) | A part month vs a whole month produced a false -86% | Navtej |
+| 1 Oct 2026 | Insight logic in plain Python over small Spark aggregates; the AI only rewords and its numbers are checked against ours | Every rule unit-tested without Spark; the AI cannot invent or alter figures | Navtej |
+| 1 Oct 2026 | Stock-out rule: sold on 80%+ of the previous 28 days in a province, then 3 empty days | Catches the demo-week story with well under 1% false alarms per product | Navtej |
+| 1 Oct 2026 | Deck built with python-pptx and native charts (not images) | Runs as a Python job on Databricks; charts stay editable | Navtej |
+| 1 Oct 2026 | `ai_forecast` / `ai_detect_anomalies` deferred to Day 15 tests; local statistical rules cover the stories | Databricks-only functions; availability on the trial unknown | Navtej |
+| 1 Oct 2026 | ruff rules listed explicitly in `ruff.toml` | ruff 0.16 (Mac) and 0.15 differ in default rules, which let lint errors through on one side only | Navtej |
