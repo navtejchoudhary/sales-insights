@@ -1,5 +1,5 @@
--- KPI (DRAFT, definition open with Anil): attach rate by month.
--- Draft definition: of the paid, non-cancelled invoices that contain a crop chemical (product type ZFRT),
+-- KPI (working definition, may change later): attach rate by month.
+-- Definition: of the paid, non-cancelled invoices that contain a crop chemical (product type ZFRT),
 -- the share that also contain an add-on item (trading goods ZTRD in groups 2CHE99 or 2HAF09:
 -- sprayers, seedling trays). Not in the metric view: it needs invoice-level logic.
 WITH invoice_flags AS (

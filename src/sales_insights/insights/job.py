@@ -137,7 +137,7 @@ def deck_data(fact, as_of: date, ctx: dict, insights: list[an.Insight], summary:
         f"Data up to {as_of:%d %b %Y}. About 3% of invoices reach us up to 7 days late, so the last few days can still grow slightly.",
         "Every comparison uses periods of the same length: month to date is compared with the same days of the earlier period, never with a whole month.",
         "Net revenue = invoices minus returns, cancellations and price corrections, excluding VAT (LKR). Invoices = paid, non-cancelled invoices.",
-        "Gross margin % = (net revenue - standard cost) / net revenue. Draft definition, to be confirmed.",
+        "Gross margin % = (net revenue - standard cost) / net revenue.",
         "Possible stock-out = a product that sold on at least 80% of the 28 days before its last sale in a province, then nothing for 3+ days.",
         reconciliation_status(lake),
         "Definitions: docs/kpi_definitions.md. Every number in this deck is computed by the pipeline; the AI only words the summary.",
