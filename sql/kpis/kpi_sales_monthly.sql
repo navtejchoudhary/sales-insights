@@ -1,6 +1,6 @@
 -- KPI: sales by calendar month, with growth vs the previous month and the same month last year.
 -- Grain: one row per month. Formulas must match sql/metric_views/sales_metrics.yaml (tests check this).
--- Status of each KPI (confirmed / draft): docs/kpi_definitions.md
+-- Status of each KPI (standard / working): docs/kpi_definitions.md
 WITH monthly AS (
   SELECT
     d.month_start_date                                   AS month,

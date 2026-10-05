@@ -50,3 +50,4 @@ One line per decision: date, decision, why, who. Newest at the bottom.
 | 1 Oct 2026 | During Stage B the simulated date is the real date: the daily job processes today's business date | The demo-week stories (stock-out from 23 Oct) appear live | Navtej |
 | 1 Oct 2026 | Removed unused `faker` and `matplotlib`; `sales-pipeline` command runs the pipeline | Fewer dependencies to clash on Databricks; no placeholder commands | Navtej |
 | 1 Oct 2026 | GitHub Actions CI on every pull request: ruff check, format check, quick tests (`-m "not spark"`) against `uv.lock` | A neutral machine checks every change; full Spark suite stays a local step | Navtej |
+| 5 Oct 2026 | Draft KPIs (net revenue excl. VAT, invoices, average invoice value, gross margin, growth, attach rate) become working definitions; no sign-off needed before the demo | Sponsor wants the logic demonstrated; definitions can change later in two files, guarded by the agreement check | Navtej |

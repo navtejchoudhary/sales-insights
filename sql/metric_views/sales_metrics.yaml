@@ -5,7 +5,7 @@
 #
 # Spec: Databricks metric view YAML 1.1 (fields, measures, joins; MEASURE() composes measures).
 # Placeholders such as $${fact_sales} are replaced with real table names (local Delta paths or sales_dev.gold.*).
-# Status of each KPI (confirmed / draft) is tracked in docs/kpi_definitions.md.
+# Status of each KPI (standard / working definition) is tracked in docs/kpi_definitions.md.
 
 version: 1.1
 comment: >-
@@ -169,12 +169,12 @@ measures:
   - name: gross_margin
     expr: SUM(source.margin_amount)
     display_name: Gross margin (LKR)
-    comment: Net revenue minus standard cost. DRAFT definition, to confirm with Anil.
+    comment: Net revenue minus standard cost (quantity x product standard cost).
     synonyms: [margin, profit]
   - name: gross_margin_pct
     expr: MEASURE(gross_margin) / NULLIF(MEASURE(net_revenue), 0) * 100
     display_name: Gross margin %
-    comment: Gross margin as a percentage of net revenue. DRAFT definition, to confirm with Anil.
+    comment: Gross margin as a percentage of net revenue.
     synonyms: [margin %, margin percentage]
   - name: tax
     expr: SUM(source.tax_amount)
