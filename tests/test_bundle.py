@@ -28,6 +28,7 @@ def test_bundle_file_includes_the_jobs():
     assert bundle["include"] == ["bundle/resources/*.yml"]
     assert bundle["targets"]["dev"]["default"] is True
     assert "host" not in bundle["targets"]["dev"].get("workspace", {})  # never commit a workspace URL
+    assert bundle["targets"]["dev"].get("mode") != "development"  # that mode pauses the daily schedule
 
 
 def test_every_task_runs_an_existing_command():
