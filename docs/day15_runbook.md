@@ -64,7 +64,7 @@ cd ~/Projects/sales-insights
 databricks bundle validate
 databricks bundle deploy -t dev
 ```
-You should see `Deployment complete!` and, under **Jobs & Pipelines**, three jobs prefixed `[dev <you>]`:
+You should see `Deployment complete!` and, under **Jobs & Pipelines**, three jobs prefixed `[dev] `:
 `sales-insights-daily`, `sales-insights-backfill`, `sales-insights-publish-semantic`.
 
 ## 6. First load (backfill) and checks
@@ -116,7 +116,7 @@ On failure you get an email (the job notifies the user who deployed it).
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `bundle validate` complains about `presets` | old CLI | `brew upgrade databricks`; or delete the `presets` lines and unpause the daily job in the UI |
+| `bundle validate`: "mode: development cannot set trigger pause status to UNPAUSED" | development mode always pauses schedules | fixed 7 Oct: the dev target has no `mode`, only a `[dev] ` name prefix |
 | `environment_version` rejected | serverless environment 6 not offered | set `"5"` (also Python 3.12) in `bundle/resources/jobs.yml`, deploy again |
 | Job fails at `ModuleNotFoundError: sales_insights` | bundle files not where `run.py` expects | open the run, check `python_file` path; files are under the bundle's workspace folder |
 | `PERMISSION_DENIED` on catalog or volume | catalog created by someone else | `GRANT ALL PRIVILEGES ON CATALOG sales_dev TO <you>` |

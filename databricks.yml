@@ -16,7 +16,8 @@ include:
 
 targets:
   dev:
-    mode: development  # jobs are prefixed "[dev <you>]" and deployed under your user folder
+    # No `mode: development`: that mode always pauses schedules (and the CLI refuses to unpause them),
+    # but the demo needs the 06:30 daily job running. Files still deploy under your user folder.
     default: true
     presets:
-      trigger_pause_status: UNPAUSED  # development mode pauses schedules by default; the demo needs them running
+      name_prefix: "[dev] "  # jobs show as "[dev] sales-insights-daily" so they are easy to recognise
