@@ -100,3 +100,22 @@ def test_initial_delivery_needs_manifest(tmp_path):
     (tmp_path / "staging" / "masters" / "a.csv").write_text("x\n")
     with pytest.raises(FileNotFoundError, match="manifest"):
         drip.deliver_initial(tmp_path / "staging", tmp_path / "landing")
+
+
+def test_log_is_rewritten_never_appended(tmp_path, monkeypatch):
+    """Unity Catalog volumes refuse appends ("Illegal seek"): the log must be written in one go each time."""
+    import builtins
+
+    real_open = builtins.open
+
+    def no_append(file, mode="r", *args, **kwargs):
+        assert "a" not in mode, "append mode is not allowed on /Volumes"
+        return real_open(file, mode, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "open", no_append)
+    log = tmp_path / drip.LOG_NAME
+    drip.add_to_log(log, [["t1", "2026-10-01", "deliver", "a.csv"]])
+    drip.add_to_log(log, [["t2", "2026-10-02", "deliver", "b.csv"], ["t2", "2026-10-02", "deliver", "c.csv"]])
+    with real_open(log, newline="") as fh:
+        rows = list(csv.reader(fh))
+    assert rows[0] == drip.LOG_HEADER and [r[3] for r in rows[1:]] == ["a.csv", "b.csv", "c.csv"]

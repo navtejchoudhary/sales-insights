@@ -55,7 +55,9 @@ INSIGHTS_COLUMNS = {
 
 
 def collect(lake: Lake) -> tuple[date, dict, list[an.Insight], object]:
-    fact = dt.enriched_fact(lake).cache()
+    fact = dt.enriched_fact(lake)
+    if lake.by_path:  # local speed-up only: serverless compute rejects cache() / unpersist()
+        fact = fact.cache()
     as_of = dt.data_until(fact)
     insights: list[an.Insight] = []
     totals = {}
@@ -170,7 +172,8 @@ def run(spark: SparkSession, cfg: Config, lake: Lake | None = None, deck_dir: Pa
         from sales_insights.deck.deck import build_deck
 
         deck = build_deck(deck_data(fact, as_of, ctx, insights, summary, lake), deck_dir / f"weekly_deck_{as_of}.pptx")
-    fact.unpersist()
+    if lake.by_path:
+        fact.unpersist()
     return {"run_id": run_id, "as_of": as_of, "insights": insights, "summary": summary, "deck": deck}
 
 
