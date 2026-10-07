@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import io
 import shutil
 from dataclasses import dataclass
 from datetime import UTC, date, datetime, timedelta
@@ -27,6 +28,7 @@ from sales_insights.generator import stories
 from sales_insights.generator.simulate import folder_name
 
 LOG_NAME = "_delivery_log.csv"
+LOG_HEADER = ["delivered_at", "business_date", "action", "file"]
 
 
 @dataclass(frozen=True)
@@ -66,47 +68,59 @@ def _day_files(staging: Path, d: date) -> tuple[str, ...]:
 INITIAL_FOLDERS = ("masters", "history")
 
 
+def add_to_log(log_path: Path, rows: list[list[str]]) -> None:
+    """Add rows to the delivery log by rewriting the whole file in one sequential write.
+
+    Never opens the file in append mode: Unity Catalog volumes (/Volumes/...) refuse appends and
+    random writes ("OSError: [Errno 29] Illegal seek"). The log is a few hundred lines, so a full
+    rewrite costs nothing and works the same on a Mac and on Databricks.
+    """
+    old = ""
+    if log_path.exists():
+        with open(log_path, newline="", encoding="utf-8") as fh:  # newline="" keeps the CSV line endings as written
+            old = fh.read()
+    buf = io.StringIO()
+    writer = csv.writer(buf)
+    if not old:
+        writer.writerow(LOG_HEADER)
+    writer.writerows(rows)
+    log_path.write_text(old + buf.getvalue(), encoding="utf-8", newline="")
+
+
 def deliver_initial(staging: Path, landing: Path) -> list[str]:
     """One-time delivery of master data and the history backfill (manifest last in each folder)."""
-    delivered = []
+    delivered, log = [], []
     landing.mkdir(parents=True, exist_ok=True)
-    with open(landing / LOG_NAME, "a", newline="", encoding="utf-8") as fh:
-        writer = csv.writer(fh)
-        if fh.tell() == 0:
-            writer.writerow(["delivered_at", "business_date", "action", "file"])
-        for folder in INITIAL_FOLDERS:
-            src = staging / folder
-            if not src.is_dir():
-                raise FileNotFoundError(f"{src} not found - run the {folder} generator first")
-            files = sorted(src.iterdir(), key=lambda p: (p.name.endswith("manifest.json"), p.name))
-            if not files or not files[-1].name.endswith("manifest.json"):
-                raise FileNotFoundError(f"{src} has no manifest - generation is incomplete")
-            (landing / folder).mkdir(parents=True, exist_ok=True)
-            for f in files:
-                shutil.copy2(f, landing / folder / f.name)
-                writer.writerow([datetime.now(UTC).isoformat(timespec="seconds"), "", "initial", f"{folder}/{f.name}"])
-                delivered.append(f"{folder}/{f.name}")
+    for folder in INITIAL_FOLDERS:
+        src = staging / folder
+        if not src.is_dir():
+            raise FileNotFoundError(f"{src} not found - run the {folder} generator first")
+        files = sorted(src.iterdir(), key=lambda p: (p.name.endswith("manifest.json"), p.name))
+        if not files or not files[-1].name.endswith("manifest.json"):
+            raise FileNotFoundError(f"{src} has no manifest - generation is incomplete")
+        (landing / folder).mkdir(parents=True, exist_ok=True)
+        for f in files:
+            shutil.copyfile(f, landing / folder / f.name)
+            log.append([datetime.now(UTC).isoformat(timespec="seconds"), "", "initial", f"{folder}/{f.name}"])
+            delivered.append(f"{folder}/{f.name}")
+    add_to_log(landing / LOG_NAME, log)
     return delivered
 
 
 def execute(actions: list[Action], staging: Path, landing: Path) -> None:
     landing.mkdir(parents=True, exist_ok=True)
-    log_path = landing / LOG_NAME
-    new_log = not log_path.exists()
-    with open(log_path, "a", newline="", encoding="utf-8") as fh:
-        writer = csv.writer(fh)
-        if new_log:
-            writer.writerow(["delivered_at", "business_date", "action", "file"])
-        for a in actions:
-            now = datetime.now(UTC).isoformat(timespec="seconds")
-            if not a.files:
-                writer.writerow([now, a.business_date.isoformat(), a.kind, ""])
-                continue
-            target = landing / folder_name(a.business_date)
-            target.mkdir(parents=True, exist_ok=True)
-            for name in a.files:
-                shutil.copy2(staging / folder_name(a.business_date) / name, target / name)
-                writer.writerow([now, a.business_date.isoformat(), a.kind, name])
+    log = []
+    for a in actions:
+        now = datetime.now(UTC).isoformat(timespec="seconds")
+        if not a.files:
+            log.append([now, a.business_date.isoformat(), a.kind, ""])
+            continue
+        target = landing / folder_name(a.business_date)
+        target.mkdir(parents=True, exist_ok=True)
+        for name in a.files:
+            shutil.copyfile(staging / folder_name(a.business_date) / name, target / name)
+            log.append([now, a.business_date.isoformat(), a.kind, name])
+    add_to_log(landing / LOG_NAME, log)
 
 
 def main(argv: list[str] | None = None) -> None:

@@ -14,6 +14,7 @@ Charts are native PowerPoint charts, so anyone can click them, see values and re
 
 from __future__ import annotations
 
+import io
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -301,5 +302,9 @@ def build_deck(d: DeckData, path: str | Path) -> Path:
         make(prs, d)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
-    prs.save(path)
+    # Build the .pptx (a zip file) in memory, then write it in one go: Unity Catalog volumes refuse
+    # the random writes a zip writer makes when saving straight to /Volumes/...
+    buf = io.BytesIO()
+    prs.save(buf)
+    path.write_bytes(buf.getvalue())
     return path
