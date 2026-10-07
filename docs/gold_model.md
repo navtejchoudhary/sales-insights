@@ -109,7 +109,7 @@ Distribution channels: how goods reach the customer.
 
 ## gold.dim_date
 
-Calendar: one row per day, with fiscal year (April-March) and Sri Lankan cultivation season.
+Calendar: one row per day, with fiscal year (April-March), Sri Lankan cultivation season and True/False flags for the periods people ask about (last month, month to date, year to date ...), all relative to the latest data date.
 
 | Column | Description |
 |---|---|
@@ -128,3 +128,16 @@ Calendar: one row per day, with fiscal year (April-March) and Sri Lankan cultiva
 | `fiscal_period` | Fiscal month 1-12; 1 = April. |
 | `fiscal_quarter` | Fiscal quarter 1-4; Q1 = April-June. |
 | `cultivation_season` | Sri Lankan cultivation season: Maha (Sep-Mar), Yala (May-Aug) or Inter-season (April). |
+| `is_latest_day` | True on the latest invoice date in the data (the day the figures run up to). |
+| `is_month_to_date` | True from the 1st of the latest data month up to the latest data date: 'this month', 'month to date', 'MTD'. Usually an incomplete month. |
+| `is_same_days_last_month` | True on the same days of the previous month as month to date (like-for-like comparison for this month so far). |
+| `is_same_days_last_year` | True on the same days one year earlier as month to date (like-for-like comparison with last year). |
+| `is_last_7_days` | True on the 7 days ending on the latest data date: 'last 7 days', 'past week'. |
+| `is_previous_7_days` | True on the 7 days before the last 7 days (comparison week). |
+| `is_last_complete_month` | True in the latest complete calendar month: what 'last month' means (never the current, incomplete month). |
+| `is_month_before_last_complete_month` | True in the month before the last complete month (month-on-month comparison). |
+| `is_last_complete_month_last_year` | True in the same calendar month one year before the last complete month (year-on-year comparison). |
+| `is_fiscal_year_to_date` | True from 1 April of the current fiscal year up to the latest data date: 'year to date', 'YTD', 'this year so far'. |
+| `is_same_period_last_fiscal_year` | True on the same stretch of the previous fiscal year as fiscal year to date (like-for-like YTD comparison). |
+| `is_current_fiscal_year` | True in the current fiscal year (April to March) that contains the latest data date: 'this year', 'this fiscal year'. |
+| `is_previous_fiscal_year` | True in the fiscal year before the current one: 'last year', 'last fiscal year'. |

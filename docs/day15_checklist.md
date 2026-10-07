@@ -34,7 +34,7 @@ Run in the morning, before any build work. Record go / no-go per row and tell An
 ## Genie (see genie/README.md)
 
 - [ ] Genie agent "Sales Insights" created with the 5 data assets, instructions, sample questions and 5 example queries from `genie/space.yaml`
-- [ ] 25 benchmarks added from `genie/answer_key.csv`; benchmark run; score recorded in `docs/decisions.md` (target 80%)
+- [ ] 75 benchmarks added from `output/genie_benchmarks.csv` (`python -m sales_insights.semantic.genie_setup`); 6 trusted queries added; benchmark run; score recorded in `docs/decisions.md` (target 90%)
 
 ## Insights job
 

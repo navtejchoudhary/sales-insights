@@ -21,7 +21,7 @@ instructions: |
   - "Revenue" or "sales" means net revenue: MEASURE(net_revenue) in sales_metrics, or SUM(net_revenue_amount) in fact_sales. It is already net of returns, cancellations and price corrections, so never remove those rows when totalling revenue.
   - "Invoices" or "orders" means distinct paid invoices: invoice_type = 'ZAOR' and not is_cancelled.
   - The fiscal year runs April to March and is named by its start year: "FY2025" or "fiscal year 2025" = 1 April 2025 to 31 March 2026. "This year" means the current fiscal year.
-  - "Last month" means the last complete calendar month. The latest month is usually incomplete: say how many days it covers and compare it with the same days of the earlier period.
+  - Never work out relative dates yourself: filter on the period flags in dim_date (the same fields exist in sales_metrics). Last month = is_last_complete_month; this month = is_month_to_date, compared with is_same_days_last_month or is_same_days_last_year (never with a whole month); last 7 days = is_last_7_days; year to date = is_fiscal_year_to_date vs is_same_period_last_fiscal_year; this year = is_current_fiscal_year; last year = is_previous_fiscal_year.
   - "Region" or "area" means province (9 provinces, 25 districts). When comparing provinces or customer groups of different size, also show revenue per active customer.
   - Always state the period you used in the answer.
 
@@ -31,6 +31,18 @@ sample_questions:
   - Which products have the highest returns rate since July 2026?
   - How did weedicide prices and units change after the April 2026 price rise?
   - Show net revenue by cultivation season for fiscal year 2025.
+
+# Columns to hide in the Genie agent (Configure > Data): technical or confusing for business questions.
+# Fewer visible columns = fewer wrong picks (Databricks best practice). Everything else stays visible.
+hidden_columns:
+  fact_sales: [invoice_item, district_code, sales_office_code, plant_code, company_code, gross_revenue_amount,
+               tax_amount, cancelled_by_invoice_number, reference_invoice_number, source_kind, loaded_business_date,
+               arrival_delay_days]
+  dim_customer: [customer_full_name, customer_group_code, district_code, sales_office_code, distribution_channel_code,
+                 payer_customer_id, created_date, city_is_canonical]
+  dim_product: [product_group_code, product_type_code, division_code, company_code, plant_code, base_unit]
+
+# Trusted queries (parameterised SQL, answers labelled "Trusted"): every entry in genie/trusted_queries.yaml.
 
 # Example SQL queries: teach Genie the cases that are easy to get wrong (taken from the answer key).
 example_queries:
@@ -48,4 +60,4 @@ example_queries:
 # Benchmarks: every question in genie/benchmarks.yaml EXCEPT the example queries above
 # (testing Genie on questions it was taught would overstate its accuracy).
 benchmarks_exclude: [B09, B14, B17, B27, B28]
-target_accuracy_pct: 80
+target_accuracy_pct: 90

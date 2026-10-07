@@ -1,0 +1,256 @@
+# Trusted queries for the Genie agent: verified SQL with parameters for the questions people ask most.
+#
+# When Genie answers with one of these (same SQL, its own parameter values) the answer is labelled "Trusted":
+# a person checked the logic, the AI only picked the values. Databricks calls these trusted assets
+# (example SQL queries with parameters): https://learn.microsoft.com/en-us/azure/databricks/genie/trusted-assets
+#
+# Parameters are written :name (Genie and Spark SQL use the same syntax). Types are Genie's: String, Integer, Date.
+# Every query uses the same formulas as the metric view, and the dim_date period flags (is_last_complete_month,
+# is_month_to_date ...) instead of date arithmetic. tests/test_genie.py runs each one on a tiny hand-checked world.
+# `python -m sales_insights.semantic.genie_setup` prints them with real table names, ready to paste.
+
+queries:
+  - id: T01
+    name: kpis_for_period
+    question: What were net revenue, units, invoices, active customers, margin % and returns rate for a period?
+    parameters:
+      - name: period
+        type: String
+        comment: >-
+          One of: last_complete_month ("last month"), month_to_date ("this month"), last_7_days ("last week"),
+          fiscal_year_to_date ("year to date"), current_fiscal_year ("this year"), previous_fiscal_year ("last year").
+        example: last_complete_month
+    sql: |
+      WITH period AS (
+        SELECT date FROM ${dim_date}
+        WHERE CASE :period
+                WHEN 'last_complete_month' THEN is_last_complete_month
+                WHEN 'month_to_date' THEN is_month_to_date
+                WHEN 'last_7_days' THEN is_last_7_days
+                WHEN 'fiscal_year_to_date' THEN is_fiscal_year_to_date
+                WHEN 'current_fiscal_year' THEN is_current_fiscal_year
+                WHEN 'previous_fiscal_year' THEN is_previous_fiscal_year
+                ELSE FALSE END
+      ),
+      bounds AS (
+        SELECT MIN(p.date) AS period_start, LEAST(MAX(p.date), MAX(l.latest)) AS data_until
+        FROM period p CROSS JOIN (SELECT MAX(invoice_date) AS latest FROM ${fact_sales}) l
+      ),
+      totals AS (
+        SELECT
+          ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue,
+          ROUND(SUM(f.quantity), 0) AS units,
+          COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.invoice_number END) AS invoices,
+          COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END) AS active_customers,
+          ROUND(SUM(f.margin_amount) / NULLIF(SUM(f.net_revenue_amount), 0) * 100, 1) AS gross_margin_pct,
+          ROUND(-SUM(f.returns_amount) / NULLIF(SUM(f.invoiced_revenue_amount), 0) * 100, 1) AS returns_rate_pct
+        FROM ${fact_sales} f JOIN period p ON f.invoice_date = p.date
+      )
+      SELECT b.period_start, b.data_until, t.* FROM bounds b CROSS JOIN totals t
+
+  - id: T02
+    name: compare_period
+    question: How does a period compare with the period before, or with the same period last year (like-for-like)?
+    parameters:
+      - name: period
+        type: String
+        comment: >-
+          One of: month_to_date ("this month so far"), last_complete_month ("last month"), last_7_days ("last week"),
+          fiscal_year_to_date ("year to date").
+        example: month_to_date
+      - name: compare_to
+        type: String
+        comment: >-
+          previous_period (the same days of the month before, the month before, the 7 days before) or last_year
+          (the same days or month one year earlier). Year to date is always compared with the same stretch of last
+          fiscal year, last 7 days always with the 7 days before.
+        example: last_year
+    sql: |
+      WITH flags AS (
+        SELECT date,
+          CASE :period
+            WHEN 'month_to_date' THEN is_month_to_date
+            WHEN 'last_complete_month' THEN is_last_complete_month
+            WHEN 'last_7_days' THEN is_last_7_days
+            WHEN 'fiscal_year_to_date' THEN is_fiscal_year_to_date
+            ELSE FALSE END AS is_current,
+          CASE
+            WHEN :period = 'month_to_date' AND :compare_to = 'last_year' THEN is_same_days_last_year
+            WHEN :period = 'month_to_date' THEN is_same_days_last_month
+            WHEN :period = 'last_complete_month' AND :compare_to = 'last_year' THEN is_last_complete_month_last_year
+            WHEN :period = 'last_complete_month' THEN is_month_before_last_complete_month
+            WHEN :period = 'last_7_days' THEN is_previous_7_days
+            WHEN :period = 'fiscal_year_to_date' THEN is_same_period_last_fiscal_year
+            ELSE FALSE END AS is_previous
+        FROM ${dim_date}
+      ),
+      bounds AS (
+        SELECT MIN(CASE WHEN is_current THEN date END) AS current_start, MAX(CASE WHEN is_current THEN date END) AS current_end,
+               MIN(CASE WHEN is_previous THEN date END) AS previous_start, MAX(CASE WHEN is_previous THEN date END) AS previous_end
+        FROM flags
+      ),
+      totals AS (
+        SELECT
+          SUM(CASE WHEN fl.is_current THEN f.net_revenue_amount END) AS cur_revenue,
+          SUM(CASE WHEN fl.is_previous THEN f.net_revenue_amount END) AS prev_revenue,
+          SUM(CASE WHEN fl.is_current THEN f.quantity END) AS cur_units,
+          SUM(CASE WHEN fl.is_previous THEN f.quantity END) AS prev_units,
+          COUNT(DISTINCT CASE WHEN fl.is_current AND f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.invoice_number END) AS cur_invoices,
+          COUNT(DISTINCT CASE WHEN fl.is_previous AND f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.invoice_number END) AS prev_invoices
+        FROM ${fact_sales} f JOIN flags fl ON f.invoice_date = fl.date
+        WHERE fl.is_current OR fl.is_previous
+      )
+      SELECT b.current_start, b.current_end, b.previous_start, b.previous_end,
+             ROUND(t.cur_revenue, 2) AS net_revenue, ROUND(t.prev_revenue, 2) AS previous_net_revenue,
+             ROUND((t.cur_revenue / NULLIF(t.prev_revenue, 0) - 1) * 100, 1) AS net_revenue_change_pct,
+             ROUND(t.cur_units, 0) AS units, ROUND(t.prev_units, 0) AS previous_units,
+             ROUND((t.cur_units / NULLIF(t.prev_units, 0) - 1) * 100, 1) AS units_change_pct,
+             t.cur_invoices AS invoices, t.prev_invoices AS previous_invoices
+      FROM bounds b CROSS JOIN totals t
+
+  - id: T03
+    name: top_by_dimension
+    question: What are the top N provinces, districts, customers, customer groups, products, product groups or channels by net revenue in a fiscal year?
+    parameters:
+      - name: dimension
+        type: String
+        comment: "One of: province, district, city, customer, customer_group, sales_office, product, product_group, channel."
+        example: province
+      - name: fiscal_year
+        type: Integer
+        comment: Fiscal year by its start year, e.g. 2025 = April 2025 to March 2026.
+        example: 2025
+      - name: top_n
+        type: Integer
+        comment: How many to show, e.g. 5 or 10. Use a large number (100) to rank all of them.
+        example: 5
+    sql: |
+      WITH t AS (
+        SELECT
+          CASE :dimension
+            WHEN 'province' THEN c.province
+            WHEN 'district' THEN c.district_name
+            WHEN 'city' THEN c.city
+            WHEN 'customer' THEN c.customer_name
+            WHEN 'customer_group' THEN c.customer_group_name
+            WHEN 'sales_office' THEN c.sales_office_name
+            WHEN 'product' THEN p.product_description
+            WHEN 'product_group' THEN p.product_group_name
+            WHEN 'channel' THEN ch.distribution_channel_name
+          END AS item,
+          SUM(f.net_revenue_amount) AS net_revenue
+        FROM ${fact_sales} f
+        JOIN ${dim_date} d ON f.invoice_date = d.date
+        LEFT JOIN ${dim_customer} c ON f.customer_id = c.customer_id
+        LEFT JOIN ${dim_product} p ON f.product_id = p.product_id
+        LEFT JOIN ${dim_channel} ch ON f.distribution_channel_code = ch.distribution_channel_code
+        WHERE d.fiscal_year = :fiscal_year
+        GROUP BY 1
+      ),
+      ranked AS (
+        SELECT item, net_revenue,
+               ROW_NUMBER() OVER (ORDER BY net_revenue DESC) AS rank,
+               net_revenue / NULLIF(SUM(net_revenue) OVER (), 0) * 100 AS share_pct
+        FROM t
+      )
+      SELECT rank, item, ROUND(net_revenue, 2) AS net_revenue, ROUND(share_pct, 1) AS share_of_total_pct
+      FROM ranked WHERE rank <= :top_n ORDER BY rank
+
+  - id: T04
+    name: revenue_per_active_customer
+    question: Which province, customer group or channel earns the most (or least) per active customer in a fiscal year?
+    parameters:
+      - name: group_by
+        type: String
+        comment: "One of: province, customer_group, channel."
+        example: province
+      - name: fiscal_year
+        type: Integer
+        comment: Fiscal year by its start year, e.g. 2025 = April 2025 to March 2026.
+        example: 2025
+    sql: |
+      SELECT
+        CASE :group_by
+          WHEN 'province' THEN c.province
+          WHEN 'customer_group' THEN c.customer_group_name
+          WHEN 'channel' THEN ch.distribution_channel_name
+        END AS grp,
+        ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue,
+        COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END) AS active_customers,
+        ROUND(SUM(f.net_revenue_amount)
+            / NULLIF(COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END), 0), 2)
+          AS revenue_per_active_customer
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      LEFT JOIN ${dim_customer} c ON f.customer_id = c.customer_id
+      LEFT JOIN ${dim_channel} ch ON f.distribution_channel_code = ch.distribution_channel_code
+      WHERE d.fiscal_year = :fiscal_year
+      GROUP BY 1
+      ORDER BY revenue_per_active_customer DESC
+
+  - id: T05
+    name: returns_rate_by_product
+    question: Which products have the highest returns rate since a date?
+    parameters:
+      - name: since_date
+        type: Date
+        comment: First day to include, e.g. 2026-07-01.
+        example: 2026-07-01
+      - name: top_n
+        type: Integer
+        comment: How many products to show, e.g. 5.
+        example: 5
+    sql: |
+      WITH r AS (
+        SELECT p.product_description AS product, p.product_group_name AS product_group,
+               -SUM(f.returns_amount) AS returns_value, SUM(f.invoiced_revenue_amount) AS invoiced_revenue
+        FROM ${fact_sales} f LEFT JOIN ${dim_product} p ON f.product_id = p.product_id
+        WHERE f.invoice_date >= :since_date
+        GROUP BY p.product_description, p.product_group_name
+        HAVING SUM(f.invoiced_revenue_amount) > 0
+      ),
+      ranked AS (
+        SELECT *, returns_value / invoiced_revenue * 100 AS returns_rate,
+               ROW_NUMBER() OVER (ORDER BY returns_value / invoiced_revenue DESC) AS rank
+        FROM r
+      )
+      SELECT rank, product, product_group, ROUND(returns_rate, 2) AS returns_rate_pct,
+             ROUND(returns_value, 2) AS returns_value, ROUND(invoiced_revenue, 2) AS invoiced_revenue
+      FROM ranked WHERE rank <= :top_n ORDER BY rank
+
+  - id: T06
+    name: monthly_trend
+    question: How did monthly net revenue, units and price per case develop for the whole business, a product, a product group or a province?
+    parameters:
+      - name: filter_by
+        type: String
+        comment: "One of: all (whole business), product, product_group, province."
+        example: product_group
+      - name: filter_value
+        type: String
+        comment: >-
+          Name to match, any case, part of the name is enough, e.g. HEX FUNGICIDE, WEEDICIDE, Western.
+          Ignored when filter_by is all.
+        example: WEEDICIDE
+      - name: fiscal_year
+        type: Integer
+        comment: Fiscal year by its start year, e.g. 2026 = April 2026 to March 2027.
+        example: 2026
+    sql: |
+      SELECT d.month_start_date AS month,
+             ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue,
+             ROUND(SUM(f.quantity), 0) AS units,
+             ROUND(SUM(f.invoiced_revenue_amount) / NULLIF(SUM(f.sold_quantity), 0), 2) AS price_per_case
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      LEFT JOIN ${dim_product} p ON f.product_id = p.product_id
+      LEFT JOIN ${dim_customer} c ON f.customer_id = c.customer_id
+      WHERE d.fiscal_year = :fiscal_year
+        AND CASE :filter_by
+              WHEN 'all' THEN TRUE
+              WHEN 'product' THEN UPPER(p.product_description) LIKE CONCAT('%', UPPER(:filter_value), '%')
+              WHEN 'product_group' THEN UPPER(p.product_group_name) LIKE CONCAT('%', UPPER(:filter_value), '%')
+              WHEN 'province' THEN UPPER(c.province) LIKE CONCAT('%', UPPER(:filter_value), '%')
+              ELSE FALSE END
+      GROUP BY d.month_start_date
+      ORDER BY month
