@@ -10,6 +10,7 @@ resources:
       name: sales-insights-daily
       description: Daily sales pipeline (see docs/pipeline.md). Fails if reconciliation, KPI or story checks fail.
       max_concurrent_runs: 1
+      timeout_seconds: 3600  # cost guard: a stuck run is stopped after 1 hour (a normal run takes minutes)
       schedule:
         quartz_cron_expression: "0 30 6 * * ?"  # 06:30 every day
         timezone_id: Asia/Colombo
@@ -38,6 +39,10 @@ resources:
       name: sales-insights-backfill
       description: First load on Databricks - master data, 18-month history and every day from 1 Oct to today.
       max_concurrent_runs: 1
+      timeout_seconds: 7200  # cost guard: stopped after 2 hours
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
       tasks:
         - task_key: backfill
           environment_key: default
@@ -59,6 +64,10 @@ resources:
       name: sales-insights-publish-semantic
       description: Creates gold.kpi_* views and the metric view gold.sales_metrics, then proves they agree.
       max_concurrent_runs: 1
+      timeout_seconds: 1800  # cost guard: stopped after 30 minutes
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
       tasks:
         - task_key: publish
           environment_key: default

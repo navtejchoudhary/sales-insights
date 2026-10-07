@@ -49,6 +49,13 @@ def test_serverless_environment_never_installs_spark():
         assert any(d.startswith("python-pptx") for d in deps)
 
 
+def test_every_job_has_cost_guards():
+    for name, job in _jobs().items():
+        assert 0 < job["timeout_seconds"] <= 7200, name  # a stuck run can never bill for more than 2 hours
+        assert job["max_concurrent_runs"] == 1, name  # runs never pile up
+        assert job["email_notifications"]["on_failure"], name
+
+
 def test_daily_schedule_is_sri_lanka_time():
     s = _jobs()["sales_daily_pipeline"]["schedule"]
     assert s["timezone_id"] == "Asia/Colombo" and s["pause_status"] == "UNPAUSED"
