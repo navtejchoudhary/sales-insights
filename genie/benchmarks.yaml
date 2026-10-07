@@ -6,6 +6,8 @@
 # genie/answer_key.csv with the expected answers. `check` (optional) is a Python expression that must be
 # true on the result: it proves the planted story is visible in the data. `row` = first row, `rows` = all rows.
 # `needs_data_until`: the check is PENDING until the data reaches that date (demo-week stories).
+# `paraphrases`: the same question worded differently. They become extra benchmarks (same SQL), so the score
+# measures whether Genie understands managers, not whether it memorised our wording.
 # Placeholders like $${fact_sales} are replaced with real table names.
 #
 # Conventions used by every query (the same as the metric view):
@@ -18,6 +20,9 @@ questions:
   - id: B01
     category: basic
     question: What was total net revenue in fiscal year 2025?
+    paraphrases:
+      - How much did we sell in FY2025?
+      - Total sales for financial year 2025 (April 2025 to March 2026)?
     sql: |
       SELECT ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
@@ -27,6 +32,9 @@ questions:
   - id: B02
     category: basic
     question: What was net revenue in September 2026?
+    paraphrases:
+      - How much revenue did we make in Sep 2026?
+      - What were total sales for September 2026?
     sql: |
       SELECT ROUND(SUM(net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales}
@@ -35,6 +43,9 @@ questions:
   - id: B03
     category: basic
     question: How many invoices did we issue in September 2026?
+    paraphrases:
+      - How many orders did we get in September 2026?
+      - Number of invoices in Sep 2026?
     sql: |
       SELECT COUNT(DISTINCT invoice_number) AS invoices
       FROM ${fact_sales}
@@ -44,6 +55,9 @@ questions:
   - id: B04
     category: basic
     question: What was the average invoice value in fiscal year 2025?
+    paraphrases:
+      - What was our average order value in FY2025?
+      - On average, how much was one invoice worth in fiscal year 2025?
     sql: |
       SELECT ROUND(SUM(f.net_revenue_amount)
                / NULLIF(COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.invoice_number END), 0), 2)
@@ -54,6 +68,9 @@ questions:
   - id: B05
     category: basic
     question: How many active customers did we have in September 2026 compared with September 2025?
+    paraphrases:
+      - Compare the number of buying customers in Sep 2026 and Sep 2025.
+      - How many customers bought from us in September 2026, and how many a year earlier?
     sql: |
       SELECT
         COUNT(DISTINCT CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN customer_id END) AS sep_2026,
@@ -65,6 +82,9 @@ questions:
   - id: B06
     category: trend
     question: Show monthly net revenue for fiscal year 2025.
+    paraphrases:
+      - Monthly sales trend for FY2025.
+      - Give me revenue for each month of fiscal year 2025.
     sql: |
       SELECT d.month_start_date AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
@@ -75,6 +95,9 @@ questions:
   - id: B07
     category: trend
     question: What was month-on-month revenue growth in September 2026?
+    paraphrases:
+      - By what percentage did sales change from August to September 2026?
+      - Month-over-month sales growth for September 2026?
     sql: |
       SELECT
         ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN net_revenue_amount END), 2) AS sep_2026,
@@ -87,6 +110,9 @@ questions:
   - id: B08
     category: trend
     question: How did revenue in July to September 2026 compare with July to September 2025?
+    paraphrases:
+      - Compare Q2 of FY2026 (July-September 2026) with the same quarter a year earlier.
+      - Is revenue for July-September 2026 up or down versus July-September 2025, and by how much?
     sql: |
       SELECT
         ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30' THEN net_revenue_amount END), 2) AS q_2026,
@@ -102,6 +128,9 @@ questions:
     category: story
     story: 3 Southern province underperforms
     question: Which province has the lowest net revenue per active customer in fiscal year 2025?
+    paraphrases:
+      - Which region earns the least per buying customer in FY2025?
+      - Lowest sales per active customer by province, fiscal year 2025?
     sql: |
       SELECT c.province,
              ROUND(SUM(f.net_revenue_amount)
@@ -118,6 +147,9 @@ questions:
     category: story
     story: 3 Northern province is strongest
     question: Which province has the highest net revenue per active customer in fiscal year 2025?
+    paraphrases:
+      - Which region earns the most per customer in FY2025?
+      - Highest revenue per active customer by province for fiscal year 2025?
     sql: |
       SELECT c.province,
              ROUND(SUM(f.net_revenue_amount)
@@ -133,6 +165,9 @@ questions:
   - id: B11
     category: basic
     question: Rank the provinces by net revenue in fiscal year 2025.
+    paraphrases:
+      - Show sales by province for FY2025, highest first.
+      - Which provinces sold the most in fiscal year 2025?
     sql: |
       SELECT c.province, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f
@@ -147,6 +182,9 @@ questions:
     category: story
     story: 2 A few products bring most revenue
     question: What share of fiscal year 2025 net revenue came from the top 8 products?
+    paraphrases:
+      - 'How concentrated are our sales: what percentage of FY2025 revenue came from our 8 best products?'
+      - Share of FY2025 sales from the top 8 products?
     sql: |
       WITH p AS (
         SELECT f.product_id, SUM(f.net_revenue_amount) AS revenue
@@ -160,6 +198,9 @@ questions:
   - id: B13
     category: basic
     question: What were the top 5 products by net revenue in fiscal year 2025?
+    paraphrases:
+      - Top 5 best-selling products in FY2025 by revenue?
+      - Which 5 products brought in the most revenue in fiscal year 2025?
     sql: |
       SELECT p.product_description AS product, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f
@@ -174,6 +215,9 @@ questions:
     category: story
     story: 4 Weedicide price rise of 8% from 1 April 2026
     question: By how much did the price per case of weedicide products change after 1 April 2026?
+    paraphrases:
+      - How much did weedicide prices go up after April 2026?
+      - Average price change per case for weedicides since 1 April 2026?
     sql: |
       WITH per_product AS (
         SELECT f.product_id,
@@ -194,6 +238,9 @@ questions:
     category: story
     story: 4 Weedicide volume lags after the price rise
     question: How did weedicide units grow from April-September 2025 to April-September 2026, compared with other crop chemicals?
+    paraphrases:
+      - Did weedicide volumes grow as fast as insecticides and fungicides between April-September 2025 and April-September 2026?
+      - Weedicide unit growth versus other crop chemicals, April-September 2026 compared with a year earlier?
     sql: |
       WITH u AS (
         SELECT CASE WHEN p.product_group_name = 'WEEDICIDE' THEN 'weedicide' ELSE 'other crop chemicals' END AS grp,
@@ -211,6 +258,9 @@ questions:
     category: story
     story: 5 HEX FUNGICIDE 1LTR launched 15 June 2026, ramping up
     question: When did HEX FUNGICIDE 1LTR start selling, and how have its monthly sales developed?
+    paraphrases:
+      - How is the new HEX FUNGICIDE 1LTR doing month by month since launch?
+      - First sale date and monthly revenue of HEX FUNGICIDE 1LTR?
     sql: |
       SELECT d.month_start_date AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue,
              MIN(MIN(f.invoice_date)) OVER () AS first_sale_date
@@ -225,6 +275,9 @@ questions:
     category: story
     story: 6 Returns spike on HGL INSECTICIDE 400ML from 1 July 2026
     question: Which product had the highest returns rate since 1 July 2026?
+    paraphrases:
+      - Which product is being returned the most since July 2026?
+      - Highest returns percentage by product from 1 July 2026 onwards?
     sql: |
       SELECT f.product_id, p.product_description AS product,
              ROUND(-SUM(f.returns_amount) / SUM(f.invoiced_revenue_amount) * 100, 2) AS returns_rate_pct
@@ -239,6 +292,9 @@ questions:
     category: story
     story: 6 Returns spike on HGL INSECTICIDE 400ML from 1 July 2026
     question: How did the returns rate of HGL INSECTICIDE 400ML change after 1 July 2026?
+    paraphrases:
+      - Did returns of HGL INSECTICIDE 400ML go up after July 2026?
+      - Returns rate of HGL INSECTICIDE 400ML before and after 1 July 2026?
     sql: |
       SELECT
         ROUND(-SUM(CASE WHEN invoice_date <  DATE'2026-07-01' THEN returns_amount END)
@@ -254,6 +310,9 @@ questions:
     category: story
     story: 1 Demand peaks before Maha (Sep-Nov) and Yala (Mar-May)
     question: Which calendar months have the highest net revenue on average?
+    paraphrases:
+      - In which months of the year are sales usually highest?
+      - 'Average revenue by calendar month: which months peak?'
     sql: |
       WITH m AS (
         SELECT d.month_start_date, d.month, SUM(f.net_revenue_amount) AS revenue
@@ -267,6 +326,9 @@ questions:
   - id: B20
     category: basic
     question: Compare net revenue in the Maha and Yala seasons of fiscal year 2025.
+    paraphrases:
+      - Maha versus Yala season sales in FY2025?
+      - Which cultivation season sold more in fiscal year 2025?
     sql: |
       SELECT d.cultivation_season, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
@@ -278,6 +340,9 @@ questions:
   - id: B21
     category: basic
     question: What was net revenue by distribution channel in fiscal year 2025?
+    paraphrases:
+      - Sales split by channel for FY2025?
+      - How much did General Trade, Modern Trade and Export Sales each sell in fiscal year 2025?
     sql: |
       SELECT ch.distribution_channel_name AS channel, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f
@@ -290,6 +355,9 @@ questions:
   - id: B22
     category: basic
     question: Which customer group generated the most net revenue in fiscal year 2025?
+    paraphrases:
+      - Which customer segment brought the most revenue in FY2025?
+      - 'Revenue by customer group for fiscal year 2025: which is largest?'
     sql: |
       SELECT c.customer_group_name AS customer_group, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f
@@ -302,6 +370,9 @@ questions:
   - id: B23
     category: basic
     question: Who were the top 10 customers by net revenue in fiscal year 2025?
+    paraphrases:
+      - List our 10 biggest customers in FY2025.
+      - Top 10 customers by sales in fiscal year 2025?
     sql: |
       SELECT c.customer_name, c.province, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f
@@ -315,6 +386,9 @@ questions:
   - id: B24
     category: basic
     question: How much revenue did returns cost us in fiscal year 2025, and what was the returns rate?
+    paraphrases:
+      - What was the value of returns in FY2025 and the returns percentage?
+      - How much did we lose to returns in fiscal year 2025?
     sql: |
       SELECT ROUND(-SUM(f.returns_amount), 2) AS returns_value,
              ROUND(-SUM(f.returns_amount) / NULLIF(SUM(f.invoiced_revenue_amount), 0) * 100, 2) AS returns_rate_pct
@@ -324,6 +398,9 @@ questions:
   - id: B25
     category: basic
     question: How many invoices were cancelled in fiscal year 2025 and what was their value?
+    paraphrases:
+      - Number and value of invoice cancellations in FY2025?
+      - How many cancellations did we have in fiscal year 2025, and how much were they worth?
     sql: |
       SELECT COUNT(DISTINCT f.invoice_number) AS cancellation_documents,
              ROUND(-SUM(f.cancellations_amount), 2) AS cancelled_value
@@ -333,6 +410,9 @@ questions:
   - id: B26
     category: basic
     question: What was gross margin % by product group in fiscal year 2025?
+    paraphrases:
+      - Margin percentage by product category for FY2025?
+      - Which product group had the best gross margin % in fiscal year 2025?
     sql: |
       SELECT p.product_group_name AS product_group,
              ROUND(SUM(f.margin_amount) / NULLIF(SUM(f.net_revenue_amount), 0) * 100, 2) AS gross_margin_pct,
@@ -347,9 +427,15 @@ questions:
   - id: B27
     category: tricky
     question: What were sales last month?
-    notes: '"Last month" = the last COMPLETE calendar month before the latest data, not the current partial month.'
+    paraphrases:
+      - How much did we sell last month?
+      - What was revenue in the previous month?
+    notes: '"Last month" = the last COMPLETE calendar month in the data, not the current partial month.'
     sql: |
-      WITH last AS (SELECT ADD_MONTHS(TRUNC(MAX(invoice_date), 'MM'), -1) AS m FROM ${fact_sales})
+      WITH last AS (
+        SELECT CASE WHEN MAX(invoice_date) = LAST_DAY(MAX(invoice_date)) THEN TRUNC(MAX(invoice_date), 'MM')
+                    ELSE ADD_MONTHS(TRUNC(MAX(invoice_date), 'MM'), -1) END AS m
+        FROM ${fact_sales})
       SELECT l.m AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f CROSS JOIN last l
       WHERE TRUNC(f.invoice_date, 'MM') = l.m
@@ -358,6 +444,9 @@ questions:
   - id: B28
     category: tricky
     question: How are sales this month compared with the same days last month?
+    paraphrases:
+      - How is this month going compared with last month so far?
+      - Month-to-date sales versus the same days last month?
     notes: The current month is incomplete, so compare like-for-like (day 1 to today vs the same days last month).
     sql: |
       WITH b AS (SELECT MAX(invoice_date) AS today, TRUNC(MAX(invoice_date), 'MM') AS m0 FROM ${fact_sales})
@@ -371,6 +460,9 @@ questions:
   - id: B29
     category: tricky
     question: Which district in Western province had the highest net revenue in fiscal year 2025?
+    paraphrases:
+      - Best-selling district in Western province in FY2025?
+      - Within Western province, which district had the most sales in fiscal year 2025?
     sql: |
       SELECT c.district_name AS district, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f
@@ -384,6 +476,9 @@ questions:
     category: story
     story: 7 Top seller MC600 WEEDICIDE 1LTR out of stock in Western from 23 October 2026
     question: Have sales of MC600 WEEDICIDE 1LTR in Western province stopped since 23 October 2026?
+    paraphrases:
+      - Has MC600 WEEDICIDE 1LTR stopped selling in Western province since 23 October 2026?
+      - Any MC600 WEEDICIDE 1LTR sales in the Western region after 23 Oct 2026?
     needs_data_until: 2026-10-25
     sql: |
       SELECT

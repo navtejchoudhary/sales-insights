@@ -21,6 +21,7 @@ from pyspark.sql import functions as F
 
 from sales_insights.common.config import Config
 from sales_insights.common.lake import Lake
+from sales_insights.insights import periods as pr
 from sales_insights.pipeline import gold_model as gm
 
 DOCUMENT_TYPES = {
@@ -171,7 +172,37 @@ def fiscal_bounds(first: date, last: date, start_month: int) -> tuple[date, date
     return fiscal_year_start(first, start_month), date(end_start.year + 1, start_month, 1) - timedelta(days=1)
 
 
-def build_dim_date(spark: SparkSession, first: date, last: date, business: dict) -> DataFrame:
+def relative_periods(as_of: date, start_month: int) -> dict[str, tuple[date, date]]:
+    """The named periods people ask about, as (first day, last day), relative to the latest data date.
+
+    Becomes one True/False column per period in dim_date (is_<name>), so "last month", "this month so far"
+    or "year to date" is a plain filter for Genie and the dashboard instead of date arithmetic it can get
+    wrong. Same windows as the insights job (insights/periods.py): every comparison is like-for-like.
+    """
+    mtd, mtd_ly = pr.month_to_date(as_of), pr.month_to_date_last_year(as_of)
+    week = pr.last_7_days(as_of)
+    month_ly, month_prev = pr.complete_month_vs_last_year(as_of), pr.complete_month_vs_prev_month(as_of)
+    fy = fiscal_year_start(as_of, start_month)
+    fy_prev = date(fy.year - 1, fy.month, 1)
+    return {
+        "latest_day": (as_of, as_of),
+        "month_to_date": (mtd.current.start, mtd.current.end),
+        "same_days_last_month": (mtd.previous.start, mtd.previous.end),
+        "same_days_last_year": (mtd_ly.previous.start, mtd_ly.previous.end),
+        "last_7_days": (week.current.start, week.current.end),
+        "previous_7_days": (week.previous.start, week.previous.end),
+        "last_complete_month": (month_ly.current.start, month_ly.current.end),
+        "month_before_last_complete_month": (month_prev.previous.start, month_prev.previous.end),
+        "last_complete_month_last_year": (month_ly.previous.start, month_ly.previous.end),
+        "fiscal_year_to_date": (fy, as_of),
+        "same_period_last_fiscal_year": (fy_prev, pr.shift_months(as_of, -12)),
+        "current_fiscal_year": (fy, date(fy.year + 1, fy.month, 1) - timedelta(days=1)),
+        "previous_fiscal_year": (fy_prev, fy - timedelta(days=1)),
+    }
+
+
+def build_dim_date(spark: SparkSession, first: date, last: date, business: dict, as_of: date) -> DataFrame:
+    """One row per day from `first` to `last`; the is_<period> flags are relative to `as_of` (latest data date)."""
     m0 = int(business.get("fiscal_year_start_month", 4))
     seasons = business.get("seasons", {})
     month_to_season = {m: name for name, months in seasons.items() for m in months}
@@ -199,6 +230,10 @@ def build_dim_date(spark: SparkSession, first: date, last: date, business: dict)
         fiscal_period.alias("fiscal_period"),
         (((fiscal_period - F.lit(1)) / F.lit(3)).cast("int") + F.lit(1)).alias("fiscal_quarter"),
         F.coalesce(season_map[month], F.lit(gap)).alias("cultivation_season"),
+        *[
+            d.between(F.lit(start), F.lit(end)).alias(f"is_{name}")
+            for name, (start, end) in relative_periods(as_of, m0).items()
+        ],
     )
 
 
@@ -229,7 +264,7 @@ def run_gold(spark: SparkSession, cfg: Config, lake: Lake | None = None) -> Gold
 
     first, last = lake.read("gold", "fact_sales").agg(F.min("invoice_date"), F.max("invoice_date")).collect()[0]
     m0 = int(cfg.business.get("fiscal_year_start_month", 4))
-    write(lake, build_dim_date(spark, *fiscal_bounds(first, last, m0), cfg.business), "dim_date")
+    write(lake, build_dim_date(spark, *fiscal_bounds(first, last, m0), cfg.business, as_of=last), "dim_date")
 
     for table in gm.TABLES:
         run.rows[table] = lake.read("gold", table).count()

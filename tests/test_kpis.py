@@ -184,7 +184,8 @@ def build_tiny_gold(spark, cfg, root):
         "dim_channel",
     )
     lake.overwrite(dim("dim_region", [{"district_code": "05"}]), "gold", "dim_region")
-    lake.overwrite(g.build_dim_date(spark, date(2025, 4, 1), date(2027, 3, 31), cfg.business), "gold", "dim_date")
+    days = g.build_dim_date(spark, date(2025, 4, 1), date(2027, 3, 31), cfg.business, as_of=date(2026, 10, 10))
+    lake.overwrite(gm.with_comments(days, "dim_date"), "gold", "dim_date")
     return lake
 
 
@@ -263,3 +264,22 @@ def test_publish_locally_creates_temp_views(spark, cfg, lake):
     done = k.publish(spark, cfg, lake)
     assert done == k.names()
     assert spark.sql("SELECT SUM(net_revenue) AS r FROM kpi_sales_monthly").collect()[0]["r"] == Decimal("2832.00")
+
+
+def test_period_flags_reach_the_metric_view(spark, lake):
+    """Tiny world ends 10 Oct 2026: last month = Sep 2026 (500), this month so far = 1-10 Oct (1,332)."""
+    last = {
+        r["is_last_complete_month"]: r["net_revenue"]
+        for r in mvs.query(spark, lake, ["is_last_complete_month"], ["net_revenue"]).collect()
+    }
+    assert last == {True: Decimal("500.00"), False: Decimal("2332.00")}
+    mtd = {
+        r["is_month_to_date"]: r["net_revenue"]
+        for r in mvs.query(spark, lake, ["is_month_to_date"], ["net_revenue"]).collect()
+    }
+    assert mtd[True] == Decimal("1332.00")
+    ytd = {
+        r["is_fiscal_year_to_date"]: r["net_revenue"]
+        for r in mvs.query(spark, lake, ["is_fiscal_year_to_date"], ["net_revenue"]).collect()
+    }
+    assert ytd[True] == Decimal("1832.00")  # Sep 500 + Oct 1,332 (FY2026 started 1 Apr 2026)

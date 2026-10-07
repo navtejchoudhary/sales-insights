@@ -114,8 +114,37 @@ def test_fact_sales_splits_revenue_by_document_type(spark):
     assert rows["9261013001"]["sales_rep_id"] is None  # column absent before 22 Oct: still in gold, empty
 
 
+def test_relative_periods_are_like_for_like():
+    p = g.relative_periods(date(2026, 10, 7), 4)  # a Wednesday, a week into October, FY2026
+    assert p["latest_day"] == (date(2026, 10, 7), date(2026, 10, 7))
+    assert p["month_to_date"] == (date(2026, 10, 1), date(2026, 10, 7))
+    assert p["same_days_last_month"] == (date(2026, 9, 1), date(2026, 9, 7))
+    assert p["same_days_last_year"] == (date(2025, 10, 1), date(2025, 10, 7))
+    assert p["last_7_days"] == (date(2026, 10, 1), date(2026, 10, 7))
+    assert p["previous_7_days"] == (date(2026, 9, 24), date(2026, 9, 30))
+    assert p["last_complete_month"] == (date(2026, 9, 1), date(2026, 9, 30))  # never the part-month October
+    assert p["month_before_last_complete_month"] == (date(2026, 8, 1), date(2026, 8, 31))
+    assert p["last_complete_month_last_year"] == (date(2025, 9, 1), date(2025, 9, 30))
+    assert p["fiscal_year_to_date"] == (date(2026, 4, 1), date(2026, 10, 7))
+    assert p["same_period_last_fiscal_year"] == (date(2025, 4, 1), date(2025, 10, 7))
+    assert p["current_fiscal_year"] == (date(2026, 4, 1), date(2027, 3, 31))
+    assert p["previous_fiscal_year"] == (date(2025, 4, 1), date(2026, 3, 31))
+    # on the last day of a month, that month is complete; in March the fiscal year is about to end
+    assert g.relative_periods(date(2026, 9, 30), 4)["last_complete_month"] == (date(2026, 9, 1), date(2026, 9, 30))
+    end = g.relative_periods(date(2027, 3, 31), 4)
+    assert end["fiscal_year_to_date"] == (date(2026, 4, 1), date(2027, 3, 31))
+    assert end["same_period_last_fiscal_year"] == (date(2025, 4, 1), date(2026, 3, 31))
+    assert set(p) == {
+        c.removeprefix("is_") for c in gm.columns("dim_date") if c.startswith("is_") and c != "is_weekend"
+    }
+
+
 def test_dim_date_fiscal_calendar_and_seasons(spark, cfg):
-    d = {r["date"]: r for r in g.build_dim_date(spark, date(2026, 3, 29), date(2026, 4, 2), cfg.business).collect()}
+    days = g.build_dim_date(spark, date(2026, 3, 29), date(2026, 4, 2), cfg.business, as_of=date(2026, 4, 1))
+    d = {r["date"]: r for r in days.collect()}
+    assert (d[date(2026, 4, 1)]["is_latest_day"], d[date(2026, 4, 2)]["is_latest_day"]) == (True, False)
+    assert d[date(2026, 3, 31)]["is_last_complete_month"] and not d[date(2026, 4, 1)]["is_last_complete_month"]
+    assert d[date(2026, 4, 1)]["is_fiscal_year_to_date"] and d[date(2026, 3, 31)]["is_previous_fiscal_year"]
     assert len(d) == 5
     sun, mar31, apr1 = d[date(2026, 3, 29)], d[date(2026, 3, 31)], d[date(2026, 4, 1)]
     assert (sun["day_name"], sun["day_of_week"], sun["is_weekend"]) == ("Sunday", 7, True)

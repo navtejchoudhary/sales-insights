@@ -27,7 +27,7 @@ Record go / no-go results in `docs/day15_checklist.md`.
 | # | Do | You should see |
 |---|---|---|
 | 2.1 | Portal > **Create a resource > Azure Databricks** | create form |
-| 2.2 | Resource group `sales-insights-rg`; workspace name `sales-insights-dev`; region: one where serverless compute and AI functions are available (check the Databricks "Feature availability by region" page on the day); **Pricing tier: Trial (Premium - 14-Days Free DBUs)** | validation passed |
+| 2.2 | Resource group `sales-insights-rg`; workspace name `sales-insights-dev`; region **East US 2** (serverless compute and AI functions without extra settings; see decisions); **Pricing tier: Trial (Premium - 14-Days Free DBUs)** | validation passed |
 | 2.3 | Create, wait ~5 minutes, **Launch workspace** | Databricks home page |
 | 2.4 | **Catalog** in the left menu: a metastore is attached (new workspaces get Unity Catalog automatically) | catalogs listed |
 
@@ -97,8 +97,8 @@ Same numbers as `SELECT month, net_revenue FROM sales_dev.gold.kpi_sales_monthly
 
 ## 8. Genie
 
-Follow `genie/README.md` ("Day 15+: create the Genie agent"), then run the 25 benchmarks.
-Record the score in `docs/decisions.md` (target 80%).
+Follow `genie/README.md` ("Day 15+: create the Genie agent"), then run the 75 benchmarks.
+Record the score in `docs/decisions.md` (target 90%).
 
 ## 9. Feature go / no-go
 

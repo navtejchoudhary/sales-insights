@@ -41,11 +41,25 @@ class Question:
     story: str | None = None
     notes: str | None = None
     needs_data_until: date | None = None
+    paraphrases: tuple[str, ...] = ()  # the same question worded the way a manager might ask it
+
+
+def scored(questions: list[Question], taught: set[str]) -> list[tuple[str, str, str]]:
+    """Genie's benchmark set: (benchmark id, wording, question id) for every wording of every question that
+    was NOT taught as an example query. Taught questions and their rewordings are left out entirely:
+    scoring Genie on what it was shown would overstate its accuracy."""
+    out = []
+    for q in questions:
+        if q.id in taught:
+            continue
+        wordings = [q.question, *q.paraphrases]
+        out += [(q.id if i == 0 else f"{q.id}-{chr(96 + i)}", w, q.id) for i, w in enumerate(wordings)]
+    return out
 
 
 def load(path: Path = GENIE / "benchmarks.yaml") -> list[Question]:
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))["questions"]
-    return [Question(**q) for q in raw]
+    return [Question(**{**q, "paraphrases": tuple(q.get("paraphrases", ()))}) for q in raw]
 
 
 def render(q: Question, tables: dict[str, str]) -> str:

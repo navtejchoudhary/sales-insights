@@ -18,6 +18,7 @@ with a small edit in the metric view and the KPI SQL (the agreement check proves
 | Net revenue (`net_revenue`) | Sum of `net_revenue_amount`: invoices minus returns, cancellations and price corrections, excluding VAT, LKR | Working |
 | Invoiced revenue (`invoiced_revenue`) | Revenue on invoices and free-of-charge lines before any credit notes | Standard |
 | Returns / cancellations / price corrections (`*_value`) | Value reversed by each credit-note type, shown as a positive number | Standard |
+| Cancelled invoices (`cancellation_count`) | Number of invoice cancellation documents (S1) | Standard |
 | Returns rate % (`returns_rate_pct`) | Returns ÷ invoiced revenue × 100 | Standard |
 | Units (`units`) | Net cases: sold minus returned and cancelled | Standard |
 | Invoices (`invoice_count`) | Distinct paid invoices (`ZAOR`) that were not cancelled. Free-of-charge deliveries and credit notes are not invoices | Working |
@@ -43,7 +44,10 @@ to try on 15 Oct) and attach rate needs invoice-level logic that a simple measur
 
 ## Metric view fields (what you can slice by)
 
-Time: invoice date, month, week, fiscal year / period / quarter, cultivation season.
+Time: invoice date, month, week, calendar year, fiscal year / period / quarter, cultivation season.
+Relative periods (True/False, from the latest data date): last complete month, month before it, same month last year,
+month to date, same days last month / last year, last 7 days, previous 7 days, fiscal year to date, same period last
+fiscal year, current and previous fiscal year. Filter on these instead of computing dates.
 Customer: province, district, city, customer, customer group, sales office, channel, sales rep (from 22 Oct).
 Product: product, product group, product type, division. Document type.
 

@@ -55,21 +55,90 @@ fields:
     expr: date_dim.fiscal_quarter
     display_name: Fiscal quarter
     comment: Fiscal quarter 1-4; Q1 = April-June.
+  - name: calendar_year
+    expr: date_dim.year
+    display_name: Calendar year
+    comment: Calendar year January-December. Only when the question says calendar year; "year" alone means fiscal year.
   - name: cultivation_season
     expr: date_dim.cultivation_season
     display_name: Cultivation season
     comment: Maha (Sep-Mar), Yala (May-Aug) or Inter-season (April).
     synonyms: [season, crop season]
+  # --- relative periods: True/False, recomputed from the latest data date on every run. Filter on them
+  #     (WHERE is_last_complete_month) instead of working out dates.
+  - name: is_latest_day
+    expr: date_dim.is_latest_day
+    display_name: Latest day
+    comment: True on the latest invoice date in the data.
+    synonyms: [today, latest day, most recent day]
+  - name: is_month_to_date
+    expr: date_dim.is_month_to_date
+    display_name: Month to date
+    comment: From the 1st of the latest month up to the latest data date (usually an incomplete month).
+    synonyms: [this month, MTD, current month, month so far]
+  - name: is_same_days_last_month
+    expr: date_dim.is_same_days_last_month
+    display_name: Same days last month
+    comment: The same days of the previous month as month to date. Compare month to date with this, never with a whole month.
+  - name: is_same_days_last_year
+    expr: date_dim.is_same_days_last_year
+    display_name: Same days last year
+    comment: The same days one year earlier as month to date.
+  - name: is_last_7_days
+    expr: date_dim.is_last_7_days
+    display_name: Last 7 days
+    synonyms: [last week, past week, past 7 days, this week]
+  - name: is_previous_7_days
+    expr: date_dim.is_previous_7_days
+    display_name: Previous 7 days
+    comment: The 7 days before the last 7 days.
+    synonyms: [week before]
+  - name: is_last_complete_month
+    expr: date_dim.is_last_complete_month
+    display_name: Last complete month
+    comment: The latest complete calendar month. This is what "last month" means.
+    synonyms: [last month, previous month, past month]
+  - name: is_month_before_last_complete_month
+    expr: date_dim.is_month_before_last_complete_month
+    display_name: Month before last
+    comment: The month before the last complete month (month-on-month comparison).
+    synonyms: [month before last, two months ago]
+  - name: is_last_complete_month_last_year
+    expr: date_dim.is_last_complete_month_last_year
+    display_name: Same month last year
+    comment: The same calendar month one year before the last complete month (year-on-year comparison).
+    synonyms: [same month last year]
+  - name: is_fiscal_year_to_date
+    expr: date_dim.is_fiscal_year_to_date
+    display_name: Fiscal year to date
+    comment: From 1 April of the current fiscal year up to the latest data date.
+    synonyms: [year to date, YTD, FYTD, this year so far]
+  - name: is_same_period_last_fiscal_year
+    expr: date_dim.is_same_period_last_fiscal_year
+    display_name: Same period last fiscal year
+    comment: The same stretch of the previous fiscal year as fiscal year to date (like-for-like YTD comparison).
+    synonyms: [YTD last year, last year to date]
+  - name: is_current_fiscal_year
+    expr: date_dim.is_current_fiscal_year
+    display_name: Current fiscal year
+    comment: The fiscal year (April-March) that contains the latest data date.
+    synonyms: [this year, this fiscal year, current year, current FY]
+  - name: is_previous_fiscal_year
+    expr: date_dim.is_previous_fiscal_year
+    display_name: Previous fiscal year
+    comment: The fiscal year before the current one.
+    synonyms: [last year, last fiscal year, previous year, previous FY]
   # --- geography and customer
   - name: province
     expr: customer_dim.province
     display_name: Province
     comment: Province of the customer, e.g. Western, Southern.
-    synonyms: [region, area]
+    synonyms: [region, area, zone, territory]
   - name: district
     expr: customer_dim.district_name
     display_name: District
     comment: District of the customer, e.g. Colombo.
+    synonyms: [district name]
   - name: city
     expr: customer_dim.city
     display_name: City
@@ -81,6 +150,7 @@ fields:
     expr: customer_dim.customer_group_name
     display_name: Customer group
     comment: e.g. Domestic, Distributors, Government, Plantations.
+    synonyms: [customer segment, customer type, segment]
   - name: sales_office
     expr: customer_dim.sales_office_name
     display_name: Sales office
@@ -102,7 +172,7 @@ fields:
     expr: product_dim.product_group_name
     display_name: Product group
     comment: e.g. WEEDICIDE, INSECTICIDE, FUNGICIDE.
-    synonyms: [category]
+    synonyms: [category, product category, product line]
   - name: product_type
     expr: product_dim.product_type_name
     display_name: Product type
@@ -121,7 +191,7 @@ measures:
     display_name: Net revenue (LKR)
     comment: >-
       Headline revenue: invoices minus returns, cancellations and price corrections, excluding VAT.
-    synonyms: [revenue, sales, net sales, turnover]
+    synonyms: [revenue, sales, net sales, turnover, income, sales value]
   - name: invoiced_revenue
     expr: SUM(source.invoiced_revenue_amount)
     display_name: Invoiced revenue (LKR)
@@ -135,6 +205,11 @@ measures:
     expr: -SUM(source.cancellations_amount)
     display_name: Cancellations (LKR)
     comment: Value of cancelled invoices (positive number).
+  - name: cancellation_count
+    expr: COUNT(DISTINCT CASE WHEN source.invoice_type = 'S1' THEN source.invoice_number END)
+    display_name: Cancelled invoices
+    comment: Number of invoice cancellation documents.
+    synonyms: [cancellations, number of cancellations]
   - name: price_corrections_value
     expr: -SUM(source.price_corrections_amount)
     display_name: Price corrections (LKR)
