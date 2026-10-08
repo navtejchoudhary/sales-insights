@@ -62,7 +62,7 @@ def test_answers_are_readable():
 def test_space_configuration_follows_genie_best_practice():
     space = _space()
     assert len(space["data"]) <= 6  # few, focused data assets (dim_channel is needed by the trusted queries)
-    assert len(space["instructions"]) < 2000  # few, focused text instructions
+    assert len(space["instructions"]) < 2500  # few, focused text instructions (each line fixes a measured error)
     assert len(space["sample_questions"]) == 5
     ids = {q.id for q in ak.load()}
     examples = {e["from_benchmark"] for e in space["example_queries"]}
