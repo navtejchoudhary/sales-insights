@@ -237,21 +237,20 @@ questions:
   - id: B15
     category: story
     story: 4 Weedicide volume lags after the price rise
-    question: How did weedicide units grow from April-September 2025 to April-September 2026, compared with other crop chemicals?
+    question: How did units of weedicide, insecticide and fungicide each grow from April-September 2025 to April-September 2026?
     paraphrases:
-      - Did weedicide volumes grow as fast as insecticides and fungicides between April-September 2025 and April-September 2026?
-      - Weedicide unit growth versus other crop chemicals, April-September 2026 compared with a year earlier?
+      - Unit growth by crop chemical group (weedicide, insecticide, fungicide), April-September 2026 versus April-September 2025?
+      - Did weedicide volumes grow as fast as insecticide and fungicide volumes between April-September 2025 and April-September 2026? Show each group's growth.
+    notes: One row per product group; the story is that weedicide grows far less than the other two.
     sql: |
-      WITH u AS (
-        SELECT CASE WHEN p.product_group_name = 'WEEDICIDE' THEN 'weedicide' ELSE 'other crop chemicals' END AS grp,
-               SUM(CASE WHEN f.invoice_date BETWEEN DATE'2026-04-01' AND DATE'2026-09-30' THEN f.quantity END) AS units_2026,
-               SUM(CASE WHEN f.invoice_date BETWEEN DATE'2025-04-01' AND DATE'2025-09-30' THEN f.quantity END) AS units_2025
-        FROM ${fact_sales} f JOIN ${dim_product} p ON f.product_id = p.product_id
-        WHERE p.product_group_name IN ('WEEDICIDE', 'INSECTICIDE', 'FUNGICIDE')
-        GROUP BY 1
-      )
-      SELECT grp, ROUND((units_2026 / NULLIF(units_2025, 0) - 1) * 100, 1) AS units_growth_pct FROM u ORDER BY grp DESC
-    check: rows[0]['grp'] == 'weedicide' and rows[0]['units_growth_pct'] < rows[1]['units_growth_pct'] - 5
+      SELECT p.product_group_name AS product_group,
+             ROUND((SUM(CASE WHEN f.invoice_date BETWEEN DATE'2026-04-01' AND DATE'2026-09-30' THEN f.quantity END)
+                  / NULLIF(SUM(CASE WHEN f.invoice_date BETWEEN DATE'2025-04-01' AND DATE'2025-09-30' THEN f.quantity END), 0)
+                  - 1) * 100, 1) AS units_growth_pct
+      FROM ${fact_sales} f JOIN ${dim_product} p ON f.product_id = p.product_id
+      WHERE p.product_group_name IN ('WEEDICIDE', 'INSECTICIDE', 'FUNGICIDE')
+      GROUP BY p.product_group_name ORDER BY units_growth_pct
+    check: rows[0]['product_group'] == 'WEEDICIDE' and rows[0]['units_growth_pct'] < rows[1]['units_growth_pct'] - 5
 
   # ---------------------------------------------------------------- story 5: new product
   - id: B16
@@ -260,15 +259,14 @@ questions:
     question: When did HEX FUNGICIDE 1LTR start selling, and how have its monthly sales developed?
     paraphrases:
       - How is the new HEX FUNGICIDE 1LTR doing month by month since launch?
-      - First sale date and monthly revenue of HEX FUNGICIDE 1LTR?
+      - Monthly revenue of HEX FUNGICIDE 1LTR since its first sale?
     sql: |
-      SELECT d.month_start_date AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue,
-             MIN(MIN(f.invoice_date)) OVER () AS first_sale_date
+      SELECT d.month_start_date AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f
       JOIN ${dim_date} d ON f.invoice_date = d.date
       WHERE f.product_id = 'HEX1LTR'
       GROUP BY d.month_start_date ORDER BY month
-    check: row['first_sale_date'] >= date(2026, 6, 15) and len(rows) >= 4 and rows[3]['net_revenue'] > rows[1]['net_revenue'] > rows[0]['net_revenue']
+    check: row['month'] == date(2026, 6, 1) and len(rows) >= 4 and rows[3]['net_revenue'] > rows[1]['net_revenue'] > rows[0]['net_revenue']
 
   # ---------------------------------------------------------------- story 6: returns spike
   - id: B17
@@ -293,7 +291,7 @@ questions:
     story: 6 Returns spike on HGL INSECTICIDE 400ML from 1 July 2026
     question: How did the returns rate of HGL INSECTICIDE 400ML change after 1 July 2026?
     paraphrases:
-      - Did returns of HGL INSECTICIDE 400ML go up after July 2026?
+      - Did the returns rate of HGL INSECTICIDE 400ML go up after 1 July 2026?
       - Returns rate of HGL INSECTICIDE 400ML before and after 1 July 2026?
     sql: |
       SELECT
@@ -328,13 +326,13 @@ questions:
     question: Compare net revenue in the Maha and Yala seasons of fiscal year 2025.
     paraphrases:
       - Maha versus Yala season sales in FY2025?
-      - Which cultivation season sold more in fiscal year 2025?
+      - Which sold more in fiscal year 2025, the Maha season or the Yala season?
     sql: |
-      SELECT d.cultivation_season, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      SELECT ROUND(SUM(CASE WHEN d.cultivation_season = 'Maha' THEN f.net_revenue_amount END), 2) AS maha_net_revenue,
+             ROUND(SUM(CASE WHEN d.cultivation_season = 'Yala' THEN f.net_revenue_amount END), 2) AS yala_net_revenue
       FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
-      WHERE d.fiscal_year = 2025 AND d.cultivation_season IN ('Maha', 'Yala')
-      GROUP BY d.cultivation_season ORDER BY net_revenue DESC
-    check: row['cultivation_season'] == 'Maha'
+      WHERE d.fiscal_year = 2025
+    check: row['maha_net_revenue'] > row['yala_net_revenue']
 
   # ---------------------------------------------------------------- customers and channels
   - id: B21
@@ -388,7 +386,7 @@ questions:
     question: How much revenue did returns cost us in fiscal year 2025, and what was the returns rate?
     paraphrases:
       - What was the value of returns in FY2025 and the returns percentage?
-      - How much did we lose to returns in fiscal year 2025?
+      - How much did we lose to returns in fiscal year 2025, and what percentage of invoiced sales was that?
     sql: |
       SELECT ROUND(-SUM(f.returns_amount), 2) AS returns_value,
              ROUND(-SUM(f.returns_amount) / NULLIF(SUM(f.invoiced_revenue_amount), 0) * 100, 1) AS returns_rate_pct
@@ -458,10 +456,10 @@ questions:
 
   - id: B29
     category: tricky
-    question: Which district in Western province had the highest net revenue in fiscal year 2025?
+    question: Rank the districts in Western province by net revenue for fiscal year 2025.
     paraphrases:
-      - Best-selling district in Western province in FY2025?
-      - Within Western province, which district had the most sales in fiscal year 2025?
+      - Western province districts by sales in FY2025, highest first?
+      - Within Western province, which districts sold the most in fiscal year 2025? Show all of them ranked.
     sql: |
       SELECT c.district_name AS district, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f

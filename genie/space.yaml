@@ -24,11 +24,11 @@ instructions: |
   - "Invoices" or "orders" means distinct paid invoices: invoice_type = 'ZAOR' and not is_cancelled.
   - "Cancellations" means cancellation documents (invoice_type = 'S1'): count = COUNT(DISTINCT invoice_number), value = -SUM(cancellations_amount). Never count the original invoices flagged is_cancelled.
   - "Crop chemicals" means the product groups WEEDICIDE, INSECTICIDE and FUNGICIDE.
-  - The fiscal year runs April to March and is named by its start year: "FY2025" or "fiscal year 2025" = 1 April 2025 to 31 March 2026. "This year" means the current fiscal year.
-  - Never work out relative dates yourself: filter on the period flags in dim_date (the same fields exist in sales_metrics). Last month = is_last_complete_month; this month = is_month_to_date, compared with is_same_days_last_month or is_same_days_last_year (never with a whole month); last 7 days = is_last_7_days; year to date = is_fiscal_year_to_date vs is_same_period_last_fiscal_year; this year = is_current_fiscal_year; last year = is_previous_fiscal_year. When averaging or ranking whole months, leave out the current incomplete month (is_month_to_date).
+  - The fiscal year runs April to March and is named by its start year: "FY2025" or "fiscal year 2025" = 1 April 2025 to 31 March 2026. A named year is fixed: filter fiscal_year = 2025 (fiscal_year = 'FY2025' in sales_metrics). "This year" means the current fiscal year.
+  - Never work out relative dates yourself: filter on the period flags in dim_date (the same fields exist in sales_metrics). Last month = is_last_complete_month; this month = is_month_to_date, compared with is_same_days_last_month or is_same_days_last_year (never with a whole month); last 7 days = is_last_7_days; year to date = is_fiscal_year_to_date vs is_same_period_last_fiscal_year; this year = is_current_fiscal_year; last year = is_previous_fiscal_year. Use the flags only for relative words (this, last, so far). When averaging or ranking whole months, leave out the current incomplete month (is_month_to_date). Group by month with month_start_date (a date), never DATE_TRUNC.
   - "Region" or "area" means province (9 provinces, 25 districts). When comparing provinces or customer groups of different size, also show revenue per active customer.
   - For "which ... highest / lowest / most" questions show the full ranking, best first, not only the top row.
-  - When comparing two periods, return one row with a column for each period and the % change.
+  - When comparing two periods or seasons for a total, return one row with a column for each and the % change; when broken down by a dimension, return one row per item.
   - Always state the period you used in the answer.
 sample_questions:
   - What was net revenue last month, and how does it compare with the same month last year?
