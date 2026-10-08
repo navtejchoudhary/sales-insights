@@ -22,6 +22,8 @@ instructions: |
   - Money is Sri Lankan rupees (LKR) excluding VAT. Round money to 2 decimal places and percentages to 1 decimal place.
   - "Revenue" or "sales" means net revenue: MEASURE(net_revenue) in sales_metrics, or SUM(net_revenue_amount) in fact_sales. It is already net of returns, cancellations and price corrections, so never remove those rows when totalling revenue.
   - "Invoices" or "orders" means distinct paid invoices: invoice_type = 'ZAOR' and not is_cancelled.
+  - "Average invoice value" = all net revenue / paid invoices (MEASURE(average_invoice_value)); never limit the revenue to ZAOR rows.
+  - MEASURE() cannot be filtered per column: for side-by-side values (Maha vs Yala, this year vs last) use fact_sales with SUM(CASE WHEN ...).
   - "Cancellations" means cancellation documents (invoice_type = 'S1'): count = COUNT(DISTINCT invoice_number), value = -SUM(cancellations_amount). Never count the original invoices flagged is_cancelled.
   - "Crop chemicals" means the product groups WEEDICIDE, INSECTICIDE and FUNGICIDE.
   - The fiscal year runs April to March and is named by its start year: "FY2025" or "fiscal year 2025" = 1 April 2025 to 31 March 2026. A named year is fixed: filter fiscal_year = 2025 (fiscal_year = 'FY2025' in sales_metrics). "This year" means the current fiscal year.
