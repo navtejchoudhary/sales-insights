@@ -83,3 +83,33 @@ resources:
               - pandas>=3.0.6
               - pyyaml>=6.0.3
               - python-pptx==1.0.2
+
+    # Every Monday after the daily run: run all Genie benchmarks, record the score, fail (= email) below 90%
+    sales_genie_health:
+      name: sales-insights-genie-health
+      description: Weekly Genie accuracy check (all benchmark questions, Chat mode). Fails below the 90% target.
+      max_concurrent_runs: 1
+      timeout_seconds: 3600  # cost guard: a full evaluation takes about 15 minutes
+      schedule:
+        quartz_cron_expression: "0 0 7 ? * MON"  # Monday 07:00
+        timezone_id: Asia/Colombo
+        pause_status: UNPAUSED
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      tasks:
+        - task_key: genie_health
+          environment_key: default
+          spark_python_task:
+            python_file: ../run.py
+            parameters: ["genie_health", "--profile", "dev", "--space-id", "${var.genie_space_id}", "--target", "90"]
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "6"  # serverless environment 6: Python 3.12
+            dependencies:
+              - numpy>=2.5.3
+              - pandas>=3.0.6
+              - pyyaml>=6.0.3
+              - python-pptx==1.0.2
+              - databricks-sdk  # latest: the Genie evaluation API is new (beta)

@@ -17,6 +17,7 @@ COMMANDS = {
     "kpis": "sales_insights.semantic.kpis",
     "insights": "sales_insights.insights.job",
     "answer_key": "sales_insights.semantic.answer_key",
+    "genie_health": "sales_insights.semantic.genie_health",
 }
 
 

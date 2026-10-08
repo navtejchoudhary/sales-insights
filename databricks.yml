@@ -4,6 +4,7 @@
 #   databricks bundle deploy  -t dev      # upload code + create/update the jobs in the workspace
 #   databricks bundle run     -t dev sales_backfill        # first load: 1 Oct up to today
 #   databricks bundle run     -t dev sales_publish_semantic  # KPI views + metric view
+#   databricks bundle run     -t dev sales_genie_health      # Genie benchmarks now (also weekly, Monday 07:00)
 #
 # The workspace URL and your login come from your Databricks CLI profile (~/.databrickscfg), never from git.
 # Step-by-step first deployment: docs/day15_runbook.md
@@ -13,6 +14,11 @@ bundle:
 
 include:
   - bundle/resources/*.yml
+
+variables:
+  genie_space_id:
+    description: Genie agent ID (Genie > agent > About > Agent ID), used by the weekly accuracy check
+    default: 01f1c2e0d41d11268063932055c6f749
 
 targets:
   dev:
