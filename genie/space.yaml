@@ -1,30 +1,35 @@
 # Genie agent ("Sales Insights") configuration: everything we paste into Databricks on 15 Oct.
-# Setup steps: genie/README.md. Kept small on purpose: Databricks advises five or fewer data assets and
+# Setup steps: genie/README.md. Kept small on purpose: Databricks advises few, focused data assets and
 # few, focused text instructions; example SQL queries teach Genie the tricky cases instead.
 # Placeholders like $${fact_sales} are replaced with real table names (sales_dev.gold.*).
 
-title: Sales Insights
+title: Sri Lankan Crop Protection Sales Analytics
 description: >-
   Ask questions about sales of our Sri Lankan crop-protection business: revenue, units, invoices,
   customers, products, provinces, seasons, returns and margin. Data from 1 April 2025, updated daily.
 
-# Data assets (5). The metric view carries every KPI definition; the tables cover detail questions.
+# Data assets (6). The metric view carries every KPI definition; the tables cover detail questions.
+# dim_channel is needed by the trusted queries that rank or compare channels.
 data:
   - ${sales_metrics}
   - ${fact_sales}
   - ${dim_customer}
   - ${dim_product}
   - ${dim_date}
+  - ${dim_channel}
 
 instructions: |
-  - Money is Sri Lankan rupees (LKR) excluding VAT. Round money to whole rupees and percentages to one decimal place.
+  - Money is Sri Lankan rupees (LKR) excluding VAT. Round money to 2 decimal places and percentages to 1 decimal place.
   - "Revenue" or "sales" means net revenue: MEASURE(net_revenue) in sales_metrics, or SUM(net_revenue_amount) in fact_sales. It is already net of returns, cancellations and price corrections, so never remove those rows when totalling revenue.
   - "Invoices" or "orders" means distinct paid invoices: invoice_type = 'ZAOR' and not is_cancelled.
+  - "Cancellations" means cancellation documents (invoice_type = 'S1'): count = COUNT(DISTINCT invoice_number), value = -SUM(cancellations_amount). Never count the original invoices flagged is_cancelled.
+  - "Crop chemicals" means the product groups WEEDICIDE, INSECTICIDE and FUNGICIDE.
   - The fiscal year runs April to March and is named by its start year: "FY2025" or "fiscal year 2025" = 1 April 2025 to 31 March 2026. "This year" means the current fiscal year.
-  - Never work out relative dates yourself: filter on the period flags in dim_date (the same fields exist in sales_metrics). Last month = is_last_complete_month; this month = is_month_to_date, compared with is_same_days_last_month or is_same_days_last_year (never with a whole month); last 7 days = is_last_7_days; year to date = is_fiscal_year_to_date vs is_same_period_last_fiscal_year; this year = is_current_fiscal_year; last year = is_previous_fiscal_year.
+  - Never work out relative dates yourself: filter on the period flags in dim_date (the same fields exist in sales_metrics). Last month = is_last_complete_month; this month = is_month_to_date, compared with is_same_days_last_month or is_same_days_last_year (never with a whole month); last 7 days = is_last_7_days; year to date = is_fiscal_year_to_date vs is_same_period_last_fiscal_year; this year = is_current_fiscal_year; last year = is_previous_fiscal_year. When averaging or ranking whole months, leave out the current incomplete month (is_month_to_date).
   - "Region" or "area" means province (9 provinces, 25 districts). When comparing provinces or customer groups of different size, also show revenue per active customer.
+  - For "which ... highest / lowest / most" questions show the full ranking, best first, not only the top row.
+  - When comparing two periods, return one row with a column for each period and the % change.
   - Always state the period you used in the answer.
-
 sample_questions:
   - What was net revenue last month, and how does it compare with the same month last year?
   - Which province has the lowest revenue per active customer this fiscal year?
