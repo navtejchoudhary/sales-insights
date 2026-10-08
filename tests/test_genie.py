@@ -16,6 +16,7 @@ from sales_insights.common.config import load_config
 from sales_insights.pipeline import gold_model as gm
 from sales_insights.semantic import answer_key as ak
 from sales_insights.semantic import genie_setup as gs
+from sales_insights.semantic import genie_sync as sync
 from sales_insights.semantic import metric_views as mvs
 
 
@@ -60,7 +61,7 @@ def test_answers_are_readable():
 
 def test_space_configuration_follows_genie_best_practice():
     space = _space()
-    assert len(space["data"]) <= 5  # Databricks: five or fewer data assets
+    assert len(space["data"]) <= 6  # few, focused data assets (dim_channel is needed by the trusted queries)
     assert len(space["instructions"]) < 2000  # few, focused text instructions
     assert len(space["sample_questions"]) == 5
     ids = {q.id for q in ak.load()}
@@ -92,12 +93,41 @@ def test_benchmark_set_scores_every_wording_of_untaught_questions():
 
 
 def test_setup_sheet_uses_real_table_names(tmp_path):
-    md_path, csv_path = gs.write(load_config("dev"), tmp_path)
+    md_path, csv_path = gs.write(load_config("dev"), tmp_path, as_of=date(2026, 10, 26))
     md = md_path.read_text()
     assert "`sales_dev.gold.sales_metrics`" in md and "${" not in md
     assert md.count("### T0") == len(gs.trusted_queries())
     rows = csv_path.read_text().splitlines()
     assert rows[0] == "benchmark_id,question,ground_truth_sql" and len(rows) == 1 + 75
+
+
+def test_demo_week_questions_are_not_scored_before_their_data_exists():
+    qs, taught = ak.load(), set(_space()["benchmarks_exclude"])
+    tables = gs.table_names(load_config("dev"))
+    early = gs.benchmarks(qs, taught, tables, as_of=date(2026, 10, 8))
+    later = gs.benchmarks(qs, taught, tables, as_of=date(2026, 10, 26))
+    assert len(later) == 75 and len(early) == 72  # B30 (stock-out from 23 Oct) and its 2 rewordings wait
+    assert not any(r["benchmark_id"].startswith("B30") for r in early)
+
+
+def test_sync_replaces_only_the_benchmarks():
+    space = {
+        "version": 2,
+        "data_sources": {"tables": [{"identifier": "sales_dev.gold.fact_sales"}]},
+        "instructions": {"text_instructions": [{"content": ["keep me"]}]},
+        "benchmarks": {"questions": [{"id": "old", "question": ["old?"], "answer": []}]},
+    }
+    rows = [
+        {"benchmark_id": "B01", "question": "Q1?", "ground_truth_sql": "SELECT 1"},
+        {"benchmark_id": "B02", "question": "Q2?", "ground_truth_sql": "SELECT 2"},
+    ]
+    new = sync.replace_benchmarks(space, rows)
+    qs = new["benchmarks"]["questions"]
+    assert sorted(q["question"][0] for q in qs) == ["Q1?", "Q2?"]
+    assert {q["answer"][0]["content"][0] for q in qs} == {"SELECT 1", "SELECT 2"}
+    assert [q["id"] for q in qs] == sorted(q["id"] for q in qs)
+    assert new["instructions"] == space["instructions"] and new["data_sources"] == space["data_sources"]
+    assert space["benchmarks"]["questions"][0]["id"] == "old"  # the input is not modified
 
 
 def test_every_query_runs_on_gold(spark, cfg, tmp_path):

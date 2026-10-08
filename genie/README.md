@@ -37,7 +37,9 @@ any more: fix it before the demo, not during it.
 5. Add the 6 **trusted queries** (sheet section 6) as example SQL queries with parameters: set each parameter's
    type and paste its comment. Answers that use them are labelled **Trusted**.
 6. Add the 5 taught **example queries** (sheet section 7).
-7. Add the **75 benchmarks** from `genie_benchmarks.csv` (25 untaught questions x 3 wordings) and run them.
+7. Load the benchmarks from `genie_benchmarks.csv` (25 untaught questions x 3 wordings; demo-week ones join after
+   their data date) with `uv run python -m sales_insights.semantic.genie_sync --space-id <Agent ID>`, then
+   **Run all benchmarks** with **Mode: Chat** (Agent mode writes reports that the grader cannot compare).
 8. Record the score in `docs/decisions.md`. Target: 90% or better. For each miss, find the cause and fix it in
    this order: period flag or field missing > column description or synonym > trusted or example query >
    (last resort) one more instruction. Run again.

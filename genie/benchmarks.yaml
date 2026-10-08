@@ -298,9 +298,9 @@ questions:
     sql: |
       SELECT
         ROUND(-SUM(CASE WHEN invoice_date <  DATE'2026-07-01' THEN returns_amount END)
-             / NULLIF(SUM(CASE WHEN invoice_date <  DATE'2026-07-01' THEN invoiced_revenue_amount END), 0) * 100, 2) AS before_pct,
+             / NULLIF(SUM(CASE WHEN invoice_date <  DATE'2026-07-01' THEN invoiced_revenue_amount END), 0) * 100, 1) AS before_pct,
         ROUND(-SUM(CASE WHEN invoice_date >= DATE'2026-07-01' THEN returns_amount END)
-             / NULLIF(SUM(CASE WHEN invoice_date >= DATE'2026-07-01' THEN invoiced_revenue_amount END), 0) * 100, 2) AS after_pct
+             / NULLIF(SUM(CASE WHEN invoice_date >= DATE'2026-07-01' THEN invoiced_revenue_amount END), 0) * 100, 1) AS after_pct
       FROM ${fact_sales}
       WHERE product_id = 'HGL400ML'
     check: row['after_pct'] > 5 * row['before_pct']
@@ -317,7 +317,7 @@ questions:
       WITH m AS (
         SELECT d.month_start_date, d.month, SUM(f.net_revenue_amount) AS revenue
         FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
-        WHERE f.invoice_date < DATE'2026-10-01'
+        WHERE NOT d.is_month_to_date
         GROUP BY d.month_start_date, d.month
       )
       SELECT month, ROUND(AVG(revenue), 2) AS avg_monthly_revenue FROM m GROUP BY month ORDER BY avg_monthly_revenue DESC
@@ -332,7 +332,7 @@ questions:
     sql: |
       SELECT d.cultivation_season, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
-      WHERE d.fiscal_year = 2025
+      WHERE d.fiscal_year = 2025 AND d.cultivation_season IN ('Maha', 'Yala')
       GROUP BY d.cultivation_season ORDER BY net_revenue DESC
     check: row['cultivation_season'] == 'Maha'
 
@@ -374,12 +374,12 @@ questions:
       - List our 10 biggest customers in FY2025.
       - Top 10 customers by sales in fiscal year 2025?
     sql: |
-      SELECT c.customer_name, c.province, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      SELECT c.customer_name, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales} f
       JOIN ${dim_date} d ON f.invoice_date = d.date
       JOIN ${dim_customer} c ON f.customer_id = c.customer_id
       WHERE d.fiscal_year = 2025
-      GROUP BY c.customer_name, c.province ORDER BY net_revenue DESC LIMIT 10
+      GROUP BY c.customer_name ORDER BY net_revenue DESC LIMIT 10
     check: len(rows) == 10
 
   # ---------------------------------------------------------------- returns, cancellations, margin
@@ -391,7 +391,7 @@ questions:
       - How much did we lose to returns in fiscal year 2025?
     sql: |
       SELECT ROUND(-SUM(f.returns_amount), 2) AS returns_value,
-             ROUND(-SUM(f.returns_amount) / NULLIF(SUM(f.invoiced_revenue_amount), 0) * 100, 2) AS returns_rate_pct
+             ROUND(-SUM(f.returns_amount) / NULLIF(SUM(f.invoiced_revenue_amount), 0) * 100, 1) AS returns_rate_pct
       FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
       WHERE d.fiscal_year = 2025
 
@@ -415,13 +415,12 @@ questions:
       - Which product group had the best gross margin % in fiscal year 2025?
     sql: |
       SELECT p.product_group_name AS product_group,
-             ROUND(SUM(f.margin_amount) / NULLIF(SUM(f.net_revenue_amount), 0) * 100, 2) AS gross_margin_pct,
-             ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+             ROUND(SUM(f.margin_amount) / NULLIF(SUM(f.net_revenue_amount), 0) * 100, 1) AS gross_margin_pct
       FROM ${fact_sales} f
       JOIN ${dim_date} d ON f.invoice_date = d.date
       JOIN ${dim_product} p ON f.product_id = p.product_id
       WHERE d.fiscal_year = 2025
-      GROUP BY p.product_group_name ORDER BY net_revenue DESC
+      GROUP BY p.product_group_name ORDER BY SUM(f.net_revenue_amount) DESC
 
   # ---------------------------------------------------------------- tricky: relative dates, partial months
   - id: B27

@@ -14,8 +14,10 @@ from __future__ import annotations
 import argparse
 import csv
 from dataclasses import dataclass
+from datetime import date, datetime
 from pathlib import Path
 from string import Template
+from zoneinfo import ZoneInfo
 
 import yaml
 
@@ -57,19 +59,25 @@ def render(sql: str, tables: dict[str, str]) -> str:
     return Template(sql).substitute(tables).strip()
 
 
-def benchmarks(questions: list[ak.Question], taught: set[str], tables: dict[str, str]) -> list[dict]:
+def benchmarks(
+    questions: list[ak.Question], taught: set[str], tables: dict[str, str], as_of: date | None = None
+) -> list[dict]:
+    """Scored benchmark rows. Demo-week questions (`needs_data_until` after `as_of`) are left out until their
+    data exists: Genie cannot be judged on sales that have not happened yet."""
+    as_of = as_of or datetime.now(ZoneInfo("Asia/Colombo")).date()
     by_id = {q.id: q for q in questions}
     return [
         {"benchmark_id": bid, "question": wording, "ground_truth_sql": " ".join(render(by_id[qid].sql, tables).split())}
         for bid, wording, qid in ak.scored(questions, taught)
+        if not (by_id[qid].needs_data_until and by_id[qid].needs_data_until > as_of)
     ]
 
 
-def sheet(cfg: Config) -> tuple[str, list[dict]]:
+def sheet(cfg: Config, as_of: date | None = None) -> tuple[str, list[dict]]:
     sp, tables, questions = space(), table_names(cfg), ak.load()
     by_id = {q.id: q for q in questions}
     taught = {e["from_benchmark"] for e in sp["example_queries"]}
-    bench = benchmarks(questions, taught, tables)
+    bench = benchmarks(questions, taught, tables, as_of)
     md = [
         f"# Genie setup sheet: {sp['title']}",
         "",
@@ -116,15 +124,17 @@ def sheet(cfg: Config) -> tuple[str, list[dict]]:
     md += [
         f"## 8. Benchmarks ({len(bench)} questions, target {sp['target_accuracy_pct']}%+)",
         "",
-        "Add each row of `genie_benchmarks.csv` as a benchmark (question + ground-truth SQL), then **Run benchmarks**.",
+        "Load `genie_benchmarks.csv` with `python -m sales_insights.semantic.genie_sync` (or add each row as a",
+        "benchmark by hand), then **Run all benchmarks** in **Chat** mode.",
+        "Demo-week questions join once their data exists.",
         f"Taught questions and their rewordings are left out: {', '.join(sorted(taught))}.",
         "",
     ]
     return "\n".join(md) + "\n", bench
 
 
-def write(cfg: Config, out_dir: Path) -> tuple[Path, Path]:
-    md, bench = sheet(cfg)
+def write(cfg: Config, out_dir: Path, as_of: date | None = None) -> tuple[Path, Path]:
+    md, bench = sheet(cfg, as_of)
     out_dir.mkdir(parents=True, exist_ok=True)
     md_path, csv_path = out_dir / "genie_setup.md", out_dir / "genie_benchmarks.csv"
     md_path.write_text(md, encoding="utf-8")
@@ -141,8 +151,14 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Write the Genie setup sheet with real table names.")
     parser.add_argument("--profile", default="dev", help="config profile whose table names to use (default: dev)")
     parser.add_argument("--out", default=str(REPO_ROOT / "output"), help="folder to write into (default: output/)")
+    parser.add_argument(
+        "--as-of",
+        type=date.fromisoformat,
+        default=None,
+        help="date the data runs to (default: today); demo-week questions join after their date",
+    )
     args = parser.parse_args(argv)
-    md_path, csv_path = write(load_config(args.profile), Path(args.out))
+    md_path, csv_path = write(load_config(args.profile), Path(args.out), args.as_of)
     print(f"  setup sheet: {md_path}")
     print(f"  benchmarks:  {csv_path}")
 
