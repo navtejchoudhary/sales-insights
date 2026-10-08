@@ -58,3 +58,11 @@ any more: fix it before the demo, not during it.
 
 Ask Genie the question exactly as written, compare with `expected_answer` in `answer_key.csv`:
 correct = same numbers (rounding aside) for the same period and grouping. Note the miss and the reason.
+
+## Keeping the score honest (weekly check)
+
+The job `[dev] sales-insights-genie-health` runs every Monday at 07:00 (after the daily pipeline):
+it evaluates every benchmark question in Chat mode, appends the score to `sales_dev.ops.genie_accuracy`
+and fails below 90%, which sends the failure email. Run it any time with
+`databricks bundle run -t dev sales_genie_health`. Score history:
+`SELECT * FROM sales_dev.ops.genie_accuracy ORDER BY checked_ts DESC`.

@@ -62,6 +62,16 @@ def test_daily_schedule_is_sri_lanka_time():
     assert s["timezone_id"] == "Asia/Colombo" and s["pause_status"] == "UNPAUSED"
 
 
+def test_genie_check_runs_weekly_after_the_daily_job():
+    job = _jobs()["sales_genie_health"]
+    assert job["schedule"]["timezone_id"] == "Asia/Colombo" and job["schedule"]["pause_status"] == "UNPAUSED"
+    assert job["schedule"]["quartz_cron_expression"] == "0 0 7 ? * MON"  # Monday 07:00, after the 06:30 run
+    params = job["tasks"][0]["spark_python_task"]["parameters"]
+    assert params[0] == "genie_health" and "${var.genie_space_id}" in params and params[-2:] == ["--target", "90"]
+    deps = job["environments"][0]["spec"]["dependencies"]
+    assert any(d.startswith("databricks-sdk") for d in deps)  # the Genie evaluation API needs a recent SDK
+
+
 def test_launcher_takes_the_profile_out():
     run = _launcher()
     assert run.split_profile(["--profile", "dev", "--date", "2026-10-15"]) == ("dev", ["--date", "2026-10-15"])
