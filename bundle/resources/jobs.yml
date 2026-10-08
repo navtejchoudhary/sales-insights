@@ -8,6 +8,7 @@ resources:
     # Every morning: deliver the day's files, then bronze -> silver -> gold -> reconcile -> KPIs -> answer key -> insights + deck
     sales_daily_pipeline:
       name: sales-insights-daily
+      performance_target: STANDARD  # cost: scheduled, nobody waits; a few minutes slower start, cheaper serverless
       description: Daily sales pipeline (see docs/pipeline.md). Fails if reconciliation, KPI or story checks fail.
       max_concurrent_runs: 1
       timeout_seconds: 3600  # cost guard: a stuck run is stopped after 1 hour (a normal run takes minutes)
@@ -87,6 +88,7 @@ resources:
     # Every Monday after the daily run: run all Genie benchmarks, record the score, fail (= email) below 90%
     sales_genie_health:
       name: sales-insights-genie-health
+      performance_target: STANDARD  # cost: scheduled, nobody waits; a few minutes slower start, cheaper serverless
       description: Weekly Genie accuracy check (all benchmark questions, Chat mode). Fails below the 90% target.
       max_concurrent_runs: 1
       timeout_seconds: 3600  # cost guard: a full evaluation takes about 15 minutes

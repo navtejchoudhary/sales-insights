@@ -72,6 +72,12 @@ def test_genie_check_runs_weekly_after_the_daily_job():
     assert any(d.startswith("databricks-sdk") for d in deps)  # the Genie evaluation API needs a recent SDK
 
 
+def test_scheduled_jobs_use_standard_serverless():
+    for name, job in _jobs().items():
+        if "schedule" in job:  # nobody waits for a scheduled run: take the cheaper, slower-starting mode
+            assert job.get("performance_target") == "STANDARD", name
+
+
 def test_launcher_takes_the_profile_out():
     run = _launcher()
     assert run.split_profile(["--profile", "dev", "--date", "2026-10-15"]) == ("dev", ["--date", "2026-10-15"])
