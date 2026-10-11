@@ -64,7 +64,9 @@ class DeckData:
     alerts: list[str]
     summary: list[str]
     about: list[str] = field(default_factory=list)
-    outlook: list[tuple[str, float | None, float | None]] = field(default_factory=list)  # (month, actual, forecast) LKR M
+    outlook: list[tuple[str, float | None, float | None]] = field(
+        default_factory=list
+    )  # (month, actual, forecast) LKR M
     outlook_caption: str = ""
     outlook_notes: list[str] = field(default_factory=list)  # forecast ranges + the method, in words
 
@@ -281,8 +283,10 @@ def _slide_movers(prs, d: DeckData):
 def _slide_alerts(prs, d: DeckData):
     s = _blank(prs)
     _title(
-        s, "Alerts", "Checked every day: revenue well below last year, products that stopped selling where they "
-        "usually sell daily, and unusual days"
+        s,
+        "Alerts",
+        "Checked every day: revenue well below last year, products that stopped selling where they "
+        "usually sell daily, and unusual days",
     )
     if not d.alerts:
         _card(s, MARGIN, Inches(2.0), W - 2 * MARGIN, Inches(1.4))

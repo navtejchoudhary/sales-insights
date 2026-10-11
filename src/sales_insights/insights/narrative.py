@@ -23,7 +23,7 @@ Facts:
 
 
 ALERT_KINDS = ("revenue_drop", "stock_out", "anomaly")
-SUMMARY_HEADLINES =["mtd_vs_last_year", "month_vs_last_year"]  # always lead with the latest period
+SUMMARY_HEADLINES = ["mtd_vs_last_year", "month_vs_last_year"]  # always lead with the latest period
 SUMMARY_COMPARISON = "month_vs_last_year"  # movers are explained on the last complete month
 SUMMARY_DIMENSIONS = ["province", "product_group", "product"]  # channel / customer group: too few values to tell much
 
