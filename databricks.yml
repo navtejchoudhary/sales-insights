@@ -16,6 +16,13 @@ include:
   - bundle/resources/*.yml
 
 variables:
+  catalog:
+    description: Unity Catalog catalog of this project (same as `catalog` in config/config.yaml, profile dev)
+    default: sales_dev
+  warehouse_id:
+    description: SQL warehouse that runs the alerts, found by its name (no ID in git)
+    lookup:
+      warehouse: sales-insights-wh
   genie_space_id:
     description: Genie agent ID (Genie > agent > About > Agent ID), used by the weekly accuracy check
     default: 01f1c2e0d41d11268063932055c6f749

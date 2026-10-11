@@ -7,6 +7,7 @@ and the same position in the calendar:
     month to date        1-5 Oct 2026   vs  1-5 Sep 2026     (same days, previous month)
     month to date, LY    1-5 Oct 2026   vs  1-5 Oct 2025     (same days, last year)
     last 7 days          29 Sep-5 Oct   vs  22-28 Sep
+    last 7 days, LY      29 Sep-5 Oct   vs  30 Sep-6 Oct 2025  (52 weeks earlier: same weekdays; revenue-drop alert)
     last complete month  Sep 2026       vs  Sep 2025         (and vs Aug 2026)
 """
 
@@ -77,6 +78,17 @@ def last_7_days(as_of: date) -> Comparison:
     cur = Window(as_of - timedelta(days=6), as_of)
     return Comparison(
         "last_7_days", "last 7 days vs the 7 days before", cur, Window(cur.start - timedelta(7), cur.end - timedelta(7))
+    )
+
+
+def last_7_days_last_year(as_of: date) -> Comparison:
+    """Last 7 days vs the same 7 days 52 weeks earlier (364 days: same weekdays, same season)."""
+    cur = Window(as_of - timedelta(days=6), as_of)
+    return Comparison(
+        "last_7_days_vs_last_year",
+        "last 7 days vs the same 7 days last year",
+        cur,
+        Window(cur.start - timedelta(days=364), cur.end - timedelta(days=364)),
     )
 
 

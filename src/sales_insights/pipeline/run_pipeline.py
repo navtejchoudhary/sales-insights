@@ -176,14 +176,16 @@ def _answer_key(ctx: dict, d: date) -> str:
 
 def _insights(ctx: dict, d: date) -> str:
     from sales_insights.insights import job
+    from sales_insights.insights.narrative import ALERT_KINDS
 
     out = job.run(
         ctx["spark"], ctx["cfg"], lake=ctx["lake"], deck_dir=ctx["deck_dir"] if ctx["last_day"] == d else None
     )
     ins = out["insights"]
-    ctx["alerts"] = [i.text for i in ins if i.kind in ("stock_out", "anomaly")]
+    ctx["alerts"] = [i.text for i in ins if i.kind in ALERT_KINDS]
     deck = f", deck {Path(out['deck']).name}" if out["deck"] else ""
-    return f"{len(ins)} findings, {len(ctx['alerts'])} alert(s){deck}"
+    forecast = f", forecast {out['forecast_months']} month(s)" if out.get("forecast_months") else ""
+    return f"{len(ins)} findings, {len(ctx['alerts'])} alert(s){forecast}{deck}"
 
 
 STEP_FUNCS: dict[str, Callable[[dict, date], str]] = {
