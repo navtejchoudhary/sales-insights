@@ -22,17 +22,20 @@ Facts:
 {facts}"""
 
 
+ALERT_KINDS = ("revenue_drop", "stock_out", "anomaly")
 SUMMARY_HEADLINES = ["mtd_vs_last_year", "month_vs_last_year"]  # always lead with the latest period
 SUMMARY_COMPARISON = "month_vs_last_year"  # movers are explained on the last complete month
 SUMMARY_DIMENSIONS = ["province", "product_group", "product"]  # channel / customer group: too few values to tell much
 
 
 def summary(insights: list[Insight], n: int = 6) -> list[str]:
-    """Alerts first, then net revenue for the latest periods, then the biggest mover per dimension, then the biggest fall."""
-    picked = [i for i in rank(insights) if i.kind in ("stock_out", "anomaly")]
+    """Alerts first, then net revenue for the latest periods, this month's forecast, then the biggest mover per
+    dimension, then the biggest fall."""
+    picked = [i for i in rank(insights) if i.kind in ALERT_KINDS]
     revenue = [i for i in insights if i.kind == "headline" and i.metric == "net_revenue"]
     for key in SUMMARY_HEADLINES:
         picked += [i for i in revenue if i.comparison == key][:1]
+    picked += [i for i in insights if i.kind == "forecast" and i.dimension == "month"][:1]
     moves = sorted(
         (
             i

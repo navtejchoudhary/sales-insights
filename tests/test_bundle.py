@@ -89,3 +89,36 @@ def test_dev_profile_writes_to_volumes():
     assert dev.output_path.startswith("/Volumes/sales_dev/")
     assert dev.landing_path.startswith("/Volumes/sales_dev/")
     assert load_config("local").output_path == "output"
+
+
+def _alerts():
+    return yaml.safe_load((ROOT / "bundle" / "resources" / "alerts.yml").read_text())["resources"]["alerts"]
+
+
+def test_alerts_read_the_latest_insights_run_and_email_the_owner():
+    from sales_insights.insights.narrative import ALERT_KINDS
+
+    alerts = _alerts()
+    assert set(alerts) == {"sales_revenue_drop", "sales_stock_out"}
+    kinds = set()
+    for name, a in alerts.items():
+        q = a["query_text"]
+        assert "${var.catalog}.gold.insights" in q and "max_by(run_id, generated_ts)" in q, name  # latest run only
+        kinds.add(q.split("kind = '")[1].split("'")[0])
+        assert a["warehouse_id"] == "${var.warehouse_id}", name  # found by name: no warehouse ID in git
+        ev = a["evaluation"]
+        assert (ev["source"]["name"], ev["comparison_operator"], ev["threshold"]["value"]["double_value"]) == (
+            "findings", "GREATER_THAN", 0)  # fmt: skip
+        assert ev["empty_result_state"] == "OK"
+        assert ev["notification"]["subscriptions"] == [{"user_email": "${workspace.current_user.userName}"}]
+        s = a["schedule"]
+        when = (s["quartz_cron_schedule"], s["timezone_id"], s["pause_status"])
+        assert when == ("0 0 8 * * ?", "Asia/Colombo", "UNPAUSED"), name  # 08:00, after the 06:30 daily job
+    assert kinds == {"revenue_drop", "stock_out"} and kinds <= set(ALERT_KINDS)
+
+
+def test_alert_variables_match_the_config():
+    bundle = yaml.safe_load((ROOT / "databricks.yml").read_text())
+    v = bundle["variables"]
+    assert v["catalog"]["default"] == load_config("dev").catalog
+    assert v["warehouse_id"]["lookup"] == {"warehouse": "sales-insights-wh"}

@@ -6,7 +6,7 @@ from pptx.enum.chart import XL_CHART_TYPE
 from sales_insights.deck.deck import DeckData, KpiCard, build_deck
 
 
-def sample(alerts=True) -> DeckData:
+def sample(alerts=True, forecast=True) -> DeckData:
     return DeckData(
         title="Weekly sales insights",
         subtitle="Data up to Sunday 25 October 2026",
@@ -28,6 +28,11 @@ def sample(alerts=True) -> DeckData:
         alerts=["Possible stock-out: MC600 WEEDICIDE 1LTR has had no sales in Western for 3 days."] if alerts else [],
         summary=["Point one.", "Point two."],
         about=["Data up to 25 Oct 2026."],
+        outlook=[("Apr 26", 150.0, None), ("May 26", 160.0, None), ("Oct 26", None, 187.9), ("Nov 26", None, 184.0)]
+        if forecast
+        else [],
+        outlook_caption="Net revenue per month, LKR millions",
+        outlook_notes=["Oct 2026: about LKR 187.9M (likely LKR 175.0M to LKR 200.8M)"] if forecast else [],
     )
 
 
@@ -35,22 +40,33 @@ def _texts(slide):
     return " ".join(sh.text_frame.text for sh in slide.shapes if sh.has_text_frame)
 
 
-def test_deck_has_seven_slides_with_native_charts(tmp_path):
+def test_deck_has_eight_slides_with_native_charts(tmp_path):
     path = build_deck(sample(), tmp_path / "deck.pptx")
     prs = Presentation(path)
-    assert len(prs.slides) == 7
+    assert len(prs.slides) == 8
     s = list(prs.slides)
     assert "Weekly sales insights" in _texts(s[0])
     assert "LKR 160.2M" in _texts(s[1]) and "What to know" in _texts(s[1])
     charts = [sh.chart for sh in s[2].shapes if sh.has_chart]
     assert len(charts) == 1 and charts[0].chart_type == XL_CHART_TYPE.LINE_MARKERS
     assert len(list(charts[0].plots[0].categories)) == 13
-    bars = [sh.chart for sh in s[3].shapes if sh.has_chart]
+    [outlook] = [sh.chart for sh in s[3].shapes if sh.has_chart]
+    assert outlook.chart_type == XL_CHART_TYPE.COLUMN_CLUSTERED
+    assert [ser.name for ser in outlook.series] == ["Actual", "Forecast"]
+    assert list(outlook.series[1].values) == [None, None, 187.9, 184.0]
+    assert "likely LKR 175.0M" in _texts(s[3])
+    bars = [sh.chart for sh in s[4].shapes if sh.has_chart]
     assert len(bars) == 2 and all(c.chart_type == XL_CHART_TYPE.BAR_CLUSTERED for c in bars)
-    assert "MC600 WEEDICIDE 1LTR" in _texts(s[4])
-    assert "Point two." in _texts(s[5])
+    assert "MC600 WEEDICIDE 1LTR" in _texts(s[5])
+    assert "Point two." in _texts(s[6])
 
 
 def test_deck_without_alerts_says_so(tmp_path):
     prs = Presentation(build_deck(sample(alerts=False), tmp_path / "deck.pptx"))
-    assert "No alerts this week" in _texts(list(prs.slides)[4])
+    assert "No alerts this week" in _texts(list(prs.slides)[5])
+
+
+def test_deck_without_forecast_says_so(tmp_path):
+    prs = Presentation(build_deck(sample(forecast=False), tmp_path / "deck.pptx"))
+    s = list(prs.slides)[3]
+    assert "Not enough history for a forecast" in _texts(s) and not any(sh.has_chart for sh in s.shapes)

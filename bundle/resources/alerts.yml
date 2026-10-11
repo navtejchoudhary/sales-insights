@@ -1,0 +1,68 @@
+# Databricks SQL alerts (alerts v2), as code. They show under "Alerts" in the workspace.
+#
+# The rules live in Python (insights/analysis.py, unit-tested) and the daily job writes every finding to
+# gold.insights. Each alert only counts the alert findings of the LATEST insights run and emails when there
+# is at least one, so an alert never disagrees with the deck or Genie.
+#
+# Checked at 08:00 Sri Lanka time, after the 06:30 daily job (a standard-serverless run takes 10-30 minutes).
+# Both alerts use the same minute, so the SQL warehouse wakes once a day (it auto-stops 5 minutes later).
+# One email when an alert starts; none while it stays the same (retrigger 0); one "back to normal" email.
+# Needs Databricks CLI 0.279.0 or newer for `databricks bundle deploy`.
+
+resources:
+  alerts:
+    sales_revenue_drop:
+      display_name: Sales - revenue drop
+      custom_summary: "Net revenue of the last 7 days is well below the same 7 days last year"
+      warehouse_id: ${var.warehouse_id}
+      query_text: |
+        -- Revenue-drop findings in the latest insights run (rule: insights/analysis.py revenue_drop, limit 10%)
+        SELECT COUNT(*) AS findings, concat_ws(' | ', collect_list(text)) AS details
+        FROM ${var.catalog}.gold.insights
+        WHERE run_id = (SELECT max_by(run_id, generated_ts) FROM ${var.catalog}.gold.insights)
+          AND kind = 'revenue_drop'
+      evaluation:
+        source:
+          name: findings
+        comparison_operator: GREATER_THAN
+        threshold:
+          value:
+            double_value: 0
+        empty_result_state: OK
+        notification:
+          notify_on_ok: true
+          retrigger_seconds: 0
+          subscriptions:
+            - user_email: ${workspace.current_user.userName}
+      schedule:
+        quartz_cron_schedule: "0 0 8 * * ?"  # 08:00 every day
+        timezone_id: Asia/Colombo
+        pause_status: UNPAUSED
+
+    sales_stock_out:
+      display_name: Sales - possible stock-out
+      custom_summary: "A product that sells almost every day in a province has stopped selling there"
+      warehouse_id: ${var.warehouse_id}
+      query_text: |
+        -- Possible stock-outs in the latest insights run (rule: insights/analysis.py stock_outs)
+        SELECT COUNT(*) AS findings, concat_ws(' | ', collect_list(text)) AS details
+        FROM ${var.catalog}.gold.insights
+        WHERE run_id = (SELECT max_by(run_id, generated_ts) FROM ${var.catalog}.gold.insights)
+          AND kind = 'stock_out'
+      evaluation:
+        source:
+          name: findings
+        comparison_operator: GREATER_THAN
+        threshold:
+          value:
+            double_value: 0
+        empty_result_state: OK
+        notification:
+          notify_on_ok: true
+          retrigger_seconds: 0
+          subscriptions:
+            - user_email: ${workspace.current_user.userName}
+      schedule:
+        quartz_cron_schedule: "0 0 8 * * ?"  # 08:00 every day
+        timezone_id: Asia/Colombo
+        pause_status: UNPAUSED

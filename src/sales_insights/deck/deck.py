@@ -6,10 +6,11 @@ Charts are native PowerPoint charts, so anyone can click them, see values and re
     slide 1  title
     slide 2  at a glance: 4 KPI cards + the 3 most important points
     slide 3  revenue trend: last 13 complete months
-    slide 4  what moved revenue: change by province and by product group
-    slide 5  alerts: possible stock-outs, unusual days
-    slide 6  summary: the narrative
-    slide 7  about these numbers: definitions and data checks
+    slide 4  outlook: last 6 complete months + the forecast to the end of the fiscal year
+    slide 5  what moved revenue: change by province and by product group
+    slide 6  alerts: revenue drop, possible stock-outs, unusual days
+    slide 7  summary: the narrative
+    slide 8  about these numbers: definitions and data checks
 """
 
 from __future__ import annotations
@@ -63,6 +64,11 @@ class DeckData:
     alerts: list[str]
     summary: list[str]
     about: list[str] = field(default_factory=list)
+    outlook: list[tuple[str, float | None, float | None]] = field(
+        default_factory=list
+    )  # (month, actual, forecast) LKR M
+    outlook_caption: str = ""
+    outlook_notes: list[str] = field(default_factory=list)  # forecast ranges + the method, in words
 
 
 # ---------------------------------------------------------------------------
@@ -203,6 +209,40 @@ def _slide_trend(prs, d: DeckData):
     _style_axes(chart, '#,##0"M"')
 
 
+def _slide_outlook(prs, d: DeckData):
+    s = _blank(prs)
+    _title(s, "Outlook", d.outlook_caption)
+    if not any(f is not None for _, _, f in d.outlook):
+        _card(s, MARGIN, Inches(2.0), W - 2 * MARGIN, Inches(1.4))
+        _text(s, MARGIN + Inches(0.4), Inches(2.0), W - 2 * MARGIN - Inches(0.8), Inches(1.4),
+              "Not enough history for a forecast yet: it needs the same months of last year.",
+              size=18, color=INK, anchor=MSO_ANCHOR.MIDDLE)  # fmt: skip
+        return
+    cd = CategoryChartData()
+    cd.categories = [m for m, _, _ in d.outlook]
+    cd.add_series("Actual", [None if a is None else round(a, 1) for _, a, _ in d.outlook])
+    cd.add_series("Forecast", [None if f is None else round(f, 1) for _, _, f in d.outlook])
+    gf = s.shapes.add_chart(XL_CHART_TYPE.COLUMN_CLUSTERED, MARGIN, Inches(1.75), W - 2 * MARGIN, Inches(3.75), cd)
+    chart = gf.chart
+    chart.has_title = False
+    chart.has_legend = True
+    chart.legend.include_in_layout = False
+    chart.legend.font.size, chart.legend.font.color.rgb = Pt(11), MUTED
+    chart.font.name = BODY
+    plot = chart.plots[0]
+    plot.gap_width, plot.overlap = 40, 100  # one bar per month: actual or forecast
+    plot.has_data_labels = True
+    dl = plot.data_labels
+    dl.number_format, dl.number_format_is_linked = '#,##0"M"', False
+    dl.position = XL_LABEL_POSITION.OUTSIDE_END
+    dl.font.size, dl.font.color.rgb = Pt(10), MUTED
+    for ser, color in zip(chart.series, (FOREST, MOSS), strict=True):
+        ser.format.fill.solid()
+        ser.format.fill.fore_color.rgb = color
+    _style_axes(chart, '#,##0"M"')
+    _bullets(s, MARGIN, Inches(5.65), W - 2 * MARGIN, Inches(1.6), d.outlook_notes[:4], size=13, color=INK, space=4)
+
+
 def _slide_movers(prs, d: DeckData):
     s = _blank(prs)
     _title(s, "What moved revenue", d.movers_caption)
@@ -243,12 +283,16 @@ def _slide_movers(prs, d: DeckData):
 def _slide_alerts(prs, d: DeckData):
     s = _blank(prs)
     _title(
-        s, "Alerts", "Checked every day: products that stopped selling where they usually sell daily, and unusual days"
+        s,
+        "Alerts",
+        "Checked every day: revenue well below last year, products that stopped selling where they "
+        "usually sell daily, and unusual days",
     )
     if not d.alerts:
         _card(s, MARGIN, Inches(2.0), W - 2 * MARGIN, Inches(1.4))
         _text(s, MARGIN + Inches(0.4), Inches(2.0), W - 2 * MARGIN - Inches(0.8), Inches(1.4),
-              "No alerts this week: every regular product is still selling in its usual provinces, and no day was unusual.",
+              "No alerts this week: revenue is in line with last year, every regular product is still selling in its "
+              "usual provinces, and no day was unusual.",
               size=18, color=INK, anchor=MSO_ANCHOR.MIDDLE)  # fmt: skip
         return
     y = Inches(1.9)
@@ -298,7 +342,9 @@ def _slide_about(prs, d: DeckData):
 def build_deck(d: DeckData, path: str | Path) -> Path:
     prs = Presentation()
     prs.slide_width, prs.slide_height = Emu(W), Emu(H)
-    for make in (_slide_title, _slide_glance, _slide_trend, _slide_movers, _slide_alerts, _slide_summary, _slide_about):
+    slides = (_slide_title, _slide_glance, _slide_trend, _slide_outlook, _slide_movers, _slide_alerts, _slide_summary,
+              _slide_about)  # fmt: skip
+    for make in slides:
         make(prs, d)
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)

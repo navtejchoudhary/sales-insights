@@ -33,7 +33,7 @@ DIMENSION_LABELS = {
 
 @dataclass(frozen=True)
 class Insight:
-    kind: str  # headline | mover | stock_out | anomaly
+    kind: str  # headline | mover | revenue_drop | stock_out | anomaly | forecast
     comparison: str  # Comparison.key, or "" for alerts
     dimension: str  # "" for headline
     item: str
@@ -162,6 +162,28 @@ def movers(comp: Comparison, dimension: str, rows: list[tuple[str, float, float]
 # ---------------------------------------------------------------------------
 
 
+REVENUE_DROP_PCT = 10.0  # last 7 days down this much on the same 7 days last year -> alert
+
+
+def revenue_drop(comp: Comparison, current: dict, previous: dict, limit_pct: float = REVENUE_DROP_PCT) -> list[Insight]:
+    """Alert when net revenue of the last 7 days is `limit_pct`% or more below the same 7 days last year.
+
+    Compared with last year (not last week) because sales are seasonal: a fall from a pre-season peak
+    week is normal, a fall against the same week last year is not. The business grows about 20% a year,
+    so -10% is a clear break from the trend. The last few days can still grow by about 3% (late invoices),
+    which is well inside the limit.
+    """
+    cur, prev = current.get("net_revenue"), previous.get("net_revenue")
+    pct = pct_change(cur, prev)
+    if pct is None or pct > -limit_pct:
+        return []
+    text = (
+        f"Revenue drop: net revenue {comp.current.label()} is {fmt_lkr(cur)}, down {abs(pct):.1f}% on the same 7 days "
+        f"last year ({comp.previous.label()}: {fmt_lkr(prev)}). Alert limit: {limit_pct:.0f}% down."
+    )
+    return [Insight("revenue_drop", comp.key, "", "", "net_revenue", cur, prev, cur - prev, pct, 1, text)]
+
+
 def stock_outs(
     daily_units: dict[tuple[str, str], dict[date, float]],
     days: list[date],
@@ -233,5 +255,5 @@ def anomalies(daily_revenue: dict[date, float], recent_days: int = 7, z_limit: f
 
 def rank(insights: list[Insight]) -> list[Insight]:
     """Most important first: alerts, then big moves, then context."""
-    order = {"stock_out": 0, "anomaly": 1, "headline": 2, "mover": 3}
+    order = {"revenue_drop": 0, "stock_out": 1, "anomaly": 2, "headline": 3, "mover": 4, "forecast": 5}
     return sorted(insights, key=lambda i: (i.severity, order.get(i.kind, 9), -(abs(i.change or 0))))
