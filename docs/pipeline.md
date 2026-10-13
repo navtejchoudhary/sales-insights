@@ -25,6 +25,24 @@ uv run python -m sales_insights.semantic.kpis                # KPI views; must m
 Tables live under `lake/<schema>/<table>` locally (path-based Delta) and as `sales_dev.<schema>.<table>` on
 Databricks. Code never uses either directly: it goes through `common/lake.py` (`Lake.read`, `Lake.append`, ...).
 
+## Business areas (`config.yaml` → `areas:`)
+
+The platform runs one pipeline per business area (sales today; inventory next, see
+`docs/multiple_gold_layers.md`). Every area has its own source files, landing folder, file register and
+bronze/silver/gold tables; areas share only the dimension tables.
+
+| | sales (default) | inventory |
+|---|---|---|
+| Local folders | `staging/`, `landing/`, `lake/` | `staging/inventory/`, `landing/inventory/`, `lake/inventory/` |
+| Databricks | catalog `sales_dev`, volumes `sales_dev.raw.*` | catalog `inventory_dev`, volumes `inventory_dev.raw.*` |
+| File rules (prefix → bronze table) | `orders_` → orders, `changes_` → changes, `invoices_` → invoices_history | `movements_` → movements, `stock_` → stock |
+
+- `cfg.for_area("inventory")` gives the same profile with that area's folders, catalog and file rules;
+  `run_pipeline --area <name>` runs an area (default: sales, so existing commands are unchanged).
+- Sales uses the profile settings exactly as before. Config refuses an area that would share the sales
+  catalog, lake folder, staging or landing folder, and refuses unknown settings (typos).
+- Master files always load into `bronze.masters_<name>`, in every area.
+
 ## Bronze (`pipeline/bronze.py`, discovery in `pipeline/landing.py`)
 
 Loads files **exactly as received**: every source column stays text, nothing is cleaned.

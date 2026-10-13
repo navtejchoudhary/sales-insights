@@ -3,6 +3,7 @@
     uv run python -m sales_insights.pipeline.run_pipeline --date 2026-10-06
     uv run python -m sales_insights.pipeline.run_pipeline --from 2026-10-06 --to 2026-10-29             # rehearsal
     uv run python -m sales_insights.pipeline.run_pipeline --from 2026-10-06 --to 2026-10-29 --downstream last
+    uv run python -m sales_insights.pipeline.run_pipeline --date 2026-10-06 --area sales    # the default area
 
 For each business day:
     drip        deliver that day's files to landing/ (missed day, catch-up, Monday redelivery included)
@@ -40,6 +41,9 @@ from sales_insights.generator import masters as m
 from sales_insights.generator import simulate as s
 
 STEPS = ["drip", "bronze", "silver", "gold", "reconcile", "kpis", "answer_key", "insights"]
+# Business areas this command can run (config.yaml `areas:`). Sales is the default; other areas get
+# their steps when their pipeline is built (see docs/multiple_gold_layers.md).
+AREA_STEPS = {"sales": STEPS}
 
 
 class StepFailed(Exception):
@@ -274,6 +278,7 @@ def main(argv: list[str] | None = None) -> None:
                         help="run silver..insights every day (each) or only after the last day (last)")  # fmt: skip
     parser.add_argument("--no-deck", action="store_true", help="do not build the PowerPoint deck")
     parser.add_argument("--profile", help="config profile: local (default, or SALES_PROFILE) or dev (Databricks)")
+    parser.add_argument("--area", default="sales", help="business area (config.yaml areas:), default sales")
     args = parser.parse_args(argv)
     if args.date:
         days = [args.date]
@@ -281,8 +286,10 @@ def main(argv: list[str] | None = None) -> None:
         days = day_range(args.first, args.last)
     else:
         parser.error("give --date, or --from and --to")
+    if args.area not in AREA_STEPS:
+        parser.error(f"area '{args.area}' has no pipeline steps yet; available: {sorted(AREA_STEPS)}")
 
-    cfg = load_config(args.profile)
+    cfg = load_config(args.profile, area=args.area)
     spark = get_spark(cfg, app_name="pipeline")
     out = Path(cfg.path(cfg.output_path))
     lake = Lake(spark, cfg)

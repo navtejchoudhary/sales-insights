@@ -17,6 +17,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 DAILY_PREFIX = "business_date="
+# File-name prefix -> bronze table, for the sales area (the default). Each area's rules live in
+# config.yaml (areas.<name>.file_targets) and reach discover() through cfg.file_targets.
 TARGETS = {"orders": "orders", "changes": "changes", "invoices": "invoices_history"}
 
 
@@ -53,14 +55,16 @@ def read_header(path: Path) -> tuple[str, ...]:
         return tuple(fh.readline().rstrip("\n").split(","))
 
 
-def target_for(folder: str, file_name: str) -> str:
+def target_for(folder: str, file_name: str, targets: dict[str, str] | None = None) -> str:
+    """Bronze table for a landing file: masters/<name>.csv -> masters_<name>, else by file-name prefix."""
+    targets = TARGETS if targets is None else targets
     stem = file_name.rsplit(".", 1)[0]
     if folder == "masters":
         return f"masters_{stem}"
     prefix = stem.split("_", 1)[0]
-    if prefix not in TARGETS:
+    if prefix not in targets:
         raise ValueError(f"Unknown file type: {folder}/{file_name}")
-    return TARGETS[prefix]
+    return targets[prefix]
 
 
 def _manifest_in(folder: Path) -> Path | None:
@@ -68,7 +72,8 @@ def _manifest_in(folder: Path) -> Path | None:
     return found[0] if found else None
 
 
-def discover(landing: Path) -> Discovery:
+def discover(landing: Path, targets: dict[str, str] | None = None) -> Discovery:
+    """Complete folders under landing/ and their manifest-listed files. `targets`: the area's file rules."""
     out = Discovery()
     if not landing.is_dir():
         return out
@@ -94,7 +99,7 @@ def discover(landing: Path) -> Discovery:
                 LandingFile(
                     rel_path=f"{name}/{f}",
                     abs_path=str(p),
-                    target=target_for(name, f),
+                    target=target_for(name, f, targets),
                     business_date=business_date,
                     sha256=sha256_of(p),
                     header=read_header(p),

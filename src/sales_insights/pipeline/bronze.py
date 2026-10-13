@@ -158,7 +158,7 @@ def run_bronze(spark: SparkSession, cfg: Config, landing: Path | None = None, la
     landing = landing or Path(cfg.path(cfg.landing_path))
     run = BronzeRun(run_id=f"bronze-{datetime.now(UTC):%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}")
 
-    found = lz.discover(landing)
+    found = lz.discover(landing, cfg.file_targets)  # the area's file-name rules (sales by default)
     run.incomplete_folders, run.unexpected_files = found.incomplete_folders, found.unexpected_files
     new, changed, seen = lz.classify(found.files, already_loaded(lake))
     run.skipped_already_loaded = len(seen)
