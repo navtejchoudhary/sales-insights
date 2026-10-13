@@ -9,7 +9,7 @@ For each business day:
     bronze      load new files exactly once
     silver      clean, dedupe, quarantine                         fails if a data-quality check fails
     gold        star schema
-    reconcile   gold vs the source system's own totals           fails if any group is off by > 0.1%
+    reconcile   gold vs the source's totals per invoice date      fails if any date is off by > 0.1%
     kpis        KPI SQL must equal the metric view               fails on any difference
     answer_key  Genie answer key + planted-story checks          fails if a story is no longer visible
     insights    findings -> gold.insights (+ deck on the last day)
@@ -146,7 +146,7 @@ def _reconcile(ctx: dict, d: date) -> str:
     if r.failed_groups:
         f = r.failures[0]
         raise StepFailed(
-            f"{r.failed_groups} of {r.groups} groups differ, first: {f['business_date']} {f['file_kind']} {f['invoice_date']}"
+            f"{r.failed_groups} of {r.groups} invoice dates differ from the source, first: {f['invoice_date']}"
         )
     return f"{r.groups} of {r.groups} checks passed"
 

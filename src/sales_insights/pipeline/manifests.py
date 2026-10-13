@@ -1,7 +1,8 @@
 """Turn manifest JSON into rows (plain Python, no Spark).
 
 Two outputs, used to PROVE the pipeline is right rather than hope it is:
-- control totals per (manifest, file kind, invoice_date): what gold must add up to
+- control totals per (manifest, file kind, invoice_date): the net change each delivery makes; summed per
+  invoice date over all deliveries they are what gold must add up to (pipeline/reconcile.py)
 - expected dirt per (manifest, file, dirt type, key): what silver must have caught
 """
 

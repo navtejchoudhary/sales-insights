@@ -61,4 +61,4 @@ Read every column as text (IDs and codes keep leading zeros). Amounts have 2 dec
 
 ## Manifest control totals
 
-`history_manifest.json` and each daily manifest hold line count, document count, revenue and tax: in total, by invoice type and **per `invoice_date`** (`by_invoice_date`). The reconciliation step compares gold against these per-day totals (tolerance 0.1%).
+`history_manifest.json` and each daily manifest hold line count, document count, revenue and tax: in total, by invoice type and **per `invoice_date`** (`by_invoice_date`). They are the **net change** each delivery makes (a re-sent corrected line would count 0 lines and only its revenue difference). The reconciliation step sums them per invoice date over all deliveries and compares gold against that (tolerance 0.1%).

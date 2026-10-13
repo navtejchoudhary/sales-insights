@@ -7,8 +7,11 @@
                                   (ZACR) against earlier invoices (history or live)
         manifest_YYYYMMDD.json    written LAST: rows, SHA-256, control totals, dirt log
 
-Control totals are the TRUE business totals: they exclude injected duplicate copies and
-invalid rows (both listed under "dirt"). Reconciliation checks gold against them exactly.
+Control totals are the TRUE business totals of what this delivery adds, per invoice date: they
+exclude injected duplicate copies and invalid rows (both listed under "dirt"). They are NET CHANGES:
+a source that re-sends a corrected line reports it as 0 extra lines with only its revenue difference
+(this simulator never does; see tests/test_gold.py). Reconciliation sums them per invoice date over
+all deliveries and checks gold against that exactly.
 
 Same seed + same simulation start + same date = byte-identical files, in any run order.
 
