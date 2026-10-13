@@ -68,7 +68,7 @@ landing → bronze → silver → gold → reconciliation → metric views → d
 config/config.yaml        local + dev profiles (paths, catalog, schema names); areas: (sales default, inventory)
 docs/                     story_sheet.md, kpi_definitions.md, decisions.md, day15_checklist.md, setup_mac.md
 src/sales_insights/common/     config.py (load_config), spark.py (get_spark) — ALWAYS use these
-src/sales_insights/generator/  stories.py (settings), masters.py, engine.py (shared per-day sales + per-invoice fates), history.py, simulate.py (daily drops), dirt.py
+src/sales_insights/generator/  stories.py (settings), masters.py, engine.py (shared per-day sales + per-invoice fates), history.py, simulate.py (daily drops), dirt.py, inventory.py (inventory area: locations, stock movements, daily stock; reads sales, never changes them)
 src/sales_insights/drip/       drip.py: staging -> landing copy (manifest last; missing day, Monday redelivery)
 src/sales_insights/pipeline/   bronze.py, silver.py, gold.py, reconcile.py, run_pipeline.py
 src/sales_insights/semantic/    metric_views.py (load/compile/publish metric view), kpis.py (KPI views + agreement check), answer_key.py (Genie benchmarks)

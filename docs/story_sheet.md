@@ -62,6 +62,28 @@ History: 18 months of invoice lines ending **yesterday** (~43,000 lines, `genera
 | Missing day | 18 Oct arrives on 19 Oct | Catch up; nothing lost |
 | New column `sales_rep_id` | From 22 Oct | Schema evolution, no failure |
 
+## Inventory area (`generator/inventory.py`, plan: `docs/multiple_gold_layers.md`)
+
+Stock movements follow the sales above: every invoice line issues goods (601) from the depot of the customer's
+sales office, every cancellation puts them back at the hub (602), every return goes to the returns store (653).
+Receipts, transfers and month-end counts complete the picture. 17 locations: 6 plant stores + 11 depots.
+
+| # | Story | Setting | Where it shows |
+|---|---|---|---|
+| I1 | **Live:** the Colombo and Negombo depots (Western) run out of `MC6001LT` the evening before story 7 starts; the Galle hub still has stock; the last transfer was a month earlier | `STOCKOUT_LAST_TRANSFER_DAYS = 30` | Live days: explains story 7 |
+| I2 | The substitute 4-litre pack leaves the Western depots about 50% faster from 23 Oct | follows story 7 | Live days |
+| I3 | Spare kit `S-10000576` over-bought at the Kandy store (more than 120 days of cover) | one receipt on 3 Aug 2026, 200 days of cover | History |
+| I4 | Returns pile up in the returns store, `HGL400ML` fastest | follows story 6 | History |
+
+| Dirt (daily files) | Rate | Silver must |
+|---|---|---|
+| Late movement (posted D, delivered D+1/D+2) | 2% of live movements | Reconcile per posting date across deliveries |
+| Duplicate movement line | 0.3% | Dedupe on `material_document` + `material_document_item` |
+| Unit text variant (`CS`, `case`, `BTL`, `kg`) | 2% | Base unit from the product master |
+| Unknown location `2010-9999` | 0.1% | Quarantine |
+| Blank movement type | 0.1% | Quarantine |
+| Negative closing stock | 0.1% of stock rows | Quarantine |
+
 ## Open decisions
 
 - [ ] Sponsor approves the business setting and stories
