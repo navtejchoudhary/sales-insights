@@ -38,6 +38,7 @@ landing → bronze → silver → gold → reconciliation → metric views → d
 - reconciliation: two levels. Bronze checks every file's row count + checksum against its manifest; `reconcile.py` checks gold per INVOICE DATE against the sum of all deliveries' totals for that date (`ops.manifest_totals`, net changes, already excluding injected dirt), so a correction arriving in a later delivery still reconciles; lines/invoices/revenue within 0.1%; results to `ops.reconciliation` + `ops.dq_results`; CLI exits 1 on FAIL
 - semantic layer: every KPI defined ONCE in `sql/metric_views/sales_metrics.yaml` (metric view YAML 1.1); `sql/kpis/*.sql` is the readable twin; `semantic/kpis.py` proves both agree (locally the metric view is compiled to plain SQL by `semantic/metric_views.py`). Change a formula in BOTH places. See `docs/kpi_definitions.md`
 - insights: `insights/job.py` = like-for-like periods (`periods.py`, never a part month vs a whole month) + rules in plain Python (`analysis.py`: headline, movers, revenue drop, stock-outs, unusual days) + seasonal forecast (`forecast.py`: same month last year x fiscal-year-to-date growth -> `gold.forecast`) over small Spark aggregates (`data.py`) -> `gold.insights`; Databricks SQL alerts (`bundle/resources/alerts.yml`) email on revenue drop / stock-out findings; narrative = template sentences, optionally reworded by `ai_query` on Databricks with a number check (`narrative.py`); weekly deck `deck/deck.py` (python-pptx, native charts) -> `output/`. See `docs/insights.md`
+- business areas: one pipeline and catalog per area (`config.yaml` areas:, `cfg.for_area()`, `run_pipeline --area`); sales is the default and must stay unchanged; plan in `docs/multiple_gold_layers.md`
 - orchestration: `pipeline/run_pipeline.py` runs drip → bronze → silver → gold → reconcile → kpis → answer_key → insights per day, stopping at the first failed check (`--downstream last` for fast catch-up). Databricks: `databricks.yml` (repo root) + `bundle/resources/jobs.yml` (daily job 06:30 Asia/Colombo, backfill, publish_semantic) running `bundle/run.py` on serverless; first deployment `docs/day15_runbook.md`
 - `ops.processed_files` (bronze's file log) works on both Mac and Databricks volumes; Auto Loader is optional
 
@@ -64,7 +65,7 @@ landing → bronze → silver → gold → reconciliation → metric views → d
 
 ## Folder layout
 ```
-config/config.yaml        local + dev profiles (paths, catalog, schema names)
+config/config.yaml        local + dev profiles (paths, catalog, schema names); areas: (sales default, inventory)
 docs/                     story_sheet.md, kpi_definitions.md, decisions.md, day15_checklist.md, setup_mac.md
 src/sales_insights/common/     config.py (load_config), spark.py (get_spark) — ALWAYS use these
 src/sales_insights/generator/  stories.py (settings), masters.py, engine.py (shared per-day sales + per-invoice fates), history.py, simulate.py (daily drops), dirt.py

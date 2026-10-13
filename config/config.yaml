@@ -1,5 +1,5 @@
-# One config file, two profiles. Code never hardcodes paths or catalog names.
-# Choose the profile with the env var SALES_PROFILE (default: local).
+# One config file, two profiles, one or more business areas. Code never hardcodes paths or catalog names.
+# Choose the profile with the env var SALES_PROFILE (default: local); the area with cfg.for_area() (default: sales).
 
 profiles:
   local:
@@ -29,6 +29,31 @@ profiles:
       ops: ops
     processed_files_log: null        # Auto Loader keeps its own checkpoint
     output_path: /Volumes/sales_dev/raw/output
+
+# Business areas (see docs/multiple_gold_layers.md). Each area has its own pipeline: its own source
+# files, landing folder, file register and bronze/silver/gold tables (own catalog on Databricks).
+# - sales is the DEFAULT area and uses the profile settings above unchanged.
+# - Another area lists, per profile, only the settings that differ (staging_path, landing_path,
+#   lake_path, catalog, schemas, processed_files_log, output_path).
+# - file_targets: which bronze table a landing file goes to, by file-name prefix
+#   (orders_20261013.csv -> bronze.orders). Master files always go to bronze.masters_<name>.
+# Code picks an area with cfg.for_area("inventory") or `run_pipeline --area inventory`.
+areas:
+  sales:
+    file_targets: {orders: orders, changes: changes, invoices: invoices_history}
+  inventory:
+    file_targets: {movements: movements, stock: stock}
+    local:
+      staging_path: staging/inventory
+      landing_path: landing/inventory
+      lake_path: lake/inventory
+      processed_files_log: lake/inventory/ops/_processed_files
+      output_path: output/inventory
+    dev:
+      staging_path: /Volumes/inventory_dev/raw/staging
+      landing_path: /Volumes/inventory_dev/raw/landing
+      catalog: inventory_dev
+      output_path: /Volumes/inventory_dev/raw/output
 
 # Business settings shared by all profiles
 business:
