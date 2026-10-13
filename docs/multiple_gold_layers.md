@@ -1,7 +1,7 @@
 # Multiple Gold Layers: Plan
 
 **Project:** Sales Insights MVP on Azure Databricks · **Owner:** Navtej · **Built for:** Anil
-**Written:** Tue 13 Oct 2026 · **Status:** APPROVED 13 Oct (defaults); build started with PR A (area support)
+**Written:** Tue 13 Oct 2026 · **Status:** APPROVED 13 Oct (defaults). Built: PR A area support (#24), PR B inventory generator (#25), PR C inventory pipeline (local)
 **Demo:** 29–30 Oct 2026 · **Azure credit ends:** 5 Nov 2026
 
 > **What this plan does:** it adds more business areas (inventory now, finance later) next to the sales pipeline we already run. Each area gets its own bronze → silver → gold, all areas share one set of dimensions, and Genie and the dashboard can answer questions across areas.

@@ -4,6 +4,7 @@
     uv run python -m sales_insights.pipeline.run_pipeline --from 2026-10-06 --to 2026-10-29             # rehearsal
     uv run python -m sales_insights.pipeline.run_pipeline --from 2026-10-06 --to 2026-10-29 --downstream last
     uv run python -m sales_insights.pipeline.run_pipeline --date 2026-10-06 --area sales    # the default area
+    uv run python -m sales_insights.pipeline.run_pipeline --date 2026-10-06 --area inventory   # after sales
 
 For each business day:
     drip        deliver that day's files to landing/ (missed day, catch-up, Monday redelivery included)
@@ -14,6 +15,10 @@ For each business day:
     kpis        KPI SQL must equal the metric view               fails on any difference
     answer_key  Genie answer key + planted-story checks          fails if a story is no longer visible
     insights    findings -> gold.insights (+ deck on the last day)
+
+Inventory area (--area inventory): drip, bronze (same code, inventory files), silver (inventory_silver),
+gold (inventory_gold), checks (inventory_checks: source totals, stock roll-forward, cross-check with sales).
+It reads the sales gold, so run sales first for the same day.
 
 `--downstream last` runs only drip + bronze for each day and the rest once at the end (much faster;
 the final numbers are identical because silver and gold are full rebuilds). One line per step is printed,
@@ -37,13 +42,15 @@ from sales_insights.common.config import Config
 from sales_insights.common.lake import Lake
 from sales_insights.drip import drip
 from sales_insights.generator import history as h
+from sales_insights.generator import inventory as inv
 from sales_insights.generator import masters as m
 from sales_insights.generator import simulate as s
 
 STEPS = ["drip", "bronze", "silver", "gold", "reconcile", "kpis", "answer_key", "insights"]
-# Business areas this command can run (config.yaml `areas:`). Sales is the default; other areas get
-# their steps when their pipeline is built (see docs/multiple_gold_layers.md).
-AREA_STEPS = {"sales": STEPS}
+INVENTORY_STEPS = ["drip", "bronze", "silver", "gold", "checks"]
+# Business areas this command can run (config.yaml `areas:`). Sales is the default and runs exactly as before.
+# Inventory reads the sales gold (shared dimensions, cross-area check), so run sales first each day.
+AREA_STEPS = {"sales": STEPS, "inventory": INVENTORY_STEPS}
 
 
 class StepFailed(Exception):
@@ -82,6 +89,8 @@ def day_range(first: date, last: date) -> list[date]:
 
 def ensure_source(cfg: Config, staging: Path, landing: Path, until: date) -> list[str]:
     """Generate any missing source files up to `until` and do the one-time initial delivery. Idempotent."""
+    if cfg.area == "inventory":
+        return ensure_inventory_source(cfg, staging, landing, until)
     seed = int(cfg.business["random_seed"])
     start = date.fromisoformat(cfg.business["simulation_start"])
     done = []
@@ -103,6 +112,34 @@ def ensure_source(cfg: Config, staging: Path, landing: Path, until: date) -> lis
     if not (landing / "masters").exists():
         drip.deliver_initial(staging, landing)
         done.append("initial delivery of master data and history")
+    return done
+
+
+def ensure_inventory_source(cfg: Config, staging: Path, landing: Path, until: date) -> list[str]:
+    """Inventory area: locations master, 18-month history and missing daily drops, then the initial delivery."""
+    seed = int(cfg.business["random_seed"])
+    start = date.fromisoformat(cfg.business["simulation_start"])
+    done = []
+    sim = None
+    if not (staging / "masters" / "masters_manifest.json").exists():
+        sim = sim or inv.InventorySimulator(seed, start)
+        inv.write_locations(sim.locations, staging, seed, start)
+        done.append("generated the locations master")
+    if not (staging / "history" / "history_manifest.json").exists():
+        sim = sim or inv.InventorySimulator(seed, start)
+        inv.write_history(*sim.build_history(), staging, seed, start)
+        done.append("generated 18-month stock history")
+    missing = [
+        d for d in day_range(start, until) if not (staging / inv.folder_name(d) / f"manifest_{d:%Y%m%d}.json").exists()
+    ]
+    if missing:
+        sim = sim or inv.InventorySimulator(seed, start)
+        for d in missing:
+            inv.write_day(sim.build_day(d), staging, seed, start)
+        done.append(f"generated {len(missing)} daily stock drop(s)")
+    if not (landing / "masters").exists():
+        drip.deliver_initial(staging, landing)
+        done.append("initial delivery of the locations master and stock history")
     return done
 
 
@@ -198,13 +235,52 @@ STEP_FUNCS: dict[str, Callable[[dict, date], str]] = {
 }  # fmt: skip
 
 
+def _inventory_silver(ctx: dict, d: date) -> str:
+    from sales_insights.pipeline.inventory_silver import run_inventory_silver
+
+    r = run_inventory_silver(ctx["spark"], ctx["cfg"], lake=ctx["lake"], sales_lake=ctx["sales_lake"])
+    if r.dq_failures:
+        raise StepFailed(f"{r.dq_failures} data-quality failure(s), see ops.dq_results")
+    return (
+        f"{r.rows['movements']:,} movements, {r.rows['stock']:,} stock rows, {r.duplicates_removed} duplicates "
+        f"removed, {r.quarantined} quarantined, {r.units_fixed} units fixed"
+    )
+
+
+def _inventory_gold(ctx: dict, d: date) -> str:
+    from sales_insights.pipeline.inventory_gold import run_inventory_gold
+
+    r = run_inventory_gold(ctx["spark"], ctx["cfg"], lake=ctx["lake"], sales_lake=ctx["sales_lake"])
+    return (
+        f"fact_stock_daily {r.rows['fact_stock_daily']:,} rows, fact_stock_movements {r.rows['fact_stock_movements']:,}"
+    )
+
+
+def _inventory_checks(ctx: dict, d: date) -> str:
+    from sales_insights.pipeline.inventory_checks import run_inventory_checks
+
+    r = run_inventory_checks(ctx["spark"], ctx["cfg"], lake=ctx["lake"], sales_lake=ctx["sales_lake"])
+    summary = ", ".join(f"{x.name} {x.groups - x.failed}/{x.groups}" for x in r.results.values())
+    if not r.ok:
+        bad = next(x for x in r.results.values() if not x.ok)
+        raise StepFailed(f"{summary}; first failure in {bad.name}: {bad.first_failures[:1]}")
+    return f"{summary} passed"
+
+
+INVENTORY_STEP_FUNCS: dict[str, Callable[[dict, date], str]] = {
+    "drip": _drip, "bronze": _bronze, "silver": _inventory_silver, "gold": _inventory_gold,
+    "checks": _inventory_checks,
+}  # fmt: skip
+AREA_STEP_FUNCS = {"sales": STEP_FUNCS, "inventory": INVENTORY_STEP_FUNCS}
+
+
 def run_day(ctx: dict, d: date, steps: list[str], echo: Callable[[str], None] = print) -> DayResult:
     result = DayResult(d)
     ctx["alerts"] = []
     for step in steps:
         t0 = time.perf_counter()
         try:
-            detail, ok = STEP_FUNCS[step](ctx, d), True
+            detail, ok = ctx.get("funcs", STEP_FUNCS)[step](ctx, d), True
         except StepFailed as e:
             detail, ok = f"FAILED: {e}", False
         except Exception as e:  # noqa: BLE001 - report any crash as a failed step, then stop the run
@@ -233,16 +309,20 @@ def run_range(
     strict_stories: bool = True,
     write_answer_key: bool = True,
     echo: Callable[[str], None] = print,
+    sales_lake: Lake | None = None,
 ) -> list[DayResult]:
     for note in ensure_source(cfg, staging, landing, max(days)):
         echo(f"  {note}")
+    area_steps = AREA_STEPS[cfg.area]
     ctx = {
         "spark": spark, "cfg": cfg, "lake": lake, "staging": staging, "landing": landing, "deck_dir": deck_dir,
         "last_day": max(days), "strict_stories": strict_stories, "write_answer_key": write_answer_key, "alerts": [],
+        "funcs": AREA_STEP_FUNCS[cfg.area],
+        "sales_lake": sales_lake or (Lake(spark, cfg.for_area("sales")) if cfg.area != "sales" else lake),
     }  # fmt: skip
     results = []
     for d in days:
-        steps = STEPS if downstream == "each" or d == max(days) else STEPS[:2]
+        steps = area_steps if downstream == "each" or d == max(days) else area_steps[:2]
         echo(f"  {d:%a %d %b %Y}")
         r = run_day(ctx, d, steps, echo)
         results.append(r)
@@ -252,16 +332,16 @@ def run_range(
     return results
 
 
-def write_report(results: list[DayResult], path: Path) -> Path:
+def write_report(results: list[DayResult], path: Path, steps: list[str] = STEPS) -> Path:
     path.parent.mkdir(parents=True, exist_ok=True)
     with path.open("w", newline="", encoding="utf-8") as fh:
         w = csv.writer(fh)
-        w.writerow(["business_date", "ok", "total_seconds", *[f"{s}_detail" for s in STEPS], "alerts"])
+        w.writerow(["business_date", "ok", "total_seconds", *[f"{s}_detail" for s in steps], "alerts"])
         for r in results:
             by = {st.step: st for st in r.steps}
             w.writerow(
                 [r.business_date, r.ok, round(sum(st.seconds for st in r.steps), 1),
-                 *[by[s].detail if s in by else "" for s in STEPS], " | ".join(r.alerts)]
+                 *[by[s].detail if s in by else "" for s in steps], " | ".join(r.alerts)]
             )  # fmt: skip
     return path
 
@@ -299,7 +379,7 @@ def main(argv: list[str] | None = None) -> None:
         staging=Path(cfg.path(cfg.staging_path)), landing=Path(cfg.path(cfg.landing_path)), lake=lake,
         downstream=args.downstream, deck_dir=None if args.no_deck else out, write_answer_key=lake.by_path,
     )  # fmt: skip
-    report = write_report(results, out / f"pipeline_report_{days[0]}_{days[-1]}.csv")
+    report = write_report(results, out / f"pipeline_report_{days[0]}_{days[-1]}.csv", AREA_STEPS[cfg.area])
     ok = results and results[-1].ok and len(results) == len(days)
     print(f"  {'DONE' if ok else 'FAILED'}: {len(results)} of {len(days)} day(s) in {time.perf_counter() - t0:,.0f}s")
     print(f"  report: {report}")

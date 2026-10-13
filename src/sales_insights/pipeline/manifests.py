@@ -59,3 +59,50 @@ def parse_manifest(manifest_path: str, content: str) -> tuple[list[tuple], list[
         keys = d.get("keys") or d.get("customer_ids") or d.get("product_ids") or []
         dirt += [(manifest_path, kind, business_date, file, d["dirt"], str(k)) for k in keys]
     return totals, dirt
+
+
+# ---------------------------------------------------------------------------
+# Inventory area (generator/inventory.py manifests)
+# ---------------------------------------------------------------------------
+
+INVENTORY_TOTALS_COLUMNS = [
+    "manifest_path",
+    "kind",
+    "business_date",
+    "file_kind",  # movements | stock
+    "data_date",  # posting_date (movements) or snapshot_date (stock)
+    "lines",
+    "quantity",  # movements: signed quantity; stock: unrestricted quantity
+    "in_transit_quantity",  # stock only (0 for movements)
+]
+
+
+def parse_inventory_manifest(manifest_path: str, content: str) -> tuple[list[tuple], list[tuple]]:
+    """Control totals per (manifest, file kind, data date) and expected dirt, from an inventory manifest.
+
+    Like the sales totals they are NET of planted dirt (no invalid rows, no duplicate copies), and a late
+    movement is counted in the delivery it arrives in, under its own posting date.
+    """
+    m = json.loads(content)
+    kind, business_date = m.get("kind"), m.get("business_date")
+    ct = m.get("control_totals", {})
+    totals: list[tuple] = []
+    for date_, t in sorted(ct.get("movements", {}).get("by_posting_date", {}).items()):
+        totals.append(
+            (manifest_path, kind, business_date, "movements", date_, int(t["lines"]), float(t["quantity"]), 0.0)
+        )
+    for date_, t in sorted(ct.get("stock", {}).get("by_snapshot_date", {}).items()):
+        totals.append(
+            (
+                manifest_path,
+                kind,
+                business_date,
+                "stock",
+                date_,
+                int(t["rows"]),
+                float(t["unrestricted_qty"]),
+                float(t["in_transit_qty"]),
+            )
+        )
+    _, dirt = parse_manifest(manifest_path, content)
+    return totals, dirt
