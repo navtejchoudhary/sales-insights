@@ -45,6 +45,28 @@ STOCKOUT_FROM = date(2026, 10, 23)
 
 
 # ---------------------------------------------------------------------------
+# Inventory area stories (generator/inventory.py; plan: docs/multiple_gold_layers.md section 4.4)
+# Stock movements follow the sales above, so these stories explain the sales stories.
+# ---------------------------------------------------------------------------
+
+# I1: the depots of STOCKOUT_PROVINCE run out of the hero product exactly when story 7 starts,
+# while the central hub (plant 2010, Galle) still holds stock. Their last transfer is sized to last
+# until the day before STOCKOUT_FROM; the next transfer is held back.
+STOCKOUT_LAST_TRANSFER_DAYS = 30  # the last transfer is shipped this many days before STOCKOUT_FROM
+
+# I2: the substitute pack (engine.STOCKOUT_SUBSTITUTE_ID) leaves the same depots faster from STOCKOUT_FROM.
+# No extra setting: it follows the sales story.
+
+# I3: one slow building-solutions spare kit is over-bought: a single large receipt at the Kandy plant
+OVERSTOCK_PRODUCT_ID = "S-10000576"
+OVERSTOCK_RECEIPT_DATE = date(2026, 8, 3)
+OVERSTOCK_DAYS_OF_COVER = 200
+
+# I4: returned goods pile up in the returns store; the returns-spike product (story 6) grows fastest.
+# No extra setting: it follows the sales story.
+
+
+# ---------------------------------------------------------------------------
 # Delivery and schema dirt in the daily feed (tests the pipeline, not the business)
 # ---------------------------------------------------------------------------
 

@@ -153,79 +153,84 @@ shared_dev         (later: the shared dimensions move here)
 
 ## 4. Inventory area: detailed design
 
-### 4.1 Where stock is held (new master: locations)
+### 4.1 Where stock is held (new master: locations) — built in PR B
 
-The stock-out story is **per province** (MC6001LT in Western), but the masters have only 2 plants. In reality, distributors keep stock in **regional depots**. So:
+The stock-out story is **per province** (MC6001LT in Western), but the masters have only 2 plants. In reality, distributors keep stock in **regional depots**; in SAP a depot is often a storage location of the main plant. So:
 
-| Location type | Codes | Source of truth |
+| Location | Codes | Holds |
 |---|---|---|
-| Plant stores | `2010` Galle Industrial (stores 0010 Main, 0030 Finished Goods, 0032 Returns, 0090 Distribution Hub), `4020` Kandy Production Facility (0010, 0030) | Existing `PLANTS`, `STORAGE_LOCATIONS` in `masters.py` |
-| Depots | One per sales office (11): C001 Colombo, FN04 Negombo, K001 Kandy… | Existing `SALES_OFFICES`. Each depot is supplied by one plant. |
+| Distribution hub | `2010-0090` (Galle Industrial, Distribution Hub) | All crop products; supplies every depot |
+| Raw-material store | `2010-0010` (Main Store) | Raw materials (ZROH), sold directly |
+| Returns store | `2010-0032` (Returns Store) | Customer returns of crop products and raw materials (they stay there) |
+| Building-solutions store | `4020-0010` (Kandy Production Facility, Main Store) | Company 4010 spare kits and switches (services hold no stock) |
+| Other plant stores | `2010-0030`, `4020-0030` | Listed in the master, no stock |
+| Depots (11) | `2010-8001` … `2010-8011`, one per sales office (8001 Colombo, 8002 Negombo, …) | Crop products for the customers of that sales office |
 
-New master `locations` (location_id, location_type, plant_code, storage_location_code, sales_office_code, province, supplying_plant_code). It is built once from those fixed lists, without random numbers, and written to the **inventory** area's own `masters/` folder (`masters/locations.csv`), so the sales master files stay byte-identical.
+Master `locations.csv`: location_id, location_name, location_type (plant_store / depot), company_code, plant, storage_location, sales_office, region, province, supplying_location_id, last_updated_timestamp. Built from the fixed lists in `masters.py` without random numbers, written to the inventory area's own `masters/` folder, so the sales master files stay byte-identical.
 
 ### 4.2 Source files (look like an SAP MM extract)
 
-Daily drop, the same pattern as sales:
-
 ```
-inventory staging/business_date=YYYY-MM-DD/
-  movements_YYYYMMDD.csv   stock movements posted that day (MSEG-like)
-  stock_YYYYMMDD.csv       closing stock per location × product (end of day)
-  manifest_YYYYMMDD.json   WRITTEN LAST: rows, SHA-256, control totals, dirt list
-history/
-  movements_YYYYMM.csv, stock_YYYYMM.csv, history_manifest.json   (18 months)
+staging/inventory/                                (Databricks: /Volumes/inventory_dev/raw/staging)
+  masters/locations.csv, masters_manifest.json
+  history/movements_YYYYMM.csv, stock_YYYYMM.csv, history_manifest.json     (Apr 2025 - Sep 2026)
+  business_date=YYYY-MM-DD/
+    movements_YYYYMMDD.csv   stock movements delivered that day
+    stock_YYYYMMDD.csv       closing stock of that day, every location x product (about 414 rows)
+    manifest_YYYYMMDD.json   WRITTEN LAST: rows, SHA-256, control totals, dirt list
 ```
 
-**Movement types** (SAP MM numbering, kept as codes like the sales extract):
+**Movement types** (SAP MM numbering):
 
 | Code | Meaning | Stock effect | Linked to |
 |---|---|---|---|
-| 101 | Goods receipt at plant (production / purchase) | + plant | (random, seeded per date) |
-| 301 | Transfer plant → depot | − plant, + depot | Replenishment rule |
-| 601 | Goods issue to customer | − depot | **Sales invoice lines (ZAOR, ZFOC)** |
-| 602 | Reversal of goods issue | + depot | **Sales cancellations (S1)** |
-| 653 | Customer return into stock | + returns store / depot | **Sales returns (ZARE)** |
-| 701 / 702 | Stock count difference (gain / loss) | ± | Monthly stock count |
+| 561 | Opening balance | + every position, first history day only | Sized on the first 4 weeks of issues |
+| 101 | Goods receipt | + plant store | Min/max rule; lead time 4–8 days (seeded per date) |
+| 313 / 315 | Stock transfer hub → depot: removal / placement | − hub, in transit, then + depot | Min/max rule; lead time 1–3 days (seeded per date) |
+| 601 | Goods issue for delivery | − depot (raw / building store for those products) | **Every invoice line (ZAOR, ZFOC)**, on its invoice date |
+| 602 | Reversal of goods issue | + hub (raw / building store) | **Every cancellation (S1)** |
+| 653 | Customer return | + returns store (building store for building products) | **Every return (ZARE)** |
+| 701 / 702 | Month-end count difference: gain / loss | ± a few positions | Seeded per month-end |
 
-Price corrections (ZACR) move no goods.
+Price corrections (ZACR) move no goods. Each sales-driven movement carries the invoice line it belongs to (`reference_invoice_number` + `reference_invoice_item`) and the customer's `sales_office`.
 
-**Main columns.** Movements: `material_document`, `material_document_item`, `movement_type`, `posting_date`, `location_id`, `plant_code`, `storage_location_code`, `material_id`, `quantity`, `unit`, `reference_invoice_number`, `reference_invoice_item`, `last_updated_timestamp`. Stock: `snapshot_date`, `location_id`, `material_id`, `unrestricted_qty`, `in_transit_qty`, `unit`.
+**Columns.** Movements: material_document, material_document_item, posting_date, movement_type, movement_type_text, debit_credit_indicator (S in / H out), company_code, plant, storage_location, location_id, product_id, quantity (signed), base_unit, sales_office, reference_invoice_number, reference_invoice_item, counterpart_location_id, last_updated_timestamp. Stock: snapshot_date, company_code, plant, storage_location, location_id, product_id, unrestricted_qty, in_transit_qty, base_unit, last_updated_timestamp. `product_id` is the same key as in sales (joins `dim_product`).
 
-### 4.3 Generator: how stock stays consistent with sales (the hardest part)
+### 4.3 Generator: how stock stays consistent with sales (`generator/inventory.py`)
 
-Stock today = yesterday's stock + receipts − issues, so each day depends on all days before it. Our rule is **"any day can be rebuilt alone and byte-identical; never a shared random stream across days"**. We keep that rule like this:
+Stock today = yesterday's stock + movements, so each day depends on all days before it. Our rule is **"any day can be rebuilt alone and byte-identical; never a shared random stream across days"**. We keep it like this:
 
-1. **Issues (601/602/653) have no randomness.** They are calculated from the sales the generator already fixes for each day (`engine.sales_for_day` + invoice fates). Same day → same sales → same issues.
-2. **Receipts and transfers (101/301) use a seed per date:** `seed = f(base_seed, date, "inventory")`, the same principle as `engine.py`.
-3. **Stock on date D** = opening stock on the first history day + the sum of all movements up to D. Rebuilding day D means replaying from the start. It is deterministic and cheap: about 560 days × about 700 positions in NumPy, under a second.
-4. **Replenishment rule (min/max):** when depot stock falls below its reorder point (about 7 days of average issues), a 301 transfer arrives 2 days later, sized up to about 21 days of cover.
-5. **Order with sales:** inventory is generated **after** sales for the same date and only **reads** sales. The sales generator is not changed.
+1. **Sales-driven movements (601/602/653) have no randomness:** they come from the sales the engine already fixes for each day (`engine.sales_for_day` + invoice fates).
+2. **Everything random is seeded by what it is about:** receipts and lead times by date (`[seed, 21, day]`), counts by month-end (`[seed, 22, day]`), late delivery by document + item (`[seed, 24, doc, item]`), daily dirt by date (`[seed, 29, day]`).
+3. **Stock on day D** is replayed from the first history day (about 20 seconds for the whole window). Deterministic, so any day is byte-identical however it was built (tested).
+4. **Replenishment (min/max with safety stock):** a depot orders from the hub when stock + in transit falls below 7 days of average issues + its largest day of the last 4 weeks, up to 21 days + that largest day; the hub and plant stores order from outside at 14 / 42 days (the hub's safety stock covers every depot's largest day). Stock never goes negative: if a big order would empty a position, an emergency transfer or receipt arrives first (about 13% of transfers, mostly slow or new products).
+5. **The sales generator is not changed;** inventory only reads it (a test proves the sales files stay byte-identical).
 
-All inventory story settings live in `generator/stories.py`, as CLAUDE.md requires.
-
-### 4.4 Planted stories (each gets a story check in `answer_key`)
+### 4.4 Planted stories (settings in `generator/stories.py`, each covered by a test; story checks in `answer_key` come with PR D)
 
 | ID | Story | What the data shows | Ties to the sales story |
 |---|---|---|---|
-| I1 | **Western depot stock-out** | MC6001LT stock = 0 at depots C001 and FN04 from **23 Oct**. Galle plant still holds stock. The 301 transfer due on 21 Oct is held back ("transfer delayed"). | Sales story 7: MC6001LT stops selling in Western from 23 Oct; 40% of buyers switch to MC6004LT |
-| I2 | Substitute drains faster | MC6004LT depot stock in Western falls about 40% faster from 23 Oct | Substitution share 0.4 |
-| I3 | Overstock | One slow product at Kandy (4020) has more than 120 days of cover → "money tied up in stock" | (new) |
-| I4 | New product ramp-up | HEX1LTR (first sale 17 Jun 2026): short depot stock-outs in July, because supply was built too slowly | Sales story 5 |
-| I5 | Returns pile up | HGL400ML stock in Returns store 0032 grows from July | Sales story 6 (returns spike) |
+| I1 | **Western depot stock-out** | The last transfer of MC6001LT to the Colombo (`2010-8001`) and Negombo (`2010-8002`) depots ships on 23 Sep, sized to last exactly until 22 Oct; the next transfer is held back. Both depots hold **0 from the evening of 22 Oct**; the hub in Galle still holds about 6,000 cases | Sales story 7: MC6001LT stops selling in Western from 23 Oct; 40% of buyers switch to the 4-litre pack |
+| I2 | Substitute leaves faster | MC6004LT issues from the Western depots rise from about 10 to 15 a day from 23 Oct | Substitution share 0.4 |
+| I3 | Overstock | One large receipt of spare kit S-10000576 at the Kandy store on 3 Aug 2026 (200 days of cover): more than 120 days of cover in October | (new) |
+| I4 | Returns pile up | HGL400ML in the returns store grows more than 3x between 30 Jun and 30 Sep, far faster than other products | Sales story 6 (returns spike) |
 
-**Demo question for Genie:** *"Why did MC6001LT sales stop in Western?"* → expected answer: "Western depots C001 and FN04 have had zero stock since 23 Oct; Galle plant holds N cases; the last transfer arrived on 18 Oct; buyers moved to the 4-litre pack."
+The earlier idea "new product ramp-up with depot stock-outs" was dropped: sales are fixed, so a real stock-out while sales continue would mean negative stock.
 
-### 4.5 Planted dirt (each logged in the manifest and covered by a passing unit test)
+**Demo question for Genie:** *"Why did MC6001LT sales stop in Western?"* → expected answer: "The Colombo and Negombo depots have had zero stock since 22 Oct; the Galle hub still holds about 6,000 cases; the last transfer was on 23 Sep; buyers moved to the 4-litre pack."
+
+### 4.5 Planted dirt (daily files only; each logged in the manifest and covered by a test)
 
 | Dirt | Rate | Silver must |
 |---|---|---|
-| Duplicate movement line | about 0.3% | Remove the duplicate (key: `material_document` + `material_document_item`, newest load) |
-| Unit text variants (`CS`, `CA`, `case`) | about 2% | Normalise to the product's base unit |
-| Unknown location code | about 0.1% | Quarantine: "location not in master" |
-| Negative closing stock | about 0.1% | Quarantine: "negative stock not allowed" |
-| Blank movement type | about 0.1% | Quarantine: "movement type missing" |
-| Late movements file (movements dated D arrive in delivery D+1) | 1 day in the window | Reconcile per **posting date** across deliveries (same approach as sales since 13 Oct) |
+| Late movement (posted on D, delivered on D+1 or D+2) | 2% of live movements | Load normally; reconcile per **posting date** across deliveries (same approach as sales since 13 Oct) |
+| Duplicate movement line | 0.3% | Dedupe on `material_document` + `material_document_item` |
+| Unit text variant (`CS`, `case`, `BTL`, `kg`…) | 2% | Replace with the product's base unit from the product master |
+| Unknown location (`2010-9999`) | 0.1% | Quarantine: location not in the master |
+| Blank movement type | 0.1% | Quarantine: movement type missing |
+| Negative closing stock | 0.1% of stock rows | Quarantine: negative stock is not allowed |
+
+Control totals in each manifest are the true totals: invalid rows and duplicate copies are excluded, as for sales.
 
 ### 4.6 Silver and gold
 
@@ -356,13 +361,12 @@ flowchart TB
 | `common/lake.py` | No change: `Lake(spark, cfg.for_area("inventory"))` | — |
 | `pipeline/landing.py`, `bronze.py` | `TARGETS` becomes a setting per area | Small |
 | `pipeline/run_pipeline.py`, `bundle/run.py` | `--area` option (default sales), area step lists | Small |
-| `generator/inventory.py` (new) | `locations` master (from the fixed plant, storage-location and sales-office lists; sales masters unchanged) | Small |
-| `generator/stories.py` | Inventory story settings (I1–I5) | Small |
-| `generator/inventory.py` (new) | Movements + stock generator (section 4.3) | **New** |
+| `generator/stories.py` | Inventory story settings (I1–I4) | Small |
+| `generator/inventory.py` (new, PR B) | Locations master, movements + stock generator (section 4.3) | **New** |
 | `pipeline/inventory_silver.py`, `inventory_gold.py`, `inventory_gold_model.py` (new) | Area rules, using the shared helpers | **New** |
 | `pipeline/cross_checks.py` (new) | Section 7 | New |
 | `sql/metric_views/inventory_metrics.yaml`, `sales_and_stock.yaml` + `sql/kpis/inventory_*.sql` twins | KPIs defined once + readable twin + agreement check | New |
-| `semantic/kpis.py`, `answer_key.py` | Include the new metric views and story checks I1–I5 | Small |
+| `semantic/kpis.py`, `answer_key.py` | Include the new metric views and story checks I1–I4 | Small |
 | `genie/inventory/`, `genie/sales_and_stock/` | `space.yaml`, `benchmarks.yaml`, README | New |
 | `insights/data.py`, `analysis.py`, `job.py`, `deck/deck.py` | Stock rules + "Stock" slide | Medium |
 | `bundle/resources/jobs.yml` | Multiple tasks with run-if conditions; inventory backfill job | **Medium (touches the running job: done last)** |
@@ -387,7 +391,7 @@ CREATE VOLUME IF NOT EXISTS inventory_dev.raw.landing;
 | Level | Tests |
 |---|---|
 | Existing | All 202 tests must still pass on every PR (sales unchanged) |
-| Generator | Same date gives byte-identical files in any order; stock roll-forward holds; issues match sales exactly; stories I1–I5 present; every dirt type injected and logged |
+| Generator | Same date gives byte-identical files in any order; stock roll-forward holds; issues match sales exactly; stories I1–I4 present; every dirt type injected and logged |
 | Silver | **One passing test per dirt type** (CLAUDE.md rule), using small in-test fixtures |
 | Gold | Grain unique; days of cover correct; not-additive stock measure gives the last-day value, not a sum |
 | Checks | Reconciliation PASS on clean data and FAIL on a tampered line; roll-forward FAIL on a missing movement; cross-area FAIL on a missing issue |
@@ -453,8 +457,8 @@ Not before the demo, because it changes the core sales pipeline. The design is k
 
 | Item | Estimate |
 |---|---|
-| Inventory history | About 560 days × about 700 positions ≈ 390k stock rows + about 60k movements (tiny for Delta) |
-| Daily | About 700 stock rows + about 150 movements |
+| Inventory history | 548 days × about 410 positions ≈ 205k stock rows + about 59k movements, 27 MB of CSV (tiny for Delta) |
+| Daily | 414 stock rows + about 60–170 movements |
 | Extra job time | About 2–4 serverless minutes a day (areas run side by side, so the total time barely changes) |
 | Genie / dashboard | Use the existing 2X-Small warehouse with 5-minute auto-stop |
 
