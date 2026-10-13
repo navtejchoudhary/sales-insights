@@ -2,7 +2,8 @@
 
 Part 1: the model file and each builder on tiny tables.
 Part 2: masters + history + 13, 14, 17 and 22 Oct through bronze -> silver -> gold -> reconcile,
-        proved against the manifests; then a tampered fact must FAIL reconciliation.
+        proved against the manifests per invoice date; then a tampered fact must FAIL reconciliation.
+Corrections arriving in a later delivery (same invoice line, newer version) must still reconcile.
 """
 
 import json
@@ -168,32 +169,111 @@ def test_with_comments_rejects_an_undocumented_column(spark):
 def test_compare_passes_exact_and_fails_differences(spark):
     expected = spark.createDataFrame(
         [
-            ("2026-10-13", "orders", "2026-10-13", 10, 4, 1000.0),  # exact
-            ("2026-10-13", "orders", "2026-10-12", 10, 4, 1000.0),  # revenue off by 1%
-            ("2026-10-13", "changes", "2026-10-13", 2, 2, -100.0),  # missing in gold
-            ("history", "history", "2026-09-30", 10, 4, 100000.0),  # 0.05% off: inside the 0.1% tolerance
+            ("2026-10-13", 10, 4, 1000.0),  # exact
+            ("2026-10-12", 10, 4, 1000.0),  # revenue off by 1%
+            ("2026-10-10", 2, 2, -100.0),  # missing in gold
+            ("2026-09-30", 10, 4, 100000.0),  # 0.05% off: inside the 0.1% tolerance
         ],
-        "business_date string, file_kind string, invoice_date string, expected_lines long, "
-        "expected_invoices long, expected_revenue double",
+        "invoice_date string, expected_lines long, expected_invoices long, expected_revenue double",
     )
     actual = spark.createDataFrame(
         [
-            ("2026-10-13", "orders", "2026-10-13", 10, 4, 1000.0),
-            ("2026-10-13", "orders", "2026-10-12", 10, 4, 1010.0),
-            ("history", "history", "2026-09-30", 10, 4, 100050.0),
-            ("2026-10-13", "orders", "2026-10-11", 1, 1, 5.0),  # in gold but never promised
+            ("2026-10-13", 10, 4, 1000.0),
+            ("2026-10-12", 10, 4, 1010.0),
+            ("2026-09-30", 10, 4, 100050.0),
+            ("2026-10-11", 1, 1, 5.0),  # in gold but never sent
         ],
-        "business_date string, file_kind string, invoice_date string, actual_lines long, "
-        "actual_invoices long, actual_revenue double",
+        "invoice_date string, actual_lines long, actual_invoices long, actual_revenue double",
     )
-    out = {(r["file_kind"], r["invoice_date"]): r["status"] for r in rc.compare(expected, actual, 0.1).collect()}
+    out = {r["invoice_date"]: r["status"] for r in rc.compare(expected, actual, 0.1).collect()}
     assert out == {
-        ("orders", "2026-10-13"): "PASS",
-        ("orders", "2026-10-12"): "FAIL",
-        ("changes", "2026-10-13"): "FAIL",
-        ("history", "2026-09-30"): "PASS",
-        ("orders", "2026-10-11"): "FAIL",
+        "2026-10-13": "PASS",
+        "2026-10-12": "FAIL",
+        "2026-10-10": "FAIL",
+        "2026-09-30": "PASS",
+        "2026-10-11": "FAIL",
     }
+
+
+def _totals(spark, rows):
+    return spark.createDataFrame(
+        rows,
+        "manifest_path string, kind string, business_date string, file_kind string, invoice_date string, "
+        "lines long, invoices long, revenue double, tax_amount double",
+    )
+
+
+def _bronze_lines(spark, rows):
+    """(invoice_number, invoice_item, invoice_date, quantity, revenue, source file, load time) as bronze holds them."""
+    return spark.createDataFrame(
+        rows,
+        "invoice_number string, invoice_item string, invoice_date string, quantity string, revenue string, "
+        "_source_file string, _load_ts string",
+    )
+
+
+def test_correction_in_a_later_delivery_reconciles(spark):
+    """Quantity 1 -> 3 on a 3 Oct line, sent again in the 15 Oct delivery (same invoice + item).
+
+    Silver keeps the newest version; the source reports the correction as a net change for 3 Oct
+    (0 extra lines, 0 extra invoices, revenue difference 0), so 3 Oct still adds up. The old
+    per-delivery check would have failed the 3 Oct delivery (1 of its 2 lines moved to 15 Oct).
+    """
+    d3, d15 = "business_date=2026-10-03/orders_20261003.csv", "business_date=2026-10-15/orders_20261015.csv"
+    bronze = _bronze_lines(
+        spark,
+        [
+            ("9261003015", "000010", "2026-10-03", "1.000", "100.00", d3, "2026-10-03 06:30:00"),
+            ("9261003015", "000020", "2026-10-03", "2.000", "50.00", d3, "2026-10-03 06:30:00"),
+            ("9261015001", "000010", "2026-10-15", "4.000", "80.00", d15, "2026-10-15 06:30:00"),
+            ("9261003015", "000010", "2026-10-03", "3.000", "100.00", d15, "2026-10-15 06:30:00"),  # correction
+        ],
+    )
+    silver = sv.dedupe(bronze)
+    assert silver.count() == 3
+    fixed = silver.filter((F.col("invoice_number") == "9261003015") & (F.col("invoice_item") == "000010")).first()
+    assert (fixed["quantity"], fixed["_source_file"]) == ("3.000", d15)  # newest version kept
+    fact = silver.withColumn("net_revenue_amount", F.col("revenue").cast("decimal(18,2)"))
+
+    manifests = _totals(
+        spark,
+        [
+            ("m03", "daily", "2026-10-03", "orders", "2026-10-03", 2, 1, 150.0, 0.0),
+            ("m15", "daily", "2026-10-15", "orders", "2026-10-15", 1, 1, 80.0, 0.0),
+            ("m15", "daily", "2026-10-15", "orders", "2026-10-03", 0, 0, 0.0, 0.0),  # the correction: net change
+        ],
+    )
+    result = rc.compare(rc.expected_totals(manifests), rc.actual_totals(fact), 0.1)
+    out = {r["invoice_date"]: r for r in result.collect()}
+    assert {d: r["status"] for d, r in out.items()} == {"2026-10-03": "PASS", "2026-10-15": "PASS"}
+    assert out["2026-10-03"]["deliveries"] == "2026-10-03, 2026-10-15"
+
+    # A real problem still fails: the corrected line lost in gold
+    lost = fact.filter(~((F.col("invoice_number") == "9261003015") & (F.col("invoice_item") == "000010")))
+    bad = rc.compare(rc.expected_totals(manifests), rc.actual_totals(lost), 0.1).filter("status = 'FAIL'")
+    assert [r["invoice_date"] for r in bad.collect()] == ["2026-10-03"]
+
+
+def test_correction_that_changes_revenue_reconciles(spark):
+    """Price fixed from 100.00 to 120.00 in a later delivery: the source reports +20.00 for 3 Oct."""
+    d3, d15 = "business_date=2026-10-03/orders_20261003.csv", "business_date=2026-10-15/orders_20261015.csv"
+    bronze = _bronze_lines(
+        spark,
+        [
+            ("9261003015", "000010", "2026-10-03", "1.000", "100.00", d3, "2026-10-03 06:30:00"),
+            ("9261003015", "000010", "2026-10-03", "1.000", "120.00", d15, "2026-10-15 06:30:00"),
+        ],
+    )
+    fact = sv.dedupe(bronze).withColumn("net_revenue_amount", F.col("revenue").cast("decimal(18,2)"))
+    manifests = _totals(
+        spark,
+        [
+            ("m03", "daily", "2026-10-03", "orders", "2026-10-03", 1, 1, 100.0, 0.0),
+            ("m15", "daily", "2026-10-15", "orders", "2026-10-03", 0, 0, 20.0, 0.0),
+        ],
+    )
+    [r] = rc.compare(rc.expected_totals(manifests), rc.actual_totals(fact), 0.1).collect()
+    assert (r["status"], r["expected_revenue"], r["actual_revenue"]) == ("PASS", 120.0, 120.0)
 
 
 # ---------------------------------------------------------------------------
@@ -228,15 +308,16 @@ def world(spark, cfg, tmp_path_factory):
     return {"lake": lake, "gold": gold, "recon": recon, "history": history, "manifests": manifests}
 
 
-def test_reconciliation_passes_for_every_group(world):
+def test_reconciliation_passes_for_every_invoice_date(world):
     r = world["recon"]
     assert r.failed_groups == 0, r.failures[:3]
-    assert r.groups > len(DAYS) * 2  # many invoice dates per delivery, plus history
-    kinds = {x["file_kind"] for x in world["lake"].read("ops", "reconciliation").collect()}
-    assert kinds == {"history", "orders", "changes"}
+    rec = world["lake"].read("ops", "reconciliation")
+    fact_dates = world["lake"].read("gold", "fact_sales").select("invoice_date").distinct().count()
+    assert r.groups == rec.count() == fact_dates  # one check per invoice date
+    sources = {x["deliveries"] for x in rec.collect()}
+    assert "history" in sources and any("2026-10-22" in x for x in sources)  # backfill and daily deliveries
     dq = world["lake"].read("ops", "dq_results").filter(F.col("check_name") == "reconciliation")
-    assert dq.filter(F.col("status") == "FAIL").count() == 0
-    assert dq.count() == len(DAYS) + 1  # one row per delivery + history
+    assert [x["status"] for x in dq.collect()] == ["PASS"]  # one summary row per run
 
 
 def test_fact_total_equals_all_manifests(world):
@@ -304,7 +385,7 @@ def test_sales_rep_appears_from_22_october(world):
 
 
 def test_tampered_gold_fails_reconciliation(world, spark):
-    """Drop one daily line: exactly that delivery / invoice date must FAIL."""
+    """Drop one daily line: exactly its invoice date must FAIL."""
     lake = world["lake"]
     fact = lake.read("gold", "fact_sales")
     victim = fact.filter(F.col("source_kind") == "orders").orderBy("invoice_number", "invoice_item").first()
@@ -312,5 +393,5 @@ def test_tampered_gold_fails_reconciliation(world, spark):
         ~((F.col("invoice_number") == victim["invoice_number"]) & (F.col("invoice_item") == victim["invoice_item"]))
     )
     out = rc.compare(rc.expected_totals(lake.read("ops", "manifest_totals")), rc.actual_totals(tampered), 0.1)
-    failed = [(r["business_date"], r["file_kind"], r["invoice_date"]) for r in out.filter("status = 'FAIL'").collect()]
-    assert failed == [(str(victim["loaded_business_date"]), "orders", str(victim["invoice_date"]))]
+    failed = [r["invoice_date"] for r in out.filter("status = 'FAIL'").collect()]
+    assert failed == [str(victim["invoice_date"])]

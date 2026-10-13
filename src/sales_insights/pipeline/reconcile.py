@@ -1,15 +1,25 @@
-"""Reconciliation: prove gold adds up to what the source system says it sent.
+"""Reconciliation: prove gold adds up to what the source system says it holds.
 
     uv run python -m sales_insights.pipeline.reconcile      # exit code 1 if anything fails
 
-For every (delivery, file kind, invoice date) the manifests promise a line count, an invoice count and
-revenue. Gold must match each within the tolerance in config (reconciliation_tolerance_pct, 0.1%).
-The manifests' totals already leave out the duplicate copies and invalid rows they injected, so a
-correct pipeline matches them EXACTLY; the tolerance only absorbs rounding.
+Two levels, as in any well-run data platform:
+  1. Load completeness (bronze.py): every file's row count and checksum against its own manifest.
+  2. Business reconciliation (here): for every INVOICE DATE, gold's lines, invoices and revenue against
+     the source's totals for that date, i.e. the sum of the net changes every delivery reported for it
+     (history + daily orders + daily changes). Within reconciliation_tolerance_pct (0.1%).
+
+Why per invoice date and not per delivery: a correction can arrive in a LATER delivery and replace a
+line delivered earlier (same invoice_number + invoice_item; silver keeps the newest). The source then
+reports it as a net change (0 extra lines, only the revenue difference) under the original invoice
+date, so the date still adds up, while a per-delivery check would raise a false alarm for the earlier
+delivery. A missing, duplicated or wrong line still makes its invoice date fail.
+
+The manifests' totals leave out the duplicate copies and invalid rows they injected, so a correct
+pipeline matches them EXACTLY; the tolerance only absorbs rounding.
 
 Results:
-  ops.reconciliation   one row per compared group, every run (appended, so history is kept)
-  ops.dq_results       one PASS/FAIL row per delivery (layer "gold", check "reconciliation")
+  ops.reconciliation   one row per invoice date, every run (appended, so history is kept)
+  ops.dq_results       one PASS/FAIL row per run (layer "gold", check "reconciliation")
 """
 
 from __future__ import annotations
@@ -28,7 +38,7 @@ from sales_insights.common.lake import Lake
 from sales_insights.pipeline import bronze as b
 
 HISTORY = "history"
-KEYS = ["business_date", "file_kind", "invoice_date"]
+KEYS = ["invoice_date"]
 MEASURES = ["lines", "invoices", "revenue"]
 
 
@@ -41,24 +51,22 @@ class ReconRun:
 
 
 def expected_totals(manifest_totals: DataFrame) -> DataFrame:
-    """What the manifests promised (history has no business date: labelled 'history')."""
-    return manifest_totals.select(
-        F.coalesce(F.col("business_date"), F.lit(HISTORY)).alias("business_date"),
-        "file_kind",
-        "invoice_date",
-        F.col("lines").cast("long").alias("expected_lines"),
-        F.col("invoices").cast("long").alias("expected_invoices"),
-        F.col("revenue").cast("double").alias("expected_revenue"),
+    """The source's totals per invoice date: the sum of what every delivery reported for that date.
+
+    `deliveries` lists the deliveries that contributed ('history' for the backfill), for tracing a failure.
+    """
+    delivery = F.coalesce(F.col("business_date"), F.lit(HISTORY))
+    return manifest_totals.groupBy("invoice_date").agg(
+        F.sum("lines").cast("long").alias("expected_lines"),
+        F.sum("invoices").cast("long").alias("expected_invoices"),
+        F.sum("revenue").cast("double").alias("expected_revenue"),
+        F.concat_ws(", ", F.array_sort(F.collect_set(delivery))).alias("deliveries"),
     )
 
 
 def actual_totals(fact: DataFrame) -> DataFrame:
-    """What gold holds, grouped the same way as the manifests."""
-    return fact.groupBy(
-        F.coalesce(F.col("loaded_business_date").cast("string"), F.lit(HISTORY)).alias("business_date"),
-        F.col("source_kind").alias("file_kind"),
-        F.col("invoice_date").cast("string").alias("invoice_date"),
-    ).agg(
+    """What gold holds per invoice date (every line counted once: silver keeps the newest version)."""
+    return fact.groupBy(F.col("invoice_date").cast("string").alias("invoice_date")).agg(
         F.count(F.lit(1)).alias("actual_lines"),
         F.countDistinct("invoice_number").alias("actual_invoices"),
         F.sum("net_revenue_amount").cast("double").alias("actual_revenue"),
@@ -97,7 +105,13 @@ def run_reconcile(spark: SparkSession, cfg: Config, lake: Lake | None = None) ->
         expected_totals(lake.read("ops", "manifest_totals")), actual_totals(lake.read("gold", "fact_sales")), tol
     )
     result = result.select(
-        F.lit(run.run_id).alias("run_id"), F.lit(now).cast("timestamp").alias("checked_ts"), *result.columns
+        F.lit(run.run_id).alias("run_id"),
+        F.lit(now).cast("timestamp").alias("checked_ts"),
+        # business_date / file_kind belonged to the earlier per-delivery check; kept (empty) so the
+        # existing ops.reconciliation table keeps one schema and its history stays readable
+        F.lit(None).cast("string").alias("business_date"),
+        F.lit(None).cast("string").alias("file_kind"),
+        *result.columns,
     )
     lake.append(result, "ops", "reconciliation")
     rows = lake.read("ops", "reconciliation").filter(F.col("run_id") == run.run_id).collect()
@@ -106,30 +120,12 @@ def run_reconcile(spark: SparkSession, cfg: Config, lake: Lake | None = None) ->
     run.failures = [r.asDict() for r in rows if r["status"] == "FAIL"]
     run.failed_groups = len(run.failures)
 
-    by_delivery: dict[str, list] = {}
-    for r in rows:
-        by_delivery.setdefault(r["business_date"], []).append(r)
-    dq = []
-    for delivery, group in sorted(by_delivery.items()):
-        expected = round(sum(r["expected_revenue"] for r in group), 2)
-        actual = round(sum(r["actual_revenue"] for r in group), 2)
-        status = "FAIL" if any(r["status"] == "FAIL" for r in group) else "PASS"
-        business_date = None if delivery == HISTORY else delivery
-        dq.append(
-            (
-                run.run_id,
-                now,
-                "gold",
-                "reconciliation",
-                "gold.fact_sales",
-                business_date,
-                None,
-                str(expected),
-                str(actual),
-                status,
-            )
-        )
-    if dq:
+    if rows:
+        expected = round(sum(r["expected_revenue"] for r in rows), 2)
+        actual = round(sum(r["actual_revenue"] for r in rows), 2)
+        status = "FAIL" if run.failed_groups else "PASS"
+        dq = [(run.run_id, now, "gold", "reconciliation", "gold.fact_sales", None, None, str(expected), str(actual),
+               status)]  # fmt: skip
         lake.append(spark.createDataFrame(dq, b.DQ_SCHEMA), *b.DQ_RESULTS)
     return run
 
@@ -138,21 +134,21 @@ def main(argv: list[str] | None = None) -> None:
     from sales_insights.common.config import load_config
     from sales_insights.common.spark import get_spark
 
-    argparse.ArgumentParser(description="Check gold against the manifests' control totals.").parse_args(argv)
+    argparse.ArgumentParser(description="Check gold against the source's totals per invoice date.").parse_args(argv)
     cfg = load_config()
     run = run_reconcile(get_spark(cfg, app_name="reconcile"), cfg)
     print(f"  run {run.run_id}")
-    print(f"  compared {run.groups} groups (delivery x file x invoice date), failed {run.failed_groups}")
+    print(f"  compared {run.groups} invoice dates, failed {run.failed_groups}")
     for f in run.failures[:20]:
         print(
-            f"    FAIL {f['business_date']} {f['file_kind']} {f['invoice_date']}: "
+            f"    FAIL {f['invoice_date']} (deliveries {f['deliveries']}): "
             f"lines {f['actual_lines']}/{f['expected_lines']}, invoices {f['actual_invoices']}/{f['expected_invoices']}, "
             f"revenue {f['actual_revenue']:,.2f}/{f['expected_revenue']:,.2f}"
         )
     if run.failed_groups:
         print("  RECONCILIATION FAILED: gold does not match the source. Do not publish; see ops.reconciliation.")
         sys.exit(1)
-    print("  reconciliation PASSED: gold matches every manifest.")
+    print("  reconciliation PASSED: gold matches the source's totals for every invoice date.")
 
 
 if __name__ == "__main__":

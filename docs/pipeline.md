@@ -140,13 +140,31 @@ Key design points:
 
 ## Reconciliation (`pipeline/reconcile.py`)
 
-Proves gold matches what the source system says it sent. For every
-(delivery, file kind, invoice date) the manifests promise lines, invoices and revenue; gold must match
-each within `reconciliation_tolerance_pct` (0.1%). The manifests already leave out the duplicate and
-invalid rows they injected, so a correct pipeline matches **exactly**; the tolerance only absorbs rounding.
+Two levels, as in any well-run data platform:
 
-- `ops.reconciliation`: one row per compared group per run (kept, so you can see history)
-- `ops.dq_results`: one PASS/FAIL row per delivery (`check_name = 'reconciliation'`)
-- The command exits with code 1 and prints the failing groups, so a scheduled job turns red.
+| Level | Question | Compared with | Where |
+|---|---|---|---|
+| 1. Load completeness | Did every file arrive and load fully? | Each file's row count and checksum in its own manifest | `bronze.py` (`row_count_vs_manifest`, `checksum_vs_manifest`) |
+| 2. Business reconciliation | Do our numbers equal the source's numbers? | For every **invoice date**: lines, invoices and revenue = the sum of what every delivery reported for that date (history + orders + changes) | `reconcile.py` |
 
-A group missing on either side fails too (gold has rows nobody sent, or lost rows that were sent).
+Level 2 is per invoice date, not per delivery, because a correction can arrive in a **later** delivery
+and replace a line delivered earlier (same invoice number + item; silver keeps the newest). The source
+reports such a correction as a **net change** under the original invoice date (0 extra lines, only the
+revenue difference), so the date still adds up; a per-delivery check would raise a false alarm for the
+earlier delivery. A missing, duplicated or wrong line still makes its invoice date fail. Tests:
+`test_correction_in_a_later_delivery_reconciles`, `test_correction_that_changes_revenue_reconciles`.
+
+Gold must match within `reconciliation_tolerance_pct` (0.1%). The manifests already leave out the
+duplicate and invalid rows they injected, so a correct pipeline matches **exactly**; the tolerance only
+absorbs rounding.
+
+- `ops.reconciliation`: one row per invoice date per run (kept, so you can see history); `deliveries`
+  lists which deliveries contributed to that date
+- `ops.dq_results`: one PASS/FAIL summary row per run (`check_name = 'reconciliation'`)
+- The command exits with code 1 and prints the failing dates, so a scheduled job turns red.
+
+A date missing on either side fails too (gold has rows nobody sent, or lost rows that were sent).
+
+With real SAP data, the delivery totals come from the replication (Datasphere change records report
+inserts, updates and deletes per batch); a periodic check against an SAP control-totals report can be
+added as a third level.
