@@ -160,16 +160,17 @@ TABLES: dict[str, dict] = {
 }
 
 
-def columns(table: str) -> list[str]:
-    return list(TABLES[table]["columns"])
+def columns(table: str, tables: dict[str, dict] | None = None) -> list[str]:
+    return list((tables or TABLES)[table]["columns"])
 
 
-def with_comments(df: DataFrame, table: str) -> DataFrame:
+def with_comments(df: DataFrame, table: str, tables: dict[str, dict] | None = None) -> DataFrame:
     """Put the model's columns in order and attach each description as the column comment.
 
     Fails if the DataFrame and the model disagree, so a column can never ship undocumented.
+    `tables`: another area's model (e.g. inventory_model.TABLES); default: the sales gold model.
     """
-    spec = TABLES[table]["columns"]
+    spec = (tables or TABLES)[table]["columns"]
     missing, extra = set(spec) - set(df.columns), set(df.columns) - set(spec)
     if missing or extra:
         raise ValueError(
@@ -181,14 +182,16 @@ def with_comments(df: DataFrame, table: str) -> DataFrame:
     return out
 
 
-def data_dictionary() -> str:
+def data_dictionary(
+    tables: dict[str, dict] | None = None, module: str = "gold_model", doc: str = "gold_model.md", title: str = "Gold"
+) -> str:
     lines = [
-        "# Gold data dictionary",
+        f"# {title} data dictionary",
         "",
-        "Generated from `src/sales_insights/pipeline/gold_model.py`: do not edit by hand.",
-        "Refresh: `uv run python -m sales_insights.pipeline.gold_model > docs/gold_model.md`",
+        f"Generated from `src/sales_insights/pipeline/{module}.py`: do not edit by hand.",
+        f"Refresh: `uv run python -m sales_insights.pipeline.{module} > docs/{doc}`",
     ]
-    for table, spec in TABLES.items():
+    for table, spec in (tables or TABLES).items():
         lines += ["", f"## gold.{table}", "", spec["description"], "", "| Column | Description |", "|---|---|"]
         lines += [f"| `{c}` | {d} |" for c, d in spec["columns"].items()]
     return "\n".join(lines) + "\n"

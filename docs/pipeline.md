@@ -43,6 +43,17 @@ bronze/silver/gold tables; areas share only the dimension tables.
   catalog, lake folder, staging or landing folder, and refuses unknown settings (typos).
 - Master files always load into `bronze.masters_<name>`, in every area.
 
+### Inventory area pipeline (`run_pipeline --area inventory`; run sales first each day)
+
+| Step | Code | What it does |
+|---|---|---|
+| drip, bronze | `drip/drip.py`, `pipeline/bronze.py` (unchanged) | Same exactly-once loading, into `bronze.movements`, `bronze.stock`, `bronze.masters_locations` of the inventory area |
+| silver | `pipeline/inventory_silver.py` | Newest load of each file, dedupe (`material_document` + item; `snapshot_date` + location + product), quarantine unknown location / unknown movement type / unknown product / negative stock / bad date or quantity, unit from the product master (`source_unit` keeps the received text), types. Quarantine must equal the manifests' invalid rows |
+| gold | `pipeline/inventory_gold.py`, model `pipeline/inventory_model.py` | `dim_location`, `fact_stock_movements`, `fact_stock_daily` (stock, value at standard cost, issues, 28-day average, days of cover, stock-out and low-cover flags); descriptions in `docs/inventory_gold_model.md` |
+| checks | `pipeline/inventory_checks.py` | 1) movements per posting date and stock per snapshot date = manifest totals (0.1%); 2) stock roll-forward: closing = previous closing + movements since, every position and day (last 2 days wait for late lines; quarantined movements explain a gap); 3) cross-check with sales: every 601 / 602 / 653 matches its invoice line in `fact_sales` (date, product, quantity) and every sales line of a stocked product has its movement, for dates older than 7 days; quarantined lines on either side are explained. Results in `ops.reconciliation`, `ops.stock_rollforward`, `ops.cross_checks`, `ops.dq_results`; any FAIL stops the run |
+
+Products, dates and regions come from the sales gold (read only).
+
 ## Bronze (`pipeline/bronze.py`, discovery in `pipeline/landing.py`)
 
 Loads files **exactly as received**: every source column stays text, nothing is cleaned.

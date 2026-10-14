@@ -203,9 +203,15 @@ def test_masters_always_go_to_masters_tables():
 
 def test_pipeline_runs_sales_by_default():
     assert rp.AREA_STEPS["sales"] == rp.STEPS
+    assert rp.AREA_STEP_FUNCS["sales"] is rp.STEP_FUNCS  # sales steps unchanged
 
 
-@pytest.mark.parametrize("area", ["inventory", "hr"])
+def test_inventory_area_has_its_own_steps():
+    assert rp.AREA_STEPS["inventory"] == ["drip", "bronze", "silver", "gold", "checks"]
+    assert set(rp.AREA_STEPS["inventory"]) == set(rp.AREA_STEP_FUNCS["inventory"])
+
+
+@pytest.mark.parametrize("area", ["finance", "hr"])
 def test_pipeline_refuses_an_area_without_steps_before_starting_spark(area, capsys):
     with pytest.raises(SystemExit) as stopped:
         rp.main(["--date", "2026-10-13", "--area", area])
