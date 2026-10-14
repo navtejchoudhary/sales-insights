@@ -17,8 +17,9 @@ For each business day:
     insights    findings -> gold.insights (+ deck on the last day)
 
 Inventory area (--area inventory): drip, bronze (same code, inventory files), silver (inventory_silver),
-gold (inventory_gold), checks (inventory_checks: source totals, stock roll-forward, cross-check with sales).
-It reads the sales gold, so run sales first for the same day.
+gold (inventory_gold), checks (inventory_checks: source totals, stock roll-forward, cross-check with sales),
+kpis (inventory KPI SQL = the inventory_metrics and sales_and_stock metric views), answer_key (the Stock and
+Sales & Stock Genie answer keys + stories I1-I4). It reads the sales gold, so run sales first for the same day.
 
 `--downstream last` runs only drip + bronze for each day and the rest once at the end (much faster;
 the final numbers are identical because silver and gold are full rebuilds). One line per step is printed,
@@ -47,7 +48,7 @@ from sales_insights.generator import masters as m
 from sales_insights.generator import simulate as s
 
 STEPS = ["drip", "bronze", "silver", "gold", "reconcile", "kpis", "answer_key", "insights"]
-INVENTORY_STEPS = ["drip", "bronze", "silver", "gold", "checks"]
+INVENTORY_STEPS = ["drip", "bronze", "silver", "gold", "checks", "kpis", "answer_key"]
 # Business areas this command can run (config.yaml `areas:`). Sales is the default and runs exactly as before.
 # Inventory reads the sales gold (shared dimensions, cross-area check), so run sales first each day.
 AREA_STEPS = {"sales": STEPS, "inventory": INVENTORY_STEPS}
@@ -195,7 +196,8 @@ def _reconcile(ctx: dict, d: date) -> str:
 def _kpis(ctx: dict, d: date) -> str:
     from sales_insights.semantic.kpis import check_against_metric_view
 
-    results = check_against_metric_view(ctx["spark"], ctx["lake"])
+    sales_lake = None if ctx["cfg"].area == "sales" else ctx["sales_lake"]
+    results = check_against_metric_view(ctx["spark"], ctx["lake"], sales_lake)
     bad = [(name, n) for name, rows, n in results if n]
     if bad:
         raise StepFailed(f"KPI SQL and metric view differ: {bad}")
@@ -205,9 +207,13 @@ def _kpis(ctx: dict, d: date) -> str:
 def _answer_key(ctx: dict, d: date) -> str:
     from sales_insights.semantic import answer_key as ak
 
-    rows = ak.build(ctx["spark"], ctx["lake"])
-    if ctx["write_answer_key"]:
-        ak.write_csv(rows)
+    rows = []
+    for agent in (a for a in ak.SPACES.values() if a.area == ctx["cfg"].area):
+        sales_lake = None if agent.area == "sales" else ctx["sales_lake"]
+        agent_rows = ak.build(ctx["spark"], ctx["lake"], agent=agent, sales_lake=sales_lake)
+        if ctx["write_answer_key"]:
+            ak.write_csv(agent_rows, agent.answer_key)
+        rows += agent_rows
     counts = {k: sum(1 for r in rows if r["story_check"] == k) for k in ("PASS", "PENDING", "FAIL")}
     failed = [r["id"] for r in rows if r["story_check"] == "FAIL"]
     if failed and ctx["strict_stories"]:
@@ -269,7 +275,7 @@ def _inventory_checks(ctx: dict, d: date) -> str:
 
 INVENTORY_STEP_FUNCS: dict[str, Callable[[dict, date], str]] = {
     "drip": _drip, "bronze": _bronze, "silver": _inventory_silver, "gold": _inventory_gold,
-    "checks": _inventory_checks,
+    "checks": _inventory_checks, "kpis": _kpis, "answer_key": _answer_key,
 }  # fmt: skip
 AREA_STEP_FUNCS = {"sales": STEP_FUNCS, "inventory": INVENTORY_STEP_FUNCS}
 

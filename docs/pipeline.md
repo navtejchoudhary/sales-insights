@@ -49,8 +49,11 @@ bronze/silver/gold tables; areas share only the dimension tables.
 |---|---|---|
 | drip, bronze | `drip/drip.py`, `pipeline/bronze.py` (unchanged) | Same exactly-once loading, into `bronze.movements`, `bronze.stock`, `bronze.masters_locations` of the inventory area |
 | silver | `pipeline/inventory_silver.py` | Newest load of each file, dedupe (`material_document` + item; `snapshot_date` + location + product), quarantine unknown location / unknown movement type / unknown product / negative stock / bad date or quantity, unit from the product master (`source_unit` keeps the received text), types. Quarantine must equal the manifests' invalid rows |
-| gold | `pipeline/inventory_gold.py`, model `pipeline/inventory_model.py` | `dim_location`, `fact_stock_movements`, `fact_stock_daily` (stock, value at standard cost, issues, 28-day average, days of cover, stock-out and low-cover flags); descriptions in `docs/inventory_gold_model.md` |
+| gold | `pipeline/inventory_gold.py`, model `pipeline/inventory_model.py` | `dim_location`, `fact_stock_movements`, `fact_stock_daily` (stock, value at standard cost, issues, 28-day average, days of cover, stock-out and low-cover flags), `fact_sales_stock_daily` (day x sales office x product: sales from `fact_sales` next to the depot's stock; only days both areas cover); descriptions in `docs/inventory_gold_model.md` |
 | checks | `pipeline/inventory_checks.py` | 1) movements per posting date and stock per snapshot date = manifest totals (0.1%); 2) stock roll-forward: closing = previous closing + movements since, every position and day (last 2 days wait for late lines; quarantined movements explain a gap); 3) cross-check with sales: every 601 / 602 / 653 matches its invoice line in `fact_sales` (date, product, quantity) and every sales line of a stocked product has its movement, for dates older than 7 days; quarantined lines on either side are explained. Results in `ops.reconciliation`, `ops.stock_rollforward`, `ops.cross_checks`, `ops.dq_results`; any FAIL stops the run |
+
+| kpis | `semantic/kpis.py` | `sql/kpis/inventory/*.sql` must equal the `inventory_metrics` and `sales_and_stock` metric views (stock = last day of the period) |
+| answer_key | `semantic/answer_key.py` | Runs the Stock (`genie/inventory/`) and Sales & Stock (`genie/sales_and_stock/`) benchmarks; story checks I1-I4 must PASS (or wait for their date) |
 
 Products, dates and regions come from the sales gold (read only).
 

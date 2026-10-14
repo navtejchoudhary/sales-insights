@@ -43,6 +43,25 @@ Stock movements: one row per material document line (material_document + materia
 | `counterpart_location_id` | For transfers (313 / 315): the other location (the hub for a depot, the depot for the hub). |
 | `delivered_date` | Day the source delivered the movement (usually the posting date; up to 2 days later for late lines). Empty for the history backfill. |
 
+## gold.fact_sales_stock_daily
+
+Sales and depot stock side by side: one row per day, sales office and product (activity_date + sales_office_code + product_id). Sales are the sales office's invoice lines that day (fact_sales); stock is the closing stock of the depot that serves that sales office. Covers only the days both sales and stock data exist. Sales columns add up across days; stock columns do not (use the last day of a period).
+
+| Column | Description |
+|---|---|
+| `activity_date` | Day of the sales and of the closing stock (Sri Lanka time). Join to dim_date.date. |
+| `sales_office_code` | Sales office whose customers bought the goods and whose depot holds the stock, e.g. C001. |
+| `location_id` | The depot that serves the sales office, e.g. 2010-8001 (Colombo depot). Join to dim_location. |
+| `product_id` | Material (product) code, e.g. MC6001LT. Join to dim_product in the sales catalog. |
+| `net_revenue_amount` | Net revenue that day: invoices minus returns, cancellations and price corrections, LKR excluding VAT. 0 when nothing was sold. |
+| `sales_quantity` | Net units sold that day (invoiced minus returned and cancelled), in the product's base unit. |
+| `invoiced_quantity` | Units on that day's invoices and free-of-charge deliveries, before any returns or cancellations. |
+| `issued_quantity` | Quantity the depot issued to customers that day (goods issues, movement 601), base unit. |
+| `stock_quantity` | Depot closing stock at the end of the day, base unit. Empty for products not stocked at depots (services, building products, raw materials). |
+| `in_transit_quantity` | Stock on its way to the depot from the hub at the end of the day, base unit. |
+| `avg_daily_issued_quantity_28d` | Average quantity the depot issued per day over the 28 days ending on activity_date, base unit. |
+| `is_stock_out` | True when the depot holds none of a product it normally issues (stock 0 and issues in the last 28 days). |
+
 ## gold.dim_location
 
 Stock locations: one row per plant storage location or depot, with its sales office and province.

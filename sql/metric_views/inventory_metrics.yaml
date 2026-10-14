@@ -1,0 +1,201 @@
+# Inventory metric view: the ONE place where every stock KPI is defined.
+# On Databricks this becomes the Unity Catalog metric view inventory_dev.gold.inventory_metrics, read by the
+# stock dashboard page, the Inventory Genie and the stock insight rules.
+# Locally, src/sales_insights/semantic/metric_views.py turns it into plain Spark SQL to test the numbers.
+#
+# Stock is a LEVEL, not a flow: the stock measures are window measures (range: current, semiadditive: last).
+# Grouped by day they give each day's stock; grouped by month (or with no date at all) they give the stock on
+# the LAST day of the group, never a sum of daily stocks. Issues and stock-out days are flows: they add up.
+# Spec: Databricks metric view YAML 1.1, window measures:
+#   https://docs.databricks.com/aws/en/metric-views/data-modeling/window-measures
+# Placeholders such as $${fact_stock_daily} are replaced with real table names. Products and dates are the
+# shared dimensions in the sales catalog. Formulas must match sql/kpis/inventory/*.sql (tests check this).
+
+version: 1.1
+comment: >-
+  Stock KPIs for the Sri Lankan crop-protection business: one row per location, product and day underneath.
+  Quantities in each product's base unit (cases, bottles, bags); values in LKR at standard cost.
+  Stock measures give the stock on the last day of the period, not a sum over days.
+source: ${fact_stock_daily}
+
+joins:
+  - name: location_dim
+    source: ${dim_location}
+    "on": source.location_id = location_dim.location_id
+  - name: product_dim
+    source: ${dim_product}
+    "on": source.product_id = product_dim.product_id
+  - name: date_dim
+    source: ${dim_date}
+    "on": source.snapshot_date = date_dim.date
+
+fields:
+  # --- time
+  - name: snapshot_date
+    expr: source.snapshot_date
+    display_name: Stock date
+    comment: Day the closing stock was counted. Stock measures take the last stock date of each group.
+    synonyms: [date, day, as of]
+  - name: month
+    expr: date_dim.month_start_date
+    display_name: Month
+    comment: First day of the calendar month. Stock by month = stock on the last day of the month.
+    synonyms: [calendar month, month end]
+  - name: week
+    expr: date_dim.week_start_date
+    display_name: Week
+    comment: Monday of the week.
+  - name: fiscal_year
+    expr: date_dim.fiscal_year_label
+    display_name: Fiscal year
+    comment: Fiscal year April-March, e.g. FY2026 = April 2026 to March 2027.
+    synonyms: [FY, financial year]
+  - name: fiscal_period
+    expr: date_dim.fiscal_period
+    display_name: Fiscal period
+    comment: Fiscal month 1-12; 1 = April.
+  # --- relative periods (from the latest SALES date; stock may lag a day if the inventory feed is late)
+  - name: is_last_7_days
+    expr: date_dim.is_last_7_days
+    display_name: Last 7 days
+    synonyms: [last week, past week, this week]
+  - name: is_month_to_date
+    expr: date_dim.is_month_to_date
+    display_name: Month to date
+    synonyms: [this month, MTD, current month]
+  - name: is_last_complete_month
+    expr: date_dim.is_last_complete_month
+    display_name: Last complete month
+    comment: The latest complete calendar month. This is what "last month" means.
+    synonyms: [last month, previous month]
+  - name: is_current_fiscal_year
+    expr: date_dim.is_current_fiscal_year
+    display_name: Current fiscal year
+    synonyms: [this year, this fiscal year]
+  # --- where
+  - name: location_id
+    expr: source.location_id
+    display_name: Location code
+    comment: Plant-storage location, e.g. 2010-8001 (Colombo depot), 2010-0090 (Galle hub).
+    synonyms: [storage location, store code, depot code]
+  - name: location
+    expr: location_dim.location_name
+    display_name: Location
+    comment: e.g. Colombo Depot, Galle Industrial - Distribution Hub, Galle Industrial - Returns Store.
+    synonyms: [depot, store, warehouse, site]
+  - name: location_type
+    expr: location_dim.location_type
+    display_name: Location type
+    comment: Depot (serves one sales office) or Plant store (hub, raw materials, returns, building solutions).
+  - name: province
+    expr: location_dim.province
+    display_name: Province
+    comment: Province of the location, e.g. Western.
+    synonyms: [region, area]
+  - name: sales_office_code
+    expr: location_dim.sales_office_code
+    display_name: Sales office
+    comment: For depots, the sales office whose customers it supplies, e.g. C001 (Colombo).
+  # --- what
+  - name: product_id
+    expr: source.product_id
+    display_name: Product code
+    comment: Material code, e.g. MC6001LT.
+    synonyms: [material, material code, SKU]
+  - name: product
+    expr: product_dim.product_description
+    display_name: Product
+    synonyms: [item, product name]
+  - name: product_group
+    expr: product_dim.product_group_name
+    display_name: Product group
+    comment: e.g. WEEDICIDE, INSECTICIDE, FUNGICIDE.
+    synonyms: [category, product category]
+  - name: product_type
+    expr: product_dim.product_type_name
+    display_name: Product type
+
+measures:
+  # --- levels: value on the last day of the group (window measures)
+  - name: stock_on_hand
+    expr: SUM(source.stock_quantity)
+    window:
+      - order: snapshot_date
+        range: current
+        semiadditive: last
+    display_name: Stock on hand
+    comment: Closing stock on the last day of the period, in base units. Never summed over days.
+    synonyms: [stock, inventory, stock level, quantity in stock, closing stock]
+  - name: stock_value
+    expr: SUM(source.stock_value_amount)
+    window:
+      - order: snapshot_date
+        range: current
+        semiadditive: last
+    display_name: Stock value (LKR)
+    comment: Stock on hand at standard cost on the last day of the period.
+    synonyms: [inventory value, stock worth]
+  - name: in_transit
+    expr: SUM(source.in_transit_quantity)
+    window:
+      - order: snapshot_date
+        range: current
+        semiadditive: last
+    display_name: In transit
+    comment: Stock on its way from the hub to depots on the last day of the period, in base units.
+  - name: avg_daily_issued_28d
+    expr: SUM(source.avg_daily_issued_quantity_28d)
+    window:
+      - order: snapshot_date
+        range: current
+        semiadditive: last
+    display_name: Average daily issues (28 days)
+    comment: Average quantity issued per day over the 28 days ending on the last day of the period.
+  - name: stock_out_positions
+    expr: COUNT_IF(source.is_stock_out)
+    window:
+      - order: snapshot_date
+        range: current
+        semiadditive: last
+    display_name: Stock-outs
+    comment: Location x product positions with zero stock of a product they normally issue, on the last day.
+    synonyms: [out of stock, stock outs, empty positions]
+  - name: low_cover_positions
+    expr: COUNT_IF(source.is_low_cover)
+    window:
+      - order: snapshot_date
+        range: current
+        semiadditive: last
+    display_name: Low-cover positions
+    comment: Positions with stock that lasts less than 7 days at the 28-day issue rate, on the last day.
+    synonyms: [running low, low stock]
+  - name: active_positions
+    expr: COUNT_IF(source.avg_daily_issued_quantity_28d > 0)
+    window:
+      - order: snapshot_date
+        range: current
+        semiadditive: last
+    display_name: Active positions
+    comment: Location x product positions that issued anything in the last 28 days, on the last day.
+  # --- built from the levels above
+  - name: days_of_cover
+    expr: MEASURE(stock_on_hand) / NULLIF(MEASURE(avg_daily_issued_28d), 0)
+    display_name: Days of cover
+    comment: How many days the stock lasts at the 28-day average issue rate (last day of the period).
+    synonyms: [cover, days of stock, stock cover]
+  - name: stock_out_rate_pct
+    expr: MEASURE(stock_out_positions) / NULLIF(MEASURE(active_positions), 0) * 100
+    display_name: Stock-out rate %
+    comment: Stock-outs as a percentage of active positions on the last day of the period.
+    synonyms: [out of stock rate]
+  # --- flows: add up over days
+  - name: issued_quantity
+    expr: SUM(source.issued_quantity)
+    display_name: Goods issued
+    comment: Quantity issued to customers (movement 601) in the period, in base units.
+    synonyms: [issues, goods issues, shipped to customers, dispatched]
+  - name: stock_out_days
+    expr: COUNT_IF(source.is_stock_out)
+    display_name: Stock-out days
+    comment: Location x product x days with zero stock of a product the location normally issues.
+    synonyms: [days out of stock]

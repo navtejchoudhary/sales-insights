@@ -1,11 +1,15 @@
 """Genie setup sheet: everything to paste into the Genie agent, with the real table names filled in.
 
-    uv run python -m sales_insights.semantic.genie_setup --profile dev    # -> output/genie_setup.md + .csv
+    uv run python -m sales_insights.semantic.genie_setup --profile dev                      # Sales agent
+    uv run python -m sales_insights.semantic.genie_setup --profile dev --genie inventory    # Stock agent
+    uv run python -m sales_insights.semantic.genie_setup --profile dev --genie sales_and_stock
 
-Reads genie/space.yaml, genie/trusted_queries.yaml and genie/benchmarks.yaml (no Spark needed) and writes:
+Reads the agent's space.yaml, trusted_queries.yaml (sales only) and benchmarks.yaml (genie/ for sales,
+genie/inventory/, genie/sales_and_stock/; no Spark needed) and writes:
   - genie_setup.md          step by step: data assets, hidden columns, instructions, sample questions,
                             trusted queries with their parameters, example queries, benchmarks
   - genie_benchmarks.csv    the scored benchmark set (every wording of every untaught question + its SQL)
+(genie_setup_<agent>.md and genie_benchmarks_<agent>.csv for the other agents.)
 Pasting from one generated sheet avoids typos in table names and SQL on the day.
 """
 
@@ -26,6 +30,10 @@ from sales_insights.semantic import answer_key as ak
 
 GENIE = REPO_ROOT / "genie"
 GOLD_OBJECTS = ["fact_sales", "dim_customer", "dim_product", "dim_region", "dim_channel", "dim_date", "sales_metrics"]
+INVENTORY_OBJECTS = [
+    "fact_stock_daily", "fact_stock_movements", "dim_location", "fact_sales_stock_daily", "inventory_metrics",
+    "sales_and_stock",
+]  # fmt: skip
 PARAM_TYPES = {"String", "Integer", "Date", "Decimal"}
 
 
@@ -47,12 +55,20 @@ def space(path: Path = GENIE / "space.yaml") -> dict:
 
 
 def trusted_queries(path: Path = GENIE / "trusted_queries.yaml") -> list[TrustedQuery]:
+    if not path.exists():  # only the sales agent has trusted queries so far
+        return []
     raw = yaml.safe_load(path.read_text(encoding="utf-8"))["queries"]
     return [TrustedQuery(**q) for q in raw]
 
 
 def table_names(cfg: Config) -> dict[str, str]:
-    return {t: cfg.table("gold", t) for t in GOLD_OBJECTS}
+    """Every gold object any agent uses: sales objects in the sales catalog, inventory ones in the inventory catalog."""
+    sales = cfg.for_area("sales")
+    names = {t: sales.table("gold", t) for t in GOLD_OBJECTS}
+    if "inventory" in sales.area_names():
+        inventory = sales.for_area("inventory")
+        names |= {t: inventory.table("gold", t) for t in INVENTORY_OBJECTS}
+    return names
 
 
 def render(sql: str, tables: dict[str, str]) -> str:
@@ -73,8 +89,14 @@ def benchmarks(
     ]
 
 
-def sheet(cfg: Config, as_of: date | None = None) -> tuple[str, list[dict]]:
-    sp, tables, questions = space(), table_names(cfg), ak.load()
+def benchmarks_file(agent: ak.GenieAgent, stem: str = "genie_benchmarks", ext: str = "csv") -> str:
+    """genie_benchmarks.csv for the sales agent (as always), genie_benchmarks_<agent>.csv for the others."""
+    return f"{stem}.{ext}" if agent.name == "sales" else f"{stem}_{agent.name}.{ext}"
+
+
+def sheet(cfg: Config, as_of: date | None = None, agent: ak.GenieAgent = ak.SPACES["sales"]) -> tuple[str, list[dict]]:
+    sp, tables, questions = space(agent.folder / "space.yaml"), table_names(cfg), ak.load(agent.benchmarks)
+    tqs = trusted_queries(agent.folder / "trusted_queries.yaml")
     by_id = {q.id: q for q in questions}
     taught = {e["from_benchmark"] for e in sp["example_queries"]}
     bench = benchmarks(questions, taught, tables, as_of)
@@ -108,10 +130,15 @@ def sheet(cfg: Config, as_of: date | None = None) -> tuple[str, list[dict]]:
         "",
         "## 6. Trusted queries (Instructions > SQL queries, with parameters)",
         "",
-        "Add each as an example SQL query. Genie creates a parameter for every `:name`: set its type and paste its",
-        "comment, so Genie knows which values are allowed.",
     ]
-    for tq in trusted_queries():
+    if tqs:
+        md += [
+            "Add each as an example SQL query. Genie creates a parameter for every `:name`: set its type and paste",
+            "its comment, so Genie knows which values are allowed.",
+        ]
+    else:
+        md += ["None for this agent yet."]
+    for tq in tqs:
         md += ["", f"### {tq.id} {tq.name}", "", f"**Question:** {tq.question}", "", "| Parameter | Type | Comment |"]
         md += [
             "|---|---|---|",
@@ -124,7 +151,7 @@ def sheet(cfg: Config, as_of: date | None = None) -> tuple[str, list[dict]]:
     md += [
         f"## 8. Benchmarks ({len(bench)} questions, target {sp['target_accuracy_pct']}%+)",
         "",
-        "Load `genie_benchmarks.csv` with `python -m sales_insights.semantic.genie_sync` (or add each row as a",
+        f"Load `{benchmarks_file(agent)}` with `python -m sales_insights.semantic.genie_sync` (or add each row as a",
         "benchmark by hand), then **Run all benchmarks** in **Chat** mode.",
         "Demo-week questions join once their data exists.",
         f"Taught questions and their rewordings are left out: {', '.join(sorted(taught))}.",
@@ -133,10 +160,12 @@ def sheet(cfg: Config, as_of: date | None = None) -> tuple[str, list[dict]]:
     return "\n".join(md) + "\n", bench
 
 
-def write(cfg: Config, out_dir: Path, as_of: date | None = None) -> tuple[Path, Path]:
-    md, bench = sheet(cfg, as_of)
+def write(
+    cfg: Config, out_dir: Path, as_of: date | None = None, agent: ak.GenieAgent = ak.SPACES["sales"]
+) -> tuple[Path, Path]:
+    md, bench = sheet(cfg, as_of, agent)
     out_dir.mkdir(parents=True, exist_ok=True)
-    md_path, csv_path = out_dir / "genie_setup.md", out_dir / "genie_benchmarks.csv"
+    md_path, csv_path = out_dir / benchmarks_file(agent, "genie_setup", "md"), out_dir / benchmarks_file(agent)
     md_path.write_text(md, encoding="utf-8")
     with csv_path.open("w", newline="", encoding="utf-8") as fh:
         w = csv.DictWriter(fh, fieldnames=["benchmark_id", "question", "ground_truth_sql"])
@@ -157,8 +186,9 @@ def main(argv: list[str] | None = None) -> None:
         default=None,
         help="date the data runs to (default: today); demo-week questions join after their date",
     )
+    parser.add_argument("--genie", default="sales", choices=sorted(ak.SPACES), help="which Genie agent (default sales)")
     args = parser.parse_args(argv)
-    md_path, csv_path = write(load_config(args.profile), Path(args.out), args.as_of)
+    md_path, csv_path = write(load_config(args.profile), Path(args.out), args.as_of, ak.SPACES[args.genie])
     print(f"  setup sheet: {md_path}")
     print(f"  benchmarks:  {csv_path}")
 

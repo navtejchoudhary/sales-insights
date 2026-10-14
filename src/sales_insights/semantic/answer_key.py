@@ -1,8 +1,11 @@
 """Genie answer key: run every benchmark question's ground-truth SQL on gold and record the answers.
 
-    uv run python -m sales_insights.semantic.answer_key      # writes genie/answer_key.csv
+    uv run python -m sales_insights.semantic.answer_key                          # genie/answer_key.csv
+    uv run python -m sales_insights.semantic.answer_key --genie inventory        # genie/inventory/answer_key.csv
+    uv run python -m sales_insights.semantic.answer_key --genie sales_and_stock  # genie/sales_and_stock/...
 
-For each question in genie/benchmarks.yaml:
+One answer key per Genie agent (SPACES): Sales (genie/), Inventory (genie/inventory/) and the combined
+Sales & Stock agent (genie/sales_and_stock/). For each question in the agent's benchmarks.yaml:
   - run its SQL on the current gold tables (local Delta or Unity Catalog)
   - keep the answer (up to 10 rows, as readable text) for scoring Genie by hand or by benchmark
   - evaluate its `check`: PASS means the planted story is visible in the data, FAIL means it is not
@@ -29,6 +32,38 @@ from sales_insights.common.config import REPO_ROOT
 GENIE = REPO_ROOT / "genie"
 CATEGORIES = {"basic", "trend", "story", "tricky"}
 CHECK_NAMES = {"row": None, "rows": None, "date": date, "len": len, "set": set, "all": all, "any": any, "abs": abs}
+
+
+@dataclass(frozen=True)
+class GenieAgent:
+    """One Genie agent's files and the area whose gold tables answer its questions."""
+
+    name: str
+    folder: Path
+    area: str
+    data_until_sql: str  # the latest date the agent's data covers (decides PENDING)
+
+    @property
+    def benchmarks(self) -> Path:
+        return self.folder / "benchmarks.yaml"
+
+    @property
+    def answer_key(self) -> Path:
+        return self.folder / "answer_key.csv"
+
+
+SPACES = {
+    "sales": GenieAgent("sales", GENIE, "sales", "SELECT MAX(invoice_date) AS d FROM ${fact_sales}"),
+    "inventory": GenieAgent(
+        "inventory", GENIE / "inventory", "inventory", "SELECT MAX(snapshot_date) AS d FROM ${fact_stock_daily}"
+    ),
+    "sales_and_stock": GenieAgent(
+        "sales_and_stock",
+        GENIE / "sales_and_stock",
+        "inventory",
+        "SELECT MAX(activity_date) AS d FROM ${fact_sales_stock_daily}",
+    ),
+}
 
 
 @dataclass(frozen=True)
@@ -73,7 +108,9 @@ def evaluate(q: Question, rows: list[dict], data_until: date | None) -> str:
     if q.needs_data_until and (data_until is None or data_until < q.needs_data_until):
         return "PENDING"
     try:
-        ok = eval(q.check, {"__builtins__": {}}, {**CHECK_NAMES, "row": rows[0] if rows else {}, "rows": rows})
+        # names go in the globals so that generator expressions (`all(... for r in rows)`) can see them too
+        names = {"__builtins__": {}, **CHECK_NAMES, "row": rows[0] if rows else {}, "rows": rows}
+        ok = eval(q.check, names)
     except Exception:  # noqa: BLE001 - a check that cannot even be evaluated (no rows, missing column) fails
         return "FAIL"
     return "PASS" if ok else "FAIL"
@@ -91,12 +128,15 @@ def as_text(rows: list[dict], limit: int = 10) -> str:
     return text + (f" | ... ({len(rows)} rows)" if len(rows) > limit else "")
 
 
-def build(spark, lake, questions: list[Question] | None = None) -> list[dict]:
+def build(
+    spark, lake, questions: list[Question] | None = None, agent: GenieAgent = SPACES["sales"], sales_lake=None
+) -> list[dict]:
+    """Run every question of `agent` on gold. `lake` is the agent's area; other areas also need `sales_lake`."""
     from sales_insights.semantic import metric_views as mvs
 
-    questions = questions or load()
-    tables = mvs.table_names(lake)
-    data_until = spark.sql(f"SELECT MAX(invoice_date) AS d FROM {tables['fact_sales']}").collect()[0]["d"]
+    questions = questions or load(agent.benchmarks)
+    tables = mvs.table_names(lake) if sales_lake is None else mvs.table_names(lake, sales_lake)
+    data_until = spark.sql(Template(agent.data_until_sql).substitute(tables)).collect()[0]["d"]
     out = []
     for q in questions:
         rows = [r.asDict() for r in spark.sql(render(q, tables)).collect()]
@@ -129,11 +169,14 @@ def main(argv: list[str] | None = None) -> None:
     from sales_insights.common.lake import Lake
     from sales_insights.common.spark import get_spark
 
-    argparse.ArgumentParser(description="Compute the Genie answer key from gold.").parse_args(argv)
-    cfg = load_config()
+    parser = argparse.ArgumentParser(description="Compute the Genie answer key from gold.")
+    parser.add_argument("--genie", default="sales", choices=sorted(SPACES), help="which Genie agent (default sales)")
+    agent = SPACES[parser.parse_args(argv).genie]
+    cfg = load_config(area=agent.area)
     spark = get_spark(cfg, app_name="answer-key")
-    rows = build(spark, Lake(spark, cfg))
-    path = write_csv(rows)
+    sales_lake = None if cfg.area == "sales" else Lake(spark, cfg.for_area("sales"))
+    rows = build(spark, Lake(spark, cfg), agent=agent, sales_lake=sales_lake)
+    path = write_csv(rows, agent.answer_key)
     print(f"  {len(rows)} questions, data until {rows[0]['data_until']} -> {path.relative_to(REPO_ROOT)}")
     for r in rows:
         if r["story_check"]:
