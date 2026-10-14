@@ -253,7 +253,7 @@ questions:
           AS avg_daily_since
       FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
       WHERE s.product_id = 'MC6004LT' AND l.province = 'Western' AND l.location_type = 'Depot'
-    check: row['avg_daily_since'] > 1.3 * row['avg_daily_before']
+    check: 10 * row['avg_daily_since'] > 13 * row['avg_daily_before']  # 30% more; whole numbers: Spark returns decimals
 
   - id: INV17
     category: story

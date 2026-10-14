@@ -206,6 +206,29 @@ def test_checks_can_use_names_inside_generator_expressions():
     assert ak.evaluate(q, [{"d": date(2026, 10, 22)}], date(2026, 10, 30)) == "FAIL"
 
 
+@pytest.mark.parametrize("agent", [ak.SPACES["sales"], INV, BOTH])
+def test_checks_never_multiply_by_a_float(agent):
+    """Spark returns DECIMAL for ROUND(...) and sums: Decimal * 1.3 raises TypeError, so the check would always
+    FAIL on Databricks and on the Mac (it passed on floats). Scale with whole numbers instead (10 * x > 13 * y)."""
+    for q in ak.load(agent.benchmarks):
+        assert not re.search(r"\d\.\d", q.check or ""), q.id
+
+
+def test_growth_story_checks_work_on_decimals():
+    qs = {q.id: q for q in [*ak.load(INV.benchmarks), *ak.load(BOTH.benchmarks)]}
+    after = date(2026, 10, 30)
+    assert (
+        ak.evaluate(qs["INV16"], [{"avg_daily_before": Decimal("6.0"), "avg_daily_since": Decimal("13.9")}], after)
+        == "PASS"
+    )
+    assert (
+        ak.evaluate(qs["INV16"], [{"avg_daily_before": Decimal("6.0"), "avg_daily_since": Decimal("7.0")}], after)
+        == "FAIL"
+    )
+    both = {"avg_daily_units_before": Decimal("6.0"), "avg_daily_units_since": Decimal("13.9")}
+    assert ak.evaluate(qs["SS03"], [both], after) == "PASS"
+
+
 @pytest.mark.parametrize("agent", [INV, BOTH])
 def test_inventory_agents_follow_genie_best_practice(agent):
     space = _space(agent)
