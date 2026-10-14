@@ -59,6 +59,35 @@ Product: product, product group, product type, division. Document type.
 - Divisions use `NULLIF(…, 0)`, so an empty period gives an empty value instead of an error.
 - Never change a formula in only one place: edit the metric view AND the KPI SQL; the check fails otherwise.
 
+## Inventory KPIs (`sql/metric_views/inventory_metrics.yaml`, twins in `sql/kpis/inventory/`)
+
+Stock is a **level**: for any period the stock measures give the value on the **last day** of the period
+(metric view window measures, `semiadditive: last`); grouped by day they give each day's value. Flows add up.
+
+| KPI | Formula | Kind |
+|---|---|---|
+| Stock on hand | SUM(stock_quantity) on the last day | Level |
+| Stock value (LKR) | SUM(stock_value_amount) on the last day (stock x standard cost) | Level |
+| In transit | SUM(in_transit_quantity) on the last day | Level |
+| Average daily issues (28 days) | SUM(avg_daily_issued_quantity_28d) on the last day | Level |
+| Days of cover | stock on hand / average daily issues (28 days); ratio of sums, never an average of ratios | Level |
+| Stock-outs | positions with is_stock_out on the last day (zero stock of a product issued in the last 28 days) | Level |
+| Low-cover positions | positions with less than 7 days of cover on the last day | Level |
+| Stock-out rate % | stock-outs / positions that issued anything in the last 28 days x 100 | Level |
+| Goods issued | SUM(issued_quantity) (movement 601) | Flow |
+| Stock-out days | count of location x product x days with is_stock_out | Flow |
+
+KPI views: `kpi_stock_daily` (day x province), `kpi_stock_month_end` (month x location x product),
+`kpi_sales_and_stock_monthly` (month x province, from `sales_and_stock`). The `kpis` step proves each equals
+the metric view, as for sales.
+
+## Sales & Stock KPIs (`sql/metric_views/sales_and_stock.yaml`)
+
+Over `gold.fact_sales_stock_daily` (day x sales office x product: the office's sales next to its depot's stock).
+Net revenue, units sold (net), units invoiced (before returns; use it to see whether a product still sells), goods
+issued and stock-out days are flows. Depot stock, depot in transit, depot stock-outs and depot days of cover are
+levels (last day). Province = the sales office's province = the customers' province.
+
 ## Can change later
 
 On 5 Oct 2026 the sponsor asked for the business logic to be shown working rather than finalised: the

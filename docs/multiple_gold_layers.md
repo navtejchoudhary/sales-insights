@@ -1,7 +1,7 @@
 # Multiple Gold Layers: Plan
 
 **Project:** Sales Insights MVP on Azure Databricks · **Owner:** Navtej · **Built for:** Anil
-**Written:** Tue 13 Oct 2026 · **Status:** APPROVED 13 Oct (defaults). Built: PR A area support (#24), PR B inventory generator (#25), PR C inventory pipeline (local)
+**Written:** Tue 13 Oct 2026 · **Status:** APPROVED 13 Oct (defaults). Built: PR A area support (#24), PR B inventory generator (#25), PR C inventory pipeline (#26), PR D inventory metric views + Stock and Sales & Stock Genie agents (local)
 **Demo:** 29–30 Oct 2026 · **Azure credit ends:** 5 Nov 2026
 
 > **What this plan does:** it adds more business areas (inventory now, finance later) next to the sales pipeline we already run. Each area gets its own bronze → silver → gold, all areas share one set of dimensions, and Genie and the dashboard can answer questions across areas.
@@ -206,7 +206,7 @@ Stock today = yesterday's stock + movements, so each day depends on all days bef
 4. **Replenishment (min/max with safety stock):** a depot orders from the hub when stock + in transit falls below 7 days of average issues + its largest day of the last 4 weeks, up to 21 days + that largest day; the hub and plant stores order from outside at 14 / 42 days (the hub's safety stock covers every depot's largest day). Stock never goes negative: if a big order would empty a position, an emergency transfer or receipt arrives first (about 13% of transfers, mostly slow or new products).
 5. **The sales generator is not changed;** inventory only reads it (a test proves the sales files stay byte-identical).
 
-### 4.4 Planted stories (settings in `generator/stories.py`, each covered by a test; story checks in `answer_key` come with PR D)
+### 4.4 Planted stories (settings in `generator/stories.py`, each covered by a test; story checks INV14-INV18 and SS01-SS05 in `answer_key`)
 
 | ID | Story | What the data shows | Ties to the sales story |
 |---|---|---|---|
@@ -263,9 +263,10 @@ Every table and column gets a plain-English description in an inventory `gold_mo
 | `stock_out_days` | Count of location × product × days with zero stock where the product normally sells | |
 | `goods_issued_qty`, `goods_received_qty` | Sum of movements | Additive |
 
-**Not-additive measure: to verify on day 1 of the build.**
-- Option A: if our metric view version supports a "last value in period" measure, use it.
-- Option B (fallback, always works): a gold view `stock_period_end` (rows only for the last day of each period, using the `dim_date` flags) plus a `stock_latest` view for "current stock". Genie gets an instruction and trusted queries for both.
+**Not-additive measure: decided 14 Oct (PR D).**
+- **Option A chosen:** metric view **window measures** (`window: [{order: snapshot_date, range: current, semiadditive: last}]`, YAML 1.1). Grouped by day they give each day's stock; grouped by month (or with no date) they give the stock on the last day. Locally `compile_query` takes the last day per group in a subquery; tests prove it on a hand-made world and against the KPI views. To confirm on Databricks when the metric view is published (22 Oct).
+- Option B (fallback, already built): the KPI views `kpi_stock_month_end` (month x location x product) and `kpi_stock_daily` (day x province) hold the same numbers; Genie can use them if window measures are refused.
+- **Sales & Stock:** the combined metric view `sales_and_stock` reads a gold table `fact_sales_stock_daily` (day x sales office x product, sales summed before the join), so no sale is counted twice.
 
 ### 4.9 Genie, insights, dashboard
 

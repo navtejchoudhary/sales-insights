@@ -1,0 +1,56 @@
+# Genie agent "Sales & Stock" (combined) configuration: questions that need sales and stock together.
+# It stands in for a supervisor agent over the Sales and Stock agents (not available in our workspace).
+# Setup steps: genie/sales_and_stock/README.md. Placeholders like $${fact_sales_stock_daily} are replaced with
+# real table names: inventory tables from inventory_dev.gold, sales tables and shared dimensions from sales_dev.gold.
+
+title: Sri Lankan Crop Protection Sales and Stock
+description: >-
+  Ask questions that link sales and stock: did a product stop selling because a depot ran out, how much cover
+  the depots have against what customers buy, where returns pile up. Data from 1 April 2025, updated daily.
+
+# Data assets (6). The metric view and fact_sales_stock_daily hold sales next to depot stock per day, sales
+# office and product; fact_stock_daily and fact_stock_movements cover the hub, plant stores and transfers.
+data:
+  - ${sales_and_stock}
+  - ${fact_sales_stock_daily}
+  - ${fact_stock_daily}
+  - ${fact_stock_movements}
+  - ${dim_location}
+  - ${dim_product}
+
+instructions: |
+  - Money is Sri Lankan rupees (LKR) excluding VAT; quantities are in each product's base unit. Round money to 2 decimal places.
+  - fact_sales_stock_daily has one row per day, sales office and product: the sales office's sales next to the closing stock of the depot that serves it. Province and depot come from dim_location via location_id; customers are served by the depot of their sales office, so the depot's province is the customers' province.
+  - Sales columns (net_revenue_amount, sales_quantity, invoiced_quantity, issued_quantity) add up over days. Stock columns (stock_quantity, in_transit_quantity) are levels: for a period use the last day of the period, never a sum over days (MEASURE(depot_stock) in sales_and_stock does this).
+  - "Revenue" means net revenue, SUM(net_revenue_amount). To see whether a product is still selling use invoiced_quantity: net sales_quantity can be negative on a day when older invoices are returned or cancelled.
+  - The hub (2010-0090), plant stores and the returns store (2010-0032) are not depots: use fact_stock_daily for their stock and fact_stock_movements for transfers (313 out of the hub; 315 is the same goods arriving, never count both).
+  - Products not held at depots (services, building solutions, raw materials) have empty depot stock; that is not a stock-out. A stock-out is is_stock_out = true.
+  - "Current" or "now" means the latest activity_date in fact_sales_stock_daily (the latest day both sales and stock have arrived).
+  - When explaining a drop in sales, check depot stock (stock_quantity, is_stock_out), the hub's stock and the last transfer (movement 315) to that depot, and say which product customers bought instead.
+  - The fiscal year runs April to March and is named by its start year (FY2026 = 1 April 2026 to 31 March 2027).
+sample_questions:
+  - Why did sales of MC6001LT stop in Western province?
+  - Which products are out of stock at a depot while customers still order them?
+  - Show sales and month-end depot stock by province for last month.
+  - Which sales offices' depots ran out of stock most often this fiscal year?
+  - How much stock does the Galle hub hold of products the depots have run out of?
+
+# Columns to hide in the Genie agent (Configure > Data).
+hidden_columns:
+  fact_stock_movements: [material_document_item, reference_invoice_item, delivered_date]
+  dim_location: [company_code, plant_code, storage_location_code, district_code]
+  dim_product: [product_group_code, product_type_code, division_code, company_code, plant_code]
+
+# Example SQL queries: teach Genie the cases that are easy to get wrong (taken from the answer key).
+example_queries:
+  - question: Show daily MC6001LT units invoiced and depot stock in Western from 18 to 26 October 2026.
+    from_benchmark: SS02
+  - question: For each province, what was net revenue in September 2026 and depot stock at the end of the month?
+    from_benchmark: SS06
+  - question: How much MC6001LT stock did the Western depots have in October 2026?
+    from_benchmark: SS12
+
+# Benchmarks: every question in genie/sales_and_stock/benchmarks.yaml EXCEPT the example queries above.
+# SS01 (the demo question) is deliberately NOT taught: the demo must show Genie reasoning, not recall.
+benchmarks_exclude: [SS02, SS06, SS12]
+target_accuracy_pct: 90

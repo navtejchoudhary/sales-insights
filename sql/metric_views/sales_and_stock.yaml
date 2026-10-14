@@ -1,0 +1,156 @@
+# Sales & Stock metric view: KPIs that need sales and stock together, defined once.
+# On Databricks this becomes inventory_dev.gold.sales_and_stock, read by the combined "Sales & Stock" Genie and
+# the dashboard's "Sales vs stock" chart. It answers questions such as "why did MC6001LT stop selling in Western?".
+#
+# Source: gold.fact_sales_stock_daily (inventory gold), one row per day x sales office x product with the sales
+# office's sales next to its depot's closing stock. Both facts are summed to that shared grain BEFORE they are
+# joined, so a sale is never counted twice (the "drill-across" pattern). Net revenue here equals fact_sales.
+# Stock measures are window measures (last day of the period), sales measures add up.
+# Placeholders such as $${fact_sales_stock_daily} are replaced with real table names.
+# Formulas must match sql/kpis/inventory/kpi_sales_and_stock_daily.sql (tests check this).
+
+version: 1.1
+comment: >-
+  Sales next to depot stock for the Sri Lankan crop-protection business: one row per day, sales office and
+  product underneath. Money in LKR excluding VAT; quantities in each product's base unit. Province and depot
+  are those of the sales office (customers are served by the depot of their sales office).
+source: ${fact_sales_stock_daily}
+
+joins:
+  - name: location_dim
+    source: ${dim_location}
+    "on": source.location_id = location_dim.location_id
+  - name: product_dim
+    source: ${dim_product}
+    "on": source.product_id = product_dim.product_id
+  - name: date_dim
+    source: ${dim_date}
+    "on": source.activity_date = date_dim.date
+
+fields:
+  - name: activity_date
+    expr: source.activity_date
+    display_name: Date
+    comment: Day of the sales and of the closing stock. Stock measures take the last date of each group.
+    synonyms: [date, day]
+  - name: month
+    expr: date_dim.month_start_date
+    display_name: Month
+    comment: First day of the calendar month.
+    synonyms: [calendar month]
+  - name: week
+    expr: date_dim.week_start_date
+    display_name: Week
+    comment: Monday of the week.
+  - name: fiscal_year
+    expr: date_dim.fiscal_year_label
+    display_name: Fiscal year
+    comment: Fiscal year April-March, e.g. FY2026 = April 2026 to March 2027.
+    synonyms: [FY, financial year]
+  - name: is_last_7_days
+    expr: date_dim.is_last_7_days
+    display_name: Last 7 days
+    synonyms: [last week, past week, this week]
+  - name: is_month_to_date
+    expr: date_dim.is_month_to_date
+    display_name: Month to date
+    synonyms: [this month, MTD, current month]
+  - name: is_last_complete_month
+    expr: date_dim.is_last_complete_month
+    display_name: Last complete month
+    synonyms: [last month, previous month]
+  - name: province
+    expr: location_dim.province
+    display_name: Province
+    comment: Province of the sales office and its depot (the same as the customers' province), e.g. Western.
+    synonyms: [region, area]
+  - name: depot
+    expr: location_dim.location_name
+    display_name: Depot
+    comment: Depot that serves the sales office, e.g. Colombo Depot.
+    synonyms: [warehouse, store]
+  - name: sales_office_code
+    expr: source.sales_office_code
+    display_name: Sales office
+    comment: Sales office code, e.g. C001 (Colombo).
+  - name: product_id
+    expr: source.product_id
+    display_name: Product code
+    comment: Material code, e.g. MC6001LT.
+    synonyms: [material, SKU]
+  - name: product
+    expr: product_dim.product_description
+    display_name: Product
+    synonyms: [item, product name]
+  - name: product_group
+    expr: product_dim.product_group_name
+    display_name: Product group
+    comment: e.g. WEEDICIDE, INSECTICIDE, FUNGICIDE.
+    synonyms: [category]
+
+measures:
+  # --- sales (flows: add up over days)
+  - name: net_revenue
+    expr: SUM(source.net_revenue_amount)
+    display_name: Net revenue (LKR)
+    comment: Invoices minus returns, cancellations and price corrections, excluding VAT. Same as sales_metrics.
+    synonyms: [revenue, sales, net sales]
+  - name: units_sold
+    expr: SUM(source.sales_quantity)
+    display_name: Units sold (net)
+    comment: Units sold minus returned and cancelled.
+    synonyms: [sales units, quantity sold, volume]
+  - name: units_invoiced
+    expr: SUM(source.invoiced_quantity)
+    display_name: Units invoiced
+    comment: Units on invoices and free-of-charge deliveries, before returns and cancellations. Use to see whether a product is still selling.
+    synonyms: [units ordered, gross units]
+  - name: issued_quantity
+    expr: SUM(source.issued_quantity)
+    display_name: Goods issued
+    comment: Quantity the depots issued to customers in the period.
+  - name: stock_out_days
+    expr: COUNT_IF(source.is_stock_out)
+    display_name: Stock-out days
+    comment: Depot x product x days with zero stock of a product the depot normally issues.
+    synonyms: [days out of stock]
+  # --- depot stock (levels: last day of the period)
+  - name: depot_stock
+    expr: SUM(source.stock_quantity)
+    window:
+      - order: activity_date
+        range: current
+        semiadditive: last
+    display_name: Depot stock
+    comment: Depot closing stock on the last day of the period, in base units. Never summed over days.
+    synonyms: [stock, stock on hand, inventory]
+  - name: depot_in_transit
+    expr: SUM(source.in_transit_quantity)
+    window:
+      - order: activity_date
+        range: current
+        semiadditive: last
+    display_name: In transit to depots
+    comment: Stock on its way from the hub to the depots on the last day of the period.
+  - name: avg_daily_issued_28d
+    expr: SUM(source.avg_daily_issued_quantity_28d)
+    window:
+      - order: activity_date
+        range: current
+        semiadditive: last
+    display_name: Average daily issues (28 days)
+    comment: Average quantity the depots issued per day over the 28 days ending on the last day of the period.
+  - name: stock_out_positions
+    expr: COUNT_IF(source.is_stock_out)
+    window:
+      - order: activity_date
+        range: current
+        semiadditive: last
+    display_name: Depot stock-outs
+    comment: Depot x product positions with zero stock of a product they normally issue, on the last day.
+    synonyms: [out of stock]
+  - name: depot_days_of_cover
+    expr: MEASURE(depot_stock) / NULLIF(MEASURE(avg_daily_issued_28d), 0)
+    display_name: Depot days of cover
+    comment: How many days the depot stock lasts at the 28-day average issue rate (last day of the period).
+    synonyms: [days of cover, cover]

@@ -70,10 +70,10 @@ Receipts, transfers and month-end counts complete the picture. 17 locations: 6 p
 
 | # | Story | Setting | Where it shows |
 |---|---|---|---|
-| I1 | **Live:** the Colombo and Negombo depots (Western) run out of `MC6001LT` the evening before story 7 starts; the Galle hub still has stock; the last transfer was a month earlier | `STOCKOUT_LAST_TRANSFER_DAYS = 30` | Live days: explains story 7 |
-| I2 | The substitute 4-litre pack leaves the Western depots about 50% faster from 23 Oct | follows story 7 | Live days |
-| I3 | Spare kit `S-10000576` over-bought at the Kandy store (more than 120 days of cover) | one receipt on 3 Aug 2026, 200 days of cover | History |
-| I4 | Returns pile up in the returns store, `HGL400ML` fastest | follows story 6 | History |
+| I1 | **Live:** the Colombo and Negombo depots (Western) run out of `MC6001LT` the evening before story 7 starts; the Galle hub still has stock; the last transfer was a month earlier | `STOCKOUT_LAST_TRANSFER_DAYS = 30` | Live days: explains story 7. Genie: INV14, INV15, SS01 (demo question), SS02 |
+| I2 | The substitute 4-litre pack leaves the Western depots about 50% faster from 23 Oct | follows story 7 | Live days. Genie: INV16, SS03 |
+| I3 | Spare kit `S-10000576` over-bought at the Kandy store (more than 120 days of cover) | one receipt on 3 Aug 2026, 200 days of cover | History. Genie: INV17, SS05 |
+| I4 | Returns pile up in the returns store, `HGL400ML` fastest | follows story 6 | History. Genie: INV18, SS04 |
 
 | Dirt (daily files) | Rate | Silver must |
 |---|---|---|

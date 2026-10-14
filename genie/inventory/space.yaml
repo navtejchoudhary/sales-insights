@@ -1,0 +1,62 @@
+# Genie agent "Stock" (inventory) configuration: everything we paste into Databricks for the inventory area.
+# Setup steps: genie/inventory/README.md. Same rules as the sales agent (genie/space.yaml): few, focused data
+# assets and instructions; example SQL queries teach the cases that are easy to get wrong.
+# Placeholders like $${fact_stock_daily} are replaced with real table names: inventory tables from
+# inventory_dev.gold, shared dimensions (products, dates) from sales_dev.gold.
+
+title: Sri Lankan Crop Protection Stock Analytics
+description: >-
+  Ask questions about stock in our depots, the Galle distribution hub and plant stores: stock on hand, stock
+  value, days of cover, stock-outs, goods issues, receipts and transfers. Data from 1 April 2025, updated daily.
+
+# Data assets (6). The metric view carries every stock KPI (stock as a month-end level, not a sum);
+# the tables cover detail questions (which depot, which day, which transfer).
+data:
+  - ${inventory_metrics}
+  - ${fact_stock_daily}
+  - ${fact_stock_movements}
+  - ${dim_location}
+  - ${dim_product}
+  - ${dim_date}
+
+instructions: |
+  - Quantities are in each product's base unit (cases, bottles, bags); stock value is LKR at standard cost.
+  - Stock is a level, not a flow. Never add stock_quantity over days. For a month or any period use the stock on the last day of the period (MEASURE(stock_on_hand) in inventory_metrics does this). "Stock in September" = stock on 30 September.
+  - "Current", "now" or "today" means the latest snapshot_date in fact_stock_daily (it can be a day behind sales), never CURRENT_DATE.
+  - Issues, receipts and stock-out days are flows and do add up over days.
+  - A transfer from the hub is movement 313 (out of the hub); movement 315 is the same goods arriving at the depot. Count only one of them.
+  - Depots are locations with location_type = 'Depot' (2010-8001 to 2010-8011, one per sales office). The Galle hub is 2010-0090. The returns store 2010-0032 holds returned goods that cannot be sold: leave it out of "available" or "sellable" stock.
+  - Days of cover = SUM(stock_quantity) / SUM(avg_daily_issued_quantity_28d) for the group (a ratio of sums, never an average of days_of_cover). Overstock = more than 120 days of cover; low cover = less than 7 days.
+  - A stock-out is is_stock_out = true: zero stock of a product the location issued in the last 28 days. Stock-out rate = stock-outs / positions that issued anything in the last 28 days.
+  - Product codes such as MC6001LT are product_id; names such as MC600 WEEDICIDE 1LTR (CASE) are product_description in dim_product.
+  - The fiscal year runs April to March and is named by its start year (FY2026 = 1 April 2026 to 31 March 2027).
+  - For "which ... most / least" questions show the full ranking, best first. Always state the stock date you used.
+sample_questions:
+  - How much MC6001LT does each depot hold right now?
+  - What was the stock value by province at the end of last month?
+  - Which depots are out of stock of a product they normally sell?
+  - Which products have more than 120 days of cover?
+  - How many units did the hub transfer to the depots last month?
+
+# Columns to hide in the Genie agent (Configure > Data): technical or confusing for business questions.
+hidden_columns:
+  fact_stock_movements: [material_document_item, reference_invoice_item, delivered_date]
+  dim_location: [company_code, plant_code, storage_location_code, district_code]
+  dim_product: [product_group_code, product_type_code, division_code, company_code, plant_code]
+
+# Example SQL queries: teach Genie the cases that are easy to get wrong (taken from the answer key).
+example_queries:
+  - question: What was our total stock of MC6001LT in September 2026?
+    from_benchmark: INV19
+  - question: How much MC6001LT do we have at each location right now?
+    from_benchmark: INV20
+  - question: How many units did the hub send to the depots in September 2026?
+    from_benchmark: INV23
+  - question: What was the total stock value at each month end in fiscal year 2026?
+    from_benchmark: INV09
+  - question: How many days of cover did the depots have for each product group on 30 September 2026?
+    from_benchmark: INV12
+
+# Benchmarks: every question in genie/inventory/benchmarks.yaml EXCEPT the example queries above.
+benchmarks_exclude: [INV09, INV12, INV19, INV20, INV23]
+target_accuracy_pct: 90

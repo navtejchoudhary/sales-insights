@@ -1,0 +1,387 @@
+# Inventory Genie benchmark questions: the answer key for the "Stock" agent.
+#
+# Same format as genie/benchmarks.yaml (sales). Each question has the ground-truth SQL that answers it on the
+# inventory gold tables. `uv run python -m sales_insights.semantic.answer_key --genie inventory` runs every query
+# and writes genie/inventory/answer_key.csv; `check` proves a planted story (I1-I4, docs/story_sheet.md) is
+# visible; `needs_data_until` keeps a check PENDING until the stock data reaches that date.
+# Placeholders like $${fact_stock_daily} are replaced with real table names (inventory_dev.gold.* for the
+# inventory tables, sales_dev.gold.* for the shared dimensions).
+#
+# Conventions used by every query (the same as the inventory_metrics metric view):
+#   stock is a level: for a period take the LAST stock date (month end), never SUM over days
+#   stock on a day = SUM(stock_quantity) for that snapshot_date
+#   issues        = SUM(issued_quantity) (movement 601, positive); they add up over days
+#   transfers     = movement 313 (out of the hub); 315 is the same goods arriving: never count both
+#   "current"     = the latest snapshot_date in the data
+#   days of cover = SUM(stock_quantity) / SUM(avg_daily_issued_quantity_28d) (ratio of sums, not an average of ratios)
+
+questions:
+  # ---------------------------------------------------------------- basics
+  - id: INV01
+    category: basic
+    question: How much MC6001LT did the Galle hub hold at the end of September 2026?
+    paraphrases:
+      - What was the closing stock of MC600 WEEDICIDE 1LTR at the distribution hub on 30 September 2026?
+      - Galle hub stock of MC6001LT at the September 2026 month end?
+    sql: |
+      SELECT stock_quantity
+      FROM ${fact_stock_daily}
+      WHERE location_id = '2010-0090' AND product_id = 'MC6001LT' AND snapshot_date = DATE'2026-09-30'
+    check: row['stock_quantity'] > 0
+
+  - id: INV02
+    category: basic
+    question: What was the total value of our stock on 30 September 2026?
+    paraphrases:
+      - How much was all our inventory worth at the end of September 2026?
+      - Total stock value at standard cost on 30 Sep 2026?
+    sql: |
+      SELECT ROUND(SUM(stock_value_amount), 2) AS stock_value
+      FROM ${fact_stock_daily}
+      WHERE snapshot_date = DATE'2026-09-30'
+    check: row['stock_value'] > 0
+
+  - id: INV03
+    category: basic
+    question: Rank the provinces by stock value at the end of September 2026.
+    paraphrases:
+      - Which province held the most inventory value on 30 September 2026?
+      - Stock value by province at the September 2026 month end, highest first.
+    sql: |
+      SELECT l.province, ROUND(SUM(s.stock_value_amount), 2) AS stock_value
+      FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
+      WHERE s.snapshot_date = DATE'2026-09-30'
+      GROUP BY l.province
+      ORDER BY stock_value DESC
+
+  - id: INV04
+    category: basic
+    question: How many cases of MC6001LT were issued to customers in September 2026?
+    paraphrases:
+      - How much MC600 WEEDICIDE 1LTR left our depots for customers in Sep 2026?
+      - Goods issues of MC6001LT in September 2026?
+    sql: |
+      SELECT SUM(issued_quantity) AS issued_quantity
+      FROM ${fact_stock_daily}
+      WHERE product_id = 'MC6001LT' AND snapshot_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'
+    check: row['issued_quantity'] > 0
+
+  - id: INV05
+    category: basic
+    question: Which locations held the most stock value on 30 September 2026?
+    paraphrases:
+      - Rank our depots and stores by inventory value at the end of September 2026.
+      - Where is most of our stock value sitting at the September 2026 month end?
+    sql: |
+      SELECT l.location_name, l.location_type, ROUND(SUM(s.stock_value_amount), 2) AS stock_value
+      FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
+      WHERE s.snapshot_date = DATE'2026-09-30'
+      GROUP BY l.location_name, l.location_type
+      ORDER BY stock_value DESC
+    check: row['location_name'] == 'Galle Industrial - Distribution Hub'
+
+  - id: INV06
+    category: basic
+    question: How many goods receipts did we post in September 2026, and for what total quantity?
+    paraphrases:
+      - How many purchase deliveries came in during September 2026, and how many units?
+      - Number of goods receipts (movement 101) and quantity received in Sep 2026?
+    sql: |
+      SELECT COUNT(DISTINCT material_document) AS goods_receipts, SUM(received_quantity) AS received_quantity
+      FROM ${fact_stock_movements}
+      WHERE movement_type = '101' AND posting_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'
+    check: row['goods_receipts'] > 0
+
+  - id: INV07
+    category: basic
+    question: How much stock was in transit to the depots on 30 September 2026?
+    paraphrases:
+      - How many units were on the way from the hub to depots at the end of September 2026?
+      - In-transit stock on 30 Sep 2026?
+    sql: |
+      SELECT SUM(in_transit_quantity) AS in_transit_quantity
+      FROM ${fact_stock_daily}
+      WHERE snapshot_date = DATE'2026-09-30'
+
+  - id: INV08
+    category: basic
+    question: How many depot stock positions were out of stock on 30 September 2026?
+    paraphrases:
+      - On 30 Sep 2026, how many depot-product combinations had run out?
+      - Count of depot stock-outs at the end of September 2026?
+    sql: |
+      SELECT COUNT_IF(s.is_stock_out) AS stock_out_positions
+      FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
+      WHERE s.snapshot_date = DATE'2026-09-30' AND l.location_type = 'Depot'
+
+  # ---------------------------------------------------------------- trends
+  - id: INV09
+    category: trend
+    question: What was the total stock value at each month end in fiscal year 2026?
+    paraphrases:
+      - Show month-end inventory value for every month of FY2026.
+      - How did our stock value move month by month in fiscal year 2026 (month-end values)?
+    sql: |
+      WITH month_ends AS (
+        SELECT d.month_start_date AS month, MAX(s.snapshot_date) AS month_end
+        FROM ${fact_stock_daily} s JOIN ${dim_date} d ON s.snapshot_date = d.date
+        WHERE d.fiscal_year = 2026
+        GROUP BY d.month_start_date
+      )
+      SELECT m.month, m.month_end, ROUND(SUM(s.stock_value_amount), 2) AS stock_value
+      FROM month_ends m JOIN ${fact_stock_daily} s ON s.snapshot_date = m.month_end
+      GROUP BY m.month, m.month_end
+      ORDER BY m.month
+    check: len(rows) >= 6
+
+  - id: INV10
+    category: trend
+    question: How many units did the depots issue to customers each month from April to September 2026?
+    paraphrases:
+      - Monthly goods issues from the depots, April to September 2026.
+      - Show depot dispatches to customers by month for Apr-Sep 2026.
+    sql: |
+      SELECT d.month_start_date AS month, SUM(s.issued_quantity) AS issued_quantity
+      FROM ${fact_stock_daily} s
+      JOIN ${dim_location} l ON s.location_id = l.location_id
+      JOIN ${dim_date} d ON s.snapshot_date = d.date
+      WHERE l.location_type = 'Depot' AND s.snapshot_date BETWEEN DATE'2026-04-01' AND DATE'2026-09-30'
+      GROUP BY d.month_start_date
+      ORDER BY month
+    check: len(rows) == 6
+
+  - id: INV11
+    category: trend
+    question: How many depot stock-out days did we have each month in fiscal year 2025?
+    paraphrases:
+      - Count the days depots were out of stock of a product, per month, in FY2025.
+      - Monthly depot stock-out days for fiscal year 2025?
+    sql: |
+      SELECT d.month_start_date AS month, COUNT_IF(s.is_stock_out) AS stock_out_days
+      FROM ${fact_stock_daily} s
+      JOIN ${dim_location} l ON s.location_id = l.location_id
+      JOIN ${dim_date} d ON s.snapshot_date = d.date
+      WHERE l.location_type = 'Depot' AND d.fiscal_year = 2025
+      GROUP BY d.month_start_date
+      ORDER BY month
+
+  - id: INV12
+    category: trend
+    question: How many days of cover did the depots have for each product group on 30 September 2026?
+    paraphrases:
+      - Depot days of cover by product group at the end of September 2026.
+      - For each product category, how long would depot stock last at the end of Sep 2026?
+    sql: |
+      SELECT p.product_group_name AS product_group,
+             ROUND(SUM(s.stock_quantity) / NULLIF(SUM(s.avg_daily_issued_quantity_28d), 0), 1) AS days_of_cover
+      FROM ${fact_stock_daily} s
+      JOIN ${dim_location} l ON s.location_id = l.location_id
+      JOIN ${dim_product} p ON s.product_id = p.product_id
+      WHERE s.snapshot_date = DATE'2026-09-30' AND l.location_type = 'Depot'
+      GROUP BY p.product_group_name
+      ORDER BY days_of_cover DESC
+
+  - id: INV13
+    category: trend
+    question: What was the stock in the returns store at each month end from April to September 2026?
+    paraphrases:
+      - Show month-end returns store stock for Apr-Sep 2026.
+      - How did stock in the Galle returns store build up month by month in 2026 (April to September)?
+    sql: |
+      WITH month_ends AS (
+        SELECT d.month_start_date AS month, MAX(s.snapshot_date) AS month_end
+        FROM ${fact_stock_daily} s JOIN ${dim_date} d ON s.snapshot_date = d.date
+        WHERE s.snapshot_date BETWEEN DATE'2026-04-01' AND DATE'2026-09-30'
+        GROUP BY d.month_start_date
+      )
+      SELECT m.month, SUM(s.stock_quantity) AS returns_store_stock
+      FROM month_ends m JOIN ${fact_stock_daily} s ON s.snapshot_date = m.month_end
+      WHERE s.location_id = '2010-0032'
+      GROUP BY m.month
+      ORDER BY m.month
+    check: rows[-1]['returns_store_stock'] > rows[0]['returns_store_stock']
+
+  # ---------------------------------------------------------------- planted stories (docs/story_sheet.md)
+  - id: INV14
+    category: story
+    story: I1 Western depots run out of MC6001LT at the end of 22 October 2026 while the Galle hub still holds stock
+    question: Which Western depots had no MC6001LT left at the end of 22 October 2026, and how much did the Galle hub hold?
+    paraphrases:
+      - On 22 Oct 2026, how much MC600 WEEDICIDE 1LTR was left at the Western depots and at the hub?
+      - Closing stock of MC6001LT on 22 October 2026 at the Colombo and Negombo depots and the Galle hub?
+    needs_data_until: 2026-10-22
+    sql: |
+      SELECT l.location_name, l.location_type, s.stock_quantity, s.is_stock_out
+      FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
+      WHERE s.product_id = 'MC6001LT' AND s.snapshot_date = DATE'2026-10-22'
+        AND ((l.province = 'Western' AND l.location_type = 'Depot') OR s.location_id = '2010-0090')
+      ORDER BY l.location_type, l.location_name
+    check: >-
+      len(rows) == 3
+      and all(r['stock_quantity'] == 0 and r['is_stock_out'] for r in rows if r['location_type'] == 'Depot')
+      and any(r['location_type'] == 'Plant store' and r['stock_quantity'] > 1000 for r in rows)
+
+  - id: INV15
+    category: story
+    story: I1 the last MC6001LT transfer to the Western depots arrived on 23 September 2026
+    question: When did the Colombo and Negombo depots last receive MC6001LT from the hub?
+    paraphrases:
+      - Date of the last MC600 WEEDICIDE 1LTR transfer into the Western depots?
+      - When was MC6001LT last replenished at the Colombo and Negombo depots?
+    sql: |
+      SELECT l.location_name, MAX(m.posting_date) AS last_transfer_in, MAX_BY(m.quantity, m.posting_date) AS quantity
+      FROM ${fact_stock_movements} m JOIN ${dim_location} l ON m.location_id = l.location_id
+      WHERE m.product_id = 'MC6001LT' AND m.movement_type = '315' AND l.province = 'Western' AND l.location_type = 'Depot'
+      GROUP BY l.location_name
+      ORDER BY l.location_name
+    check: len(rows) == 2 and all(r['last_transfer_in'] == date(2026, 9, 23) for r in rows)
+
+  - id: INV16
+    category: story
+    story: I2 the substitute MC6004LT leaves the Western depots faster from 23 October 2026
+    question: How much MC6004LT did the Western depots issue per day after 23 October 2026, compared with the 30 days before?
+    paraphrases:
+      - Did issues of the 4-litre MC600 WEEDICIDE pack from the Western depots rise after 23 Oct 2026?
+      - Average daily MC6004LT goods issues in Western depots since 23 October versus the previous 30 days?
+    needs_data_until: 2026-10-25
+    sql: |
+      SELECT
+        ROUND(SUM(CASE WHEN s.snapshot_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22' THEN s.issued_quantity END) / 30, 1)
+          AS avg_daily_before,
+        ROUND(SUM(CASE WHEN s.snapshot_date >= DATE'2026-10-23' THEN s.issued_quantity END)
+              / NULLIF(COUNT(DISTINCT CASE WHEN s.snapshot_date >= DATE'2026-10-23' THEN s.snapshot_date END), 0), 1)
+          AS avg_daily_since
+      FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
+      WHERE s.product_id = 'MC6004LT' AND l.province = 'Western' AND l.location_type = 'Depot'
+    check: row['avg_daily_since'] > 1.3 * row['avg_daily_before']
+
+  - id: INV17
+    category: story
+    story: I3 spare kit S-10000576 over-bought at the Kandy store (one receipt on 3 August 2026)
+    question: Which products at the Kandy store had more than 120 days of cover at the end of September 2026?
+    paraphrases:
+      - What is overstocked at the Kandy Production Facility store on 30 Sep 2026 (over 120 days of cover)?
+      - At the Kandy main store, which items would last more than 120 days at the end of September 2026?
+    sql: |
+      SELECT s.product_id, p.product_description, s.stock_quantity, s.days_of_cover
+      FROM ${fact_stock_daily} s JOIN ${dim_product} p ON s.product_id = p.product_id
+      WHERE s.location_id = '4020-0010' AND s.snapshot_date = DATE'2026-09-30' AND s.days_of_cover > 120
+      ORDER BY s.days_of_cover DESC
+    check: "[r['product_id'] for r in rows] == ['S-10000576']"
+
+  - id: INV18
+    category: story
+    story: I4 returns pile up in the returns store, HGL400ML fastest (follows sales story 6)
+    question: Which products' stock in the returns store grew the most between 30 June and 30 September 2026?
+    paraphrases:
+      - What built up most in the returns store from the end of June to the end of September 2026?
+      - Rank products by the increase in returns store stock between 30 Jun 2026 and 30 Sep 2026.
+    sql: |
+      SELECT s.product_id, p.product_description,
+             COALESCE(SUM(CASE WHEN s.snapshot_date = DATE'2026-06-30' THEN s.stock_quantity END), 0) AS stock_30_jun,
+             COALESCE(SUM(CASE WHEN s.snapshot_date = DATE'2026-09-30' THEN s.stock_quantity END), 0) AS stock_30_sep,
+             COALESCE(SUM(CASE WHEN s.snapshot_date = DATE'2026-09-30' THEN s.stock_quantity END), 0)
+               - COALESCE(SUM(CASE WHEN s.snapshot_date = DATE'2026-06-30' THEN s.stock_quantity END), 0) AS increase
+      FROM ${fact_stock_daily} s JOIN ${dim_product} p ON s.product_id = p.product_id
+      WHERE s.location_id = '2010-0032' AND s.snapshot_date IN (DATE'2026-06-30', DATE'2026-09-30')
+      GROUP BY s.product_id, p.product_description
+      ORDER BY increase DESC
+      LIMIT 10
+    check: row['product_id'] == 'HGL400ML' and row['stock_30_sep'] > 3 * row['stock_30_jun']
+
+  # ---------------------------------------------------------------- tricky (where a careless answer goes wrong)
+  - id: INV19
+    category: tricky
+    question: What was our total stock of MC6001LT in September 2026?
+    notes: Stock is a level. "Stock in September" = stock at the month end (30 Sep), never the sum of 30 daily stocks.
+    paraphrases:
+      - How much MC600 WEEDICIDE 1LTR did we have in stock in Sep 2026, all locations together?
+      - Total MC6001LT inventory for September 2026?
+    sql: |
+      SELECT SUM(stock_quantity) AS stock_quantity
+      FROM ${fact_stock_daily}
+      WHERE product_id = 'MC6001LT' AND snapshot_date = DATE'2026-09-30'
+
+  - id: INV20
+    category: tricky
+    question: How much MC6001LT do we have at each location right now?
+    notes: '"Right now" = the latest stock date in the data, not today''s calendar date (the feed can lag a day).'
+    paraphrases:
+      - Current stock of MC600 WEEDICIDE 1LTR by location?
+      - Where is our MC6001LT stock today, and how much at each place?
+    sql: |
+      SELECT l.location_name, s.snapshot_date, s.stock_quantity
+      FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
+      WHERE s.product_id = 'MC6001LT' AND s.snapshot_date = (SELECT MAX(snapshot_date) FROM ${fact_stock_daily})
+      ORDER BY s.stock_quantity DESC
+
+  - id: INV21
+    category: tricky
+    question: How much HGL400ML can we sell right now?
+    notes: Returned goods sit in the returns store (2010-0032) and cannot be sold; leave them out.
+    paraphrases:
+      - Sellable stock of HGL INSECTICIDE 400ML at the latest date, excluding returns?
+      - How many bottles of HGL400ML are available to sell today?
+    sql: |
+      SELECT SUM(s.stock_quantity) AS sellable_stock
+      FROM ${fact_stock_daily} s
+      WHERE s.product_id = 'HGL400ML' AND s.location_id <> '2010-0032'
+        AND s.snapshot_date = (SELECT MAX(snapshot_date) FROM ${fact_stock_daily})
+
+  - id: INV22
+    category: tricky
+    question: What was the average daily stock of MC6001LT at the Colombo depot in September 2026?
+    notes: Average over the days of the month (AVG of daily stock), not the month-end value and not a sum.
+    paraphrases:
+      - On an average September 2026 day, how much MC600 WEEDICIDE 1LTR was at the Colombo depot?
+      - Mean daily MC6001LT stock at depot 2010-8001 for Sep 2026?
+    sql: |
+      SELECT ROUND(AVG(stock_quantity), 1) AS average_daily_stock
+      FROM ${fact_stock_daily}
+      WHERE product_id = 'MC6001LT' AND location_id = '2010-8001'
+        AND snapshot_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'
+    check: row['average_daily_stock'] > 0
+
+  - id: INV23
+    category: tricky
+    question: How many units did the hub send to the depots in September 2026?
+    notes: Count transfers out of the hub (313) only. The arrival at the depot (315) is the same goods; counting both doubles the answer.
+    paraphrases:
+      - Total transfers from the Galle hub to depots in Sep 2026, in units?
+      - How much stock did we move from the distribution hub to the depots in September 2026?
+    sql: |
+      SELECT COUNT(*) AS transfers, -SUM(quantity) AS transferred_quantity
+      FROM ${fact_stock_movements}
+      WHERE movement_type = '313' AND location_id = '2010-0090'
+        AND posting_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'
+    check: row['transferred_quantity'] > 0
+
+  - id: INV24
+    category: tricky
+    question: Which depots are running low on stock right now?
+    notes: '"Running low" = less than 7 days of cover (is_low_cover) on the latest stock date; zero stock is a stock-out, listed separately.'
+    paraphrases:
+      - Which depot products have less than a week of stock left at the latest date?
+      - Show the depot positions with low cover today.
+    sql: |
+      SELECT l.location_name, s.product_id, s.stock_quantity, s.days_of_cover
+      FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
+      WHERE l.location_type = 'Depot' AND s.is_low_cover
+        AND s.snapshot_date = (SELECT MAX(snapshot_date) FROM ${fact_stock_daily})
+      ORDER BY s.days_of_cover
+
+  - id: INV25
+    category: tricky
+    question: What was the depot stock-out rate on 30 September 2026?
+    notes: Stock-outs divided by positions that issued anything in the last 28 days (not by every position).
+    paraphrases:
+      - What percentage of active depot stock positions were out of stock at the end of September 2026?
+      - Depot out-of-stock rate on 30 Sep 2026?
+    sql: |
+      SELECT COUNT_IF(s.is_stock_out) AS stock_outs,
+             COUNT_IF(s.avg_daily_issued_quantity_28d > 0) AS active_positions,
+             ROUND(COUNT_IF(s.is_stock_out) / NULLIF(COUNT_IF(s.avg_daily_issued_quantity_28d > 0), 0) * 100, 1)
+               AS stock_out_rate_pct
+      FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
+      WHERE s.snapshot_date = DATE'2026-09-30' AND l.location_type = 'Depot'
+    check: row['active_positions'] > 0

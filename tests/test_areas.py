@@ -207,7 +207,7 @@ def test_pipeline_runs_sales_by_default():
 
 
 def test_inventory_area_has_its_own_steps():
-    assert rp.AREA_STEPS["inventory"] == ["drip", "bronze", "silver", "gold", "checks"]
+    assert rp.AREA_STEPS["inventory"] == ["drip", "bronze", "silver", "gold", "checks", "kpis", "answer_key"]
     assert set(rp.AREA_STEPS["inventory"]) == set(rp.AREA_STEP_FUNCS["inventory"])
 
 

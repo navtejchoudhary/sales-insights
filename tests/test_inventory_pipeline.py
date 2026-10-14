@@ -292,6 +292,50 @@ def test_stock_daily_cover_and_stock_out(spark):
     assert rows["2026-10-01"]["is_stock_out"] is False
 
 
+def test_sales_and_stock_side_by_side(spark):
+    """Day 0 has only sales and day 3 only stock: both are cut (only days both areas cover). Building product B
+    sells without depot stock; P at depot L1 has both. Nothing is double counted."""
+    sales = spark.createDataFrame(
+        [
+            (D("2026-09-30"), "C001", "P", "9", "900.00", "9"),
+            (D("2026-10-01"), "C001", "P", "5", "500.00", "5"),
+            (D("2026-10-01"), "C001", "P", "-1", "-100.00", "0"),  # a return of an older invoice
+            (D("2026-10-02"), "C001", "B", "2", "300.00", "2"),
+        ],
+        "invoice_date date, sales_office_code string, product_id string, quantity string, net_revenue_amount string, "
+        "sold_quantity string",
+    ).selectExpr("invoice_date", "sales_office_code", "product_id", "CAST(quantity AS DECIMAL(18,3)) AS quantity",
+                 "CAST(net_revenue_amount AS DECIMAL(18,2)) AS net_revenue_amount",
+                 "CAST(sold_quantity AS DECIMAL(18,3)) AS sold_quantity")  # fmt: skip
+    stock = spark.createDataFrame(
+        [(D(f"2026-10-0{i}"), "L1", "P", Decimal(q), Decimal(i), Decimal(0), Decimal("1.000"), q == "0")
+         for i, q in [(1, "6"), (2, "0"), (3, "4")]]
+        + [(D("2026-10-01"), "HUB", "P", Decimal(50), Decimal(0), Decimal(0), Decimal(0), False)],
+        "snapshot_date date, location_id string, product_id string, stock_quantity decimal(18,3), "
+        "issued_quantity decimal(18,3), in_transit_quantity decimal(18,3), avg_daily_issued_quantity_28d decimal(18,3), "
+        "is_stock_out boolean",
+    )  # fmt: skip
+    locations = spark.createDataFrame(
+        [("L1", "Depot", "C001"), ("HUB", "Plant store", None)], "location_id string, location_type string, sales_office_code string"
+    )  # fmt: skip
+    out = ig.build_fact_sales_stock_daily(sales, stock, locations)
+    assert out.columns == list(im.TABLES["fact_sales_stock_daily"]["columns"])
+    rows = {(str(r["activity_date"]), r["product_id"]): r for r in out.collect()}
+    assert set(rows) == {("2026-10-01", "P"), ("2026-10-02", "P"), ("2026-10-02", "B")}  # 30 Sep and 3 Oct cut
+    p1 = rows[("2026-10-01", "P")]
+    assert (p1["net_revenue_amount"], p1["sales_quantity"], p1["invoiced_quantity"]) == (400, 4, 5)
+    assert (p1["stock_quantity"], p1["issued_quantity"], p1["location_id"], p1["is_stock_out"]) == (6, 1, "L1", False)
+    p2 = rows[("2026-10-02", "P")]
+    assert (p2["net_revenue_amount"], p2["stock_quantity"], p2["is_stock_out"]) == (0, 0, True)  # no sales, stock-out
+    b2 = rows[("2026-10-02", "B")]
+    assert (b2["net_revenue_amount"], b2["stock_quantity"], b2["location_id"], b2["is_stock_out"]) == (
+        300,
+        None,
+        "L1",
+        False,
+    )
+
+
 # ---------------------------------------------------------------------------
 # Part 3: a real run, sales and inventory side by side
 # ---------------------------------------------------------------------------
@@ -396,6 +440,37 @@ def test_gold_tables_match_the_source(world):
     assert daily.filter(F.col("snapshot_date") == last).count() == expected_rows
     assert lake.read("gold", "dim_location").count() == 17
     assert daily.filter(F.col("stock_quantity") < 0).count() == 0
+
+
+def test_sales_and_stock_table_adds_up_to_sales(world):
+    both = world["lake"].read("gold", "fact_sales_stock_daily")
+    first, last = both.agg(F.min("activity_date"), F.max("activity_date")).collect()[0]
+    sales = world["sales_lake"].read("gold", "fact_sales").filter(F.col("invoice_date").between(first, last))
+    assert (
+        both.agg(F.sum("net_revenue_amount")).collect()[0][0] == sales.agg(F.sum("net_revenue_amount")).collect()[0][0]
+    )
+    keys = ["activity_date", "sales_office_code", "product_id"]
+    assert both.count() == both.select(*keys).distinct().count()  # grain
+    assert both.filter(F.col("location_id").isNotNull()).select("location_id").distinct().count() <= 11  # depots only
+
+
+def test_inventory_kpis_match_the_metric_views(world, spark):
+    from sales_insights.semantic import kpis as k
+
+    results = k.check_against_metric_view(spark, world["lake"], world["sales_lake"])
+    assert [name for name, _, _ in results] == [a.kpi for a in k.INVENTORY_AGREEMENTS]
+    for name, rows, bad in results:
+        assert rows > 0 and bad == 0, name
+
+
+def test_every_stock_benchmark_query_runs(world, spark):
+    """Story checks need the full history (proved by the answer_key step on real data); here every query runs."""
+    from sales_insights.semantic import answer_key as ak
+
+    for agent in (ak.SPACES["inventory"], ak.SPACES["sales_and_stock"]):
+        rows = ak.build(spark, world["lake"], agent=agent, sales_lake=world["sales_lake"])
+        assert len(rows) == len(ak.load(agent.benchmarks)), agent.name
+        assert rows[0]["data_until"] not in ("", "None"), agent.name
 
 
 def test_a_lost_movement_fails_the_checks(world, spark):

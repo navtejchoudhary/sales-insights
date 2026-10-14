@@ -5,6 +5,7 @@
     gold.fact_stock_daily       one row per location, product and day: stock, value, issues, days of cover
     gold.fact_stock_movements   one row per material document line
     gold.dim_location           one row per location
+    gold.fact_sales_stock_daily one row per day, sales office and product: sales next to depot stock
 
 Products, dates and regions are the shared dimensions in the sales catalog (dim_product, dim_date, dim_region).
 Rebuilt in full on every run. Every column carries its description from pipeline/inventory_model.py.
@@ -122,6 +123,51 @@ def build_fact_stock_daily(stock: DataFrame, fact_movements: DataFrame, products
     )
 
 
+def build_fact_sales_stock_daily(fact_sales: DataFrame, stock_daily: DataFrame, dim_location: DataFrame) -> DataFrame:
+    """Sales and depot stock per day x sales office x product (a drill-across table: both facts summed to the
+    grain they share, then joined, so no sales line is counted twice). Only days both areas cover are kept."""
+    keys = ["activity_date", "sales_office_code", "product_id"]
+    depots = dim_location.filter(F.col("location_type") == "Depot").select("location_id", "sales_office_code")
+    sales = fact_sales.groupBy(F.col("invoice_date").alias("activity_date"), "sales_office_code", "product_id").agg(
+        F.sum("net_revenue_amount").cast(MONEY).alias("_revenue"),
+        F.sum("quantity").cast(QTY).alias("_sold"),
+        F.sum("sold_quantity").cast(QTY).alias("_invoiced"),
+    )
+    stock = stock_daily.join(F.broadcast(depots), "location_id").select(
+        F.col("snapshot_date").alias("activity_date"),
+        "sales_office_code",
+        "product_id",
+        F.col("issued_quantity").alias("_issued"),
+        "stock_quantity",
+        "in_transit_quantity",
+        "avg_daily_issued_quantity_28d",
+        F.col("is_stock_out").alias("_out"),
+    )
+    bounds = fact_sales.agg(F.min("invoice_date").alias("_s0"), F.max("invoice_date").alias("_s1")).crossJoin(
+        stock_daily.agg(F.min("snapshot_date").alias("_t0"), F.max("snapshot_date").alias("_t1"))
+    )
+    both = (
+        sales.join(stock, keys, "full_outer")
+        .crossJoin(F.broadcast(bounds))
+        .filter(F.col("activity_date").between(F.greatest("_s0", "_t0"), F.least("_s1", "_t1")))
+        .join(F.broadcast(depots), "sales_office_code", "left")
+    )
+    return both.select(
+        "activity_date",
+        "sales_office_code",
+        "location_id",
+        "product_id",
+        F.coalesce(F.col("_revenue"), F.lit(0)).cast(MONEY).alias("net_revenue_amount"),
+        F.coalesce(F.col("_sold"), F.lit(0)).cast(QTY).alias("sales_quantity"),
+        F.coalesce(F.col("_invoiced"), F.lit(0)).cast(QTY).alias("invoiced_quantity"),
+        F.coalesce(F.col("_issued"), F.lit(0)).cast(QTY).alias("issued_quantity"),
+        "stock_quantity",
+        "in_transit_quantity",
+        "avg_daily_issued_quantity_28d",
+        F.coalesce(F.col("_out"), F.lit(False)).alias("is_stock_out"),
+    )
+
+
 def write(lake: Lake, df: DataFrame, table: str) -> None:
     lake.overwrite(gm.with_comments(df, table, im.TABLES), "gold", table)
     lake.describe("gold", table, im.TABLES[table]["description"], im.TABLES[table]["columns"])
@@ -139,6 +185,10 @@ def run_inventory_gold(
         lake.read("silver", "stock"), lake.read("gold", "fact_stock_movements"), sales_lake.read("gold", "dim_product")
     )
     write(lake, daily, "fact_stock_daily")
+    both = build_fact_sales_stock_daily(
+        sales_lake.read("gold", "fact_sales"), lake.read("gold", "fact_stock_daily"), lake.read("gold", "dim_location")
+    )
+    write(lake, both, "fact_sales_stock_daily")
     for table in im.TABLES:
         run.rows[table] = lake.read("gold", table).count()
     return run
