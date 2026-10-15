@@ -1,0 +1,155 @@
+From 592178a072ff82eb68f61bd44d2984447d476eb2 Mon Sep 17 00:00:00 2001
+From: Navtej <navtejchoudhary88@gmail.com>
+Date: Thu, 15 Oct 2026 10:39:30 +0000
+Subject: [PATCH] Stock agent tuning round 1: precise expected answers, clearer
+ wordings, answer-shape instructions
+
+From the 15 Oct benchmark (41/60): every miss came from 8 questions, mostly correct numbers in a
+different result shape. Expected SQL now returns only what is asked (INV14, INV15, INV18 top 5);
+ambiguous wordings fixed (INV16, INV17, INV24); instructions add answer shape, months, low cover,
+single-position days of cover and the Kandy store/depot names (shorter overall: 2,127 characters).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Claude-Session: https://claude.ai/code/session_01S6gm4oo4GvaRKUcAV7UyeF
+---
+ docs/decisions.md               |  1 +
+ genie/inventory/benchmarks.yaml | 28 ++++++++++++++--------------
+ genie/inventory/space.yaml      | 24 +++++++++++++-----------
+ 3 files changed, 28 insertions(+), 25 deletions(-)
+
+diff --git a/docs/decisions.md b/docs/decisions.md
+index 5dfd7bd..7544029 100644
+--- a/docs/decisions.md
++++ b/docs/decisions.md
+@@ -93,3 +93,4 @@ One line per decision: date, decision, why, who. Newest at the bottom.
+ | 15 Oct 2026 | Dashboard KPIs are read from the metric views with `MEASURE()`; plain SQL only for insights, forecast and data checks. Comparisons (this period vs last year) are two groups of one metric view query, pivoted with `MAX(...) FILTER (WHERE ...)` | One definition per KPI across dashboard, Genie, alerts and deck. Ratios such as margin % are computed by the metric view at the shown grain, never averaged in the chart. No page filters in the MVP: a filter on pre-aggregated data would add up ratios wrongly; Genie answers the sliced questions |
+ | 15 Oct 2026 | Access: 3 account groups (`sales_team`, `stock_team`, `management`), read-only grants on gold and ops schemas only (`sql/setup/permissions.sql`), stock_team also reads the shared `dim_product` and `dim_date`; dashboards run with the viewer's own rights (`embed_credentials: false`) | Least privilege by group, never by person; Unity Catalog accepts only account groups (made in workspace settings > Identity and access). stock_team also sees `sales_and_stock` (in the inventory gold) because sales next to stock is what stock planning needs |
+ | 15 Oct 2026 | Before the Azure workspace is deleted, `semantic/export_workspace.py` saves the Genie agents and dashboards to `output/export/` without IDs, workspace URL or e-mails | The Genie agents were built in the browser; their full definitions (instructions, examples, benchmarks) must survive the workspace |
++| 15 Oct 2026 | Stock agent benchmark round 1 (68%, 41/60, Agent mode): expected answers return only what the question asks (INV14 location + stock, INV15 date per depot, INV18 top 5); ambiguous wordings fixed (INV16 "from 23 Oct onwards", INV17 names the Kandy main store, INV24 "depot products"); instructions add answer shape (one total row, one row per period comparison), months by month_start_date, low cover = is_low_cover, days_of_cover column for one position, Kandy store vs depot | All 19 misses came from 8 questions; Genie's numbers were mostly right but the grader compares result tables exactly (RESULT_MISSING_COLUMNS / RESULT_EXTRA_ROWS) and two wordings were genuinely ambiguous ("Kandy store" also matches the Kandy Depot) | Navtej |
+diff --git a/genie/inventory/benchmarks.yaml b/genie/inventory/benchmarks.yaml
+index 023c745..cb7bfdc 100644
+--- a/genie/inventory/benchmarks.yaml
++++ b/genie/inventory/benchmarks.yaml
+@@ -211,25 +211,25 @@ questions:
+       - Closing stock of MC6001LT on 22 October 2026 at the Colombo and Negombo depots and the Galle hub?
+     needs_data_until: 2026-10-22
+     sql: |
+-      SELECT l.location_name, l.location_type, s.stock_quantity, s.is_stock_out
++      SELECT l.location_name, s.stock_quantity
+       FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
+       WHERE s.product_id = 'MC6001LT' AND s.snapshot_date = DATE'2026-10-22'
+         AND ((l.province = 'Western' AND l.location_type = 'Depot') OR s.location_id = '2010-0090')
+-      ORDER BY l.location_type, l.location_name
++      ORDER BY l.location_name
+     check: >-
+       len(rows) == 3
+-      and all(r['stock_quantity'] == 0 and r['is_stock_out'] for r in rows if r['location_type'] == 'Depot')
+-      and any(r['location_type'] == 'Plant store' and r['stock_quantity'] > 1000 for r in rows)
++      and all(r['stock_quantity'] == 0 for r in rows if r['location_name'].endswith('Depot'))
++      and any(r['location_name'].endswith('Distribution Hub') and r['stock_quantity'] > 1000 for r in rows)
+ 
+   - id: INV15
+     category: story
+     story: I1 the last MC6001LT transfer to the Western depots arrived on 23 September 2026
+     question: When did the Colombo and Negombo depots last receive MC6001LT from the hub?
+     paraphrases:
+-      - Date of the last MC600 WEEDICIDE 1LTR transfer into the Western depots?
++      - On what date did each Western depot last receive MC600 WEEDICIDE 1LTR from the hub?
+       - When was MC6001LT last replenished at the Colombo and Negombo depots?
+     sql: |
+-      SELECT l.location_name, MAX(m.posting_date) AS last_transfer_in, MAX_BY(m.quantity, m.posting_date) AS quantity
++      SELECT l.location_name, MAX(m.posting_date) AS last_transfer_in
+       FROM ${fact_stock_movements} m JOIN ${dim_location} l ON m.location_id = l.location_id
+       WHERE m.product_id = 'MC6001LT' AND m.movement_type = '315' AND l.province = 'Western' AND l.location_type = 'Depot'
+       GROUP BY l.location_name
+@@ -239,9 +239,9 @@ questions:
+   - id: INV16
+     category: story
+     story: I2 the substitute MC6004LT leaves the Western depots faster from 23 October 2026
+-    question: How much MC6004LT did the Western depots issue per day after 23 October 2026, compared with the 30 days before?
++    question: How much MC6004LT did the Western depots issue per day from 23 October 2026 onwards, compared with the 30 days before?
+     paraphrases:
+-      - Did issues of the 4-litre MC600 WEEDICIDE pack from the Western depots rise after 23 Oct 2026?
++      - Did average daily issues of the 4-litre MC600 WEEDICIDE pack from the Western depots rise from 23 Oct 2026 onwards, compared with the 30 days before?
+       - Average daily MC6004LT goods issues in Western depots since 23 October versus the previous 30 days?
+     needs_data_until: 2026-10-25
+     sql: |
+@@ -258,7 +258,7 @@ questions:
+   - id: INV17
+     category: story
+     story: I3 spare kit S-10000576 over-bought at the Kandy store (one receipt on 3 August 2026)
+-    question: Which products at the Kandy store had more than 120 days of cover at the end of September 2026?
++    question: Which products at the Kandy Production Facility main store had more than 120 days of cover at the end of September 2026?
+     paraphrases:
+       - What is overstocked at the Kandy Production Facility store on 30 Sep 2026 (over 120 days of cover)?
+       - At the Kandy main store, which items would last more than 120 days at the end of September 2026?
+@@ -272,10 +272,10 @@ questions:
+   - id: INV18
+     category: story
+     story: I4 returns pile up in the returns store, HGL400ML fastest (follows sales story 6)
+-    question: Which products' stock in the returns store grew the most between 30 June and 30 September 2026?
++    question: Which 5 products' stock in the returns store grew the most between 30 June and 30 September 2026?
+     paraphrases:
+-      - What built up most in the returns store from the end of June to the end of September 2026?
+-      - Rank products by the increase in returns store stock between 30 Jun 2026 and 30 Sep 2026.
++      - Which 5 products built up most in the returns store from 30 June to 30 September 2026?
++      - Top 5 products by increase in returns store stock between 30 Jun 2026 and 30 Sep 2026.
+     sql: |
+       SELECT s.product_id, p.product_description,
+              COALESCE(SUM(CASE WHEN s.snapshot_date = DATE'2026-06-30' THEN s.stock_quantity END), 0) AS stock_30_jun,
+@@ -286,7 +286,7 @@ questions:
+       WHERE s.location_id = '2010-0032' AND s.snapshot_date IN (DATE'2026-06-30', DATE'2026-09-30')
+       GROUP BY s.product_id, p.product_description
+       ORDER BY increase DESC
+-      LIMIT 10
++      LIMIT 5
+     check: row['product_id'] == 'HGL400ML' and row['stock_30_sep'] > 3 * row['stock_30_jun']
+ 
+   # ---------------------------------------------------------------- tricky (where a careless answer goes wrong)
+@@ -358,7 +358,7 @@ questions:
+ 
+   - id: INV24
+     category: tricky
+-    question: Which depots are running low on stock right now?
++    question: Which depot products are running low on stock right now?
+     notes: '"Running low" = less than 7 days of cover (is_low_cover) on the latest stock date; zero stock is a stock-out, listed separately.'
+     paraphrases:
+       - Which depot products have less than a week of stock left at the latest date?
+diff --git a/genie/inventory/space.yaml b/genie/inventory/space.yaml
+index 9bc1c58..b22cd44 100644
+--- a/genie/inventory/space.yaml
++++ b/genie/inventory/space.yaml
+@@ -20,17 +20,19 @@ data:
+   - ${dim_date}
+ 
+ instructions: |
+-  - Quantities are in each product's base unit (cases, bottles, bags); stock value is LKR at standard cost.
+-  - Stock is a level, not a flow. Never add stock_quantity over days. For a month or any period use the stock on the last day of the period (MEASURE(stock_on_hand) in inventory_metrics does this). "Stock in September" = stock on 30 September.
+-  - "Current", "now" or "today" means the latest snapshot_date in fact_stock_daily (it can be a day behind sales), never CURRENT_DATE.
+-  - Issues, receipts and stock-out days are flows and do add up over days.
+-  - A transfer from the hub is movement 313 (out of the hub); movement 315 is the same goods arriving at the depot. Count only one of them.
+-  - Depots are locations with location_type = 'Depot' (2010-8001 to 2010-8011, one per sales office). The Galle hub is 2010-0090. The returns store 2010-0032 holds returned goods that cannot be sold: leave it out of "available" or "sellable" stock.
+-  - Days of cover = SUM(stock_quantity) / SUM(avg_daily_issued_quantity_28d) for the group (a ratio of sums, never an average of days_of_cover). Overstock = more than 120 days of cover; low cover = less than 7 days.
+-  - A stock-out is is_stock_out = true: zero stock of a product the location issued in the last 28 days. Stock-out rate = stock-outs / positions that issued anything in the last 28 days.
+-  - Product codes such as MC6001LT are product_id; names such as MC600 WEEDICIDE 1LTR (CASE) are product_description in dim_product.
+-  - The fiscal year runs April to March and is named by its start year (FY2026 = 1 April 2026 to 31 March 2027).
+-  - For "which ... most / least" questions show the full ranking, best first. Always state the stock date you used.
++  - Quantities are in base units (cases, bottles, bags); stock value is LKR at standard cost.
++  - Stock is a level: never add stock_quantity over days. For a period use the stock on its last day (MEASURE(stock_on_hand) does this); "stock in September" = stock on 30 September. Issues, receipts and stock-out days are flows and do add up.
++  - "Current", "now", "today" = the latest snapshot_date in fact_stock_daily, never CURRENT_DATE.
++  - A hub transfer is movement 313 (out of the hub); 315 is the same goods arriving at the depot: count one. Last transfer into a depot = MAX(posting_date) of 315 there, one row per depot.
++  - Depots: location_type = 'Depot' (2010-8001 to 2010-8011); Western depots = Colombo 2010-8001, Negombo 2010-8002. Galle hub = 2010-0090. Returns store 2010-0032 cannot be sold: leave it out of "available"/"sellable" stock. "Kandy store"/"Kandy main store" = 4020-0010 (a plant store); "Kandy depot" = 2010-8003.
++  - Days of cover: one location and product = the days_of_cover column; a group = SUM(stock_quantity) / SUM(avg_daily_issued_quantity_28d). Overstock = over 120 days.
++  - Low cover / "running low" = is_low_cover (stock above zero, under 7 days); zero stock is a stock-out (is_stock_out), not low cover. List depot x product positions, lowest cover first, never depot totals.
++  - Stock-out rate = stock-outs / positions that issued anything in the last 28 days.
++  - Product codes (MC6001LT) are product_id; names are product_description in dim_product.
++  - Fiscal year April-March, named by its start year (FY2026 = Apr 2026-Mar 2027). Months: group by dim_date.month_start_date, never DATE_TRUNC (a timestamp).
++  - Answer in the shape asked: "how much / how many" = one total row unless "per location/product/month" is asked; "which ... most" = full ranking unless a number is given ("top 5" = LIMIT 5).
++  - Before/after comparisons: ONE row, one column per period (avg_daily_before, avg_daily_since). "From/since <date>" includes it, up to the latest snapshot_date; "the N days before" ends the day before. Average per day = total of all locations / days in the period.
++  - Always state the stock date you used.
+ sample_questions:
+   - How much MC6001LT does each depot hold right now?
+   - What was the stock value by province at the end of last month?
+-- 
+2.43.0
+
