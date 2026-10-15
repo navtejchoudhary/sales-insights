@@ -5,6 +5,9 @@
 #   databricks bundle run     -t dev sales_backfill        # first load: 1 Oct up to today
 #   databricks bundle run     -t dev sales_publish_semantic  # KPI views + metric view
 #   databricks bundle run     -t dev sales_genie_health      # Genie benchmarks now (also weekly, Monday 07:00)
+#   databricks bundle run     -t dev inventory_backfill      # inventory first load (after sales_backfill)
+#   databricks bundle run     -t dev inventory_publish_semantic  # stock KPI views + 2 metric views
+#   ... --params data_until=2026-10-29                       # backfills only: run the simulated days ahead
 #
 # The workspace URL and your login come from your Databricks CLI profile (~/.databrickscfg), never from git.
 # Step-by-step first deployment: docs/day15_runbook.md

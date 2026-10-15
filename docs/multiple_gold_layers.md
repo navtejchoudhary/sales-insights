@@ -1,7 +1,7 @@
 # Multiple Gold Layers: Plan
 
 **Project:** Sales Insights MVP on Azure Databricks · **Owner:** Navtej · **Built for:** Anil
-**Written:** Tue 13 Oct 2026 · **Status:** APPROVED 13 Oct (defaults). Built: PR A area support (#24), PR B inventory generator (#25), PR C inventory pipeline (#26), PR D inventory metric views + Stock and Sales & Stock Genie agents (local)
+**Written:** Tue 13 Oct 2026 · **Updated:** Thu 15 Oct (finance dropped, inventory on Databricks before the dashboards, no fixed dates) · **Status:** APPROVED 13 Oct (defaults). Built: PR A area support (#24), PR B inventory generator (#25), PR C inventory pipeline (#26), PR D inventory metric views + Stock and Sales & Stock Genie agents (local)
 **Demo:** 29–30 Oct 2026 · **Azure credit ends:** 5 Nov 2026
 
 > **What this plan does:** it adds more business areas (inventory now, finance later) next to the sales pipeline we already run. Each area gets its own bronze → silver → gold, all areas share one set of dimensions, and Genie and the dashboard can answer questions across areas.
@@ -9,6 +9,19 @@
 > **Scope change:** the execution plan (30 Sep) covers sales only. This document proposes a change to that scope. Nothing here is built until Navtej approves it.
 
 ---
+
+## Update, 15 Oct: final scope and order
+
+- **Finance is dropped.** Final scope: sales + stock + a company (CEO) layer.
+  - 2 bronze-to-gold pipelines (`sales_dev`, `inventory_dev`) and 4 checks (sales source, stock source, stock roll-forward, stock vs sales)
+  - 3 metric views (`sales_metrics`, `inventory_metrics`, `sales_and_stock`)
+  - 3 Genie agents (Sales, Stock, Combined "Sales & Stock" for the CEO)
+  - 3 dashboards (Sales, Stock, CEO), one per user group, built **last**
+  - 3 user groups (sales team, stock team, CEO/management)
+- **No calendar dates;** each step starts when the previous one is done: inventory jobs on Databricks (PR E1) -> inventory backfill and metric views -> Stock and Combined Genie -> stock alerts, deck slide, permissions, export (PR E2) -> dashboards -> final check and submit.
+- **Inventory runs as its own daily job at 07:00**, after the 06:30 sales job (section 8's multi-task job is later, optional).
+- **Backfills take `data_until`:** a date after today runs the simulated days ahead so the demo shows the live stories.
+- Sections 5 (finance) and 11 (timeline) below are kept for the record; they no longer apply.
 
 ## Update, 13 Oct evening: how we build it
 

@@ -112,6 +112,37 @@ The daily job runs at **06:30 Sri Lanka time** and processes that day's date. Ch
 **Jobs & Pipelines > sales-insights-daily > Runs**: green, and the deck appears in the `output` volume.
 On failure you get an email (the job notifies the user who deployed it).
 
+## 11. Inventory area (stock), added 15 Oct
+
+Same workspace, its own catalog `inventory_dev` and its own jobs; sales jobs and `sales_dev` are not touched.
+Do the steps in order. Use **the same `data_until` date for sales and inventory** (inventory reads the sales gold).
+
+| # | Do | You should see |
+|---|---|---|
+| 11.1 | SQL editor: run `sql/setup/inventory_dev.sql` | catalog `inventory_dev` with schemas raw, bronze, silver, gold, ops and 3 volumes |
+| 11.2 | Mac: `git pull`, then `databricks bundle validate` and `databricks bundle deploy -t dev` | 3 new jobs: `[dev] inventory-backfill`, `[dev] inventory-daily`, `[dev] inventory-publish-semantic` |
+| 11.3 | Sales up to the chosen date: `databricks bundle run -t dev sales_backfill --params data_until=<date>` (omit `--params` for today) | `DONE`, reconciliation all PASS, answer key 0 FAIL |
+| 11.4 | `databricks bundle run -t dev inventory_backfill --params data_until=<same date>` | `checks … passed`, `kpis 3 KPI views match`, `answer_key … 0 FAIL` |
+| 11.5 | `databricks bundle run -t dev inventory_publish_semantic` | `every KPI matches the metric view`; metric views `inventory_dev.gold.inventory_metrics` and `inventory_dev.gold.sales_and_stock` exist |
+| 11.6 | SQL editor: the stock-measure check below | September stock = the 30 Sep stock, not 30 days added up |
+| 11.7 | From the next morning: `[dev] inventory-daily` runs at 07:00, after the 06:30 sales job | green run, email only on failure |
+
+```sql
+-- 11.6: window measure check. The two numbers must be equal.
+SELECT MEASURE(stock_on_hand) AS september_stock
+FROM inventory_dev.gold.inventory_metrics WHERE month = DATE'2026-09-01';
+SELECT SUM(stock_quantity) AS stock_on_30_sep
+FROM inventory_dev.gold.fact_stock_daily WHERE snapshot_date = DATE'2026-09-30';
+```
+
+**Running the simulated days ahead (`data_until` later than today).** The generator can produce any day, so
+a demo can show the planted live stories (new sales rep 22 Oct, stock-out 23 Oct) before the calendar reaches
+them. The daily jobs keep working afterwards: a day that is already loaded is not loaded twice.
+
+If 11.5 fails on the metric view (window measures refused), keep going: the KPI views
+`inventory_dev.gold.kpi_stock_month_end` and `kpi_stock_daily` hold the same numbers; point Genie and the
+dashboard at them and tell Claude the exact error.
+
 ## If something goes wrong
 
 | Symptom | Likely cause | Fix |
@@ -122,3 +153,5 @@ On failure you get an email (the job notifies the user who deployed it).
 | `PERMISSION_DENIED` on catalog or volume | catalog created by someone else | `GRANT ALL PRIVILEGES ON CATALOG sales_dev TO <you>` |
 | Reconciliation FAILED | a real data problem | read `ops.reconciliation` rows with `status = 'FAIL'`; do not demo until fixed |
 | Job slow (> 40 min) | serverless cold start + full rebuilds | fine for the demo; note the time in decisions |
+| Inventory job: `TABLE_OR_VIEW_NOT_FOUND sales_dev.gold...` | sales not loaded up to the same date yet | run `sales_backfill` with the same `data_until` first |
+| Inventory checks FAIL right after the backfill | the two backfills used different dates | rerun `inventory_backfill` with the sales date |
