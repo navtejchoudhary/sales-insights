@@ -21,8 +21,9 @@ gold (inventory_gold), checks (inventory_checks: source totals, stock roll-forwa
 kpis (inventory KPI SQL = the inventory_metrics and sales_and_stock metric views), answer_key (the Stock and
 Sales & Stock Genie answer keys + stories I1-I4). It reads the sales gold, so run sales first for the same day.
 
-`--downstream last` runs only drip + bronze for each day and the rest once at the end (much faster;
-the final numbers are identical because silver and gold are full rebuilds). One line per step is printed,
+`--downstream last` only delivers (drip) each day's files and runs everything else, bronze included, once
+at the end (much faster: bronze checks every landed file each time it runs; the final numbers are identical
+because bronze loads each file exactly once and silver and gold are full rebuilds). One line per step is printed,
 and a CSV report of every day goes to output/.
 """
 
@@ -328,7 +329,7 @@ def run_range(
     }  # fmt: skip
     results = []
     for d in days:
-        steps = area_steps if downstream == "each" or d == max(days) else area_steps[:2]
+        steps = area_steps if downstream == "each" or d == max(days) else area_steps[:1]  # drip only
         echo(f"  {d:%a %d %b %Y}")
         r = run_day(ctx, d, steps, echo)
         results.append(r)
