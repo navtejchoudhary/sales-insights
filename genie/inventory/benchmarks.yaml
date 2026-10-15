@@ -45,7 +45,7 @@ questions:
     category: basic
     question: Rank the provinces by stock value at the end of September 2026.
     paraphrases:
-      - Which province held the most inventory value on 30 September 2026?
+      - Which provinces held the most inventory value on 30 September 2026? Rank them all.
       - Stock value by province at the September 2026 month end, highest first.
     sql: |
       SELECT l.province, ROUND(SUM(s.stock_value_amount), 2) AS stock_value
@@ -73,10 +73,10 @@ questions:
       - Rank our depots and stores by inventory value at the end of September 2026.
       - Where is most of our stock value sitting at the September 2026 month end?
     sql: |
-      SELECT l.location_name, l.location_type, ROUND(SUM(s.stock_value_amount), 2) AS stock_value
+      SELECT l.location_name, ROUND(SUM(s.stock_value_amount), 2) AS stock_value
       FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
       WHERE s.snapshot_date = DATE'2026-09-30'
-      GROUP BY l.location_name, l.location_type
+      GROUP BY l.location_name
       ORDER BY stock_value DESC
     check: row['location_name'] == 'Galle Industrial - Distribution Hub'
 
@@ -378,10 +378,8 @@ questions:
       - What percentage of active depot stock positions were out of stock at the end of September 2026?
       - Depot out-of-stock rate on 30 Sep 2026?
     sql: |
-      SELECT COUNT_IF(s.is_stock_out) AS stock_outs,
-             COUNT_IF(s.avg_daily_issued_quantity_28d > 0) AS active_positions,
-             ROUND(COUNT_IF(s.is_stock_out) / NULLIF(COUNT_IF(s.avg_daily_issued_quantity_28d > 0), 0) * 100, 1)
+      SELECT ROUND(COUNT_IF(s.is_stock_out) / NULLIF(COUNT_IF(s.avg_daily_issued_quantity_28d > 0), 0) * 100, 1)
                AS stock_out_rate_pct
       FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
       WHERE s.snapshot_date = DATE'2026-09-30' AND l.location_type = 'Depot'
-    check: row['active_positions'] > 0
+    check: 0 <= row['stock_out_rate_pct'] < 100
