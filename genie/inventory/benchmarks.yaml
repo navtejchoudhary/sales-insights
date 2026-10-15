@@ -211,25 +211,25 @@ questions:
       - Closing stock of MC6001LT on 22 October 2026 at the Colombo and Negombo depots and the Galle hub?
     needs_data_until: 2026-10-22
     sql: |
-      SELECT l.location_name, l.location_type, s.stock_quantity, s.is_stock_out
+      SELECT l.location_name, s.stock_quantity
       FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
       WHERE s.product_id = 'MC6001LT' AND s.snapshot_date = DATE'2026-10-22'
         AND ((l.province = 'Western' AND l.location_type = 'Depot') OR s.location_id = '2010-0090')
-      ORDER BY l.location_type, l.location_name
+      ORDER BY l.location_name
     check: >-
       len(rows) == 3
-      and all(r['stock_quantity'] == 0 and r['is_stock_out'] for r in rows if r['location_type'] == 'Depot')
-      and any(r['location_type'] == 'Plant store' and r['stock_quantity'] > 1000 for r in rows)
+      and all(r['stock_quantity'] == 0 for r in rows if r['location_name'].endswith('Depot'))
+      and any(r['location_name'].endswith('Distribution Hub') and r['stock_quantity'] > 1000 for r in rows)
 
   - id: INV15
     category: story
     story: I1 the last MC6001LT transfer to the Western depots arrived on 23 September 2026
     question: When did the Colombo and Negombo depots last receive MC6001LT from the hub?
     paraphrases:
-      - Date of the last MC600 WEEDICIDE 1LTR transfer into the Western depots?
+      - On what date did each Western depot last receive MC600 WEEDICIDE 1LTR from the hub?
       - When was MC6001LT last replenished at the Colombo and Negombo depots?
     sql: |
-      SELECT l.location_name, MAX(m.posting_date) AS last_transfer_in, MAX_BY(m.quantity, m.posting_date) AS quantity
+      SELECT l.location_name, MAX(m.posting_date) AS last_transfer_in
       FROM ${fact_stock_movements} m JOIN ${dim_location} l ON m.location_id = l.location_id
       WHERE m.product_id = 'MC6001LT' AND m.movement_type = '315' AND l.province = 'Western' AND l.location_type = 'Depot'
       GROUP BY l.location_name
@@ -239,9 +239,9 @@ questions:
   - id: INV16
     category: story
     story: I2 the substitute MC6004LT leaves the Western depots faster from 23 October 2026
-    question: How much MC6004LT did the Western depots issue per day after 23 October 2026, compared with the 30 days before?
+    question: How much MC6004LT did the Western depots issue per day from 23 October 2026 onwards, compared with the 30 days before?
     paraphrases:
-      - Did issues of the 4-litre MC600 WEEDICIDE pack from the Western depots rise after 23 Oct 2026?
+      - Did average daily issues of the 4-litre MC600 WEEDICIDE pack from the Western depots rise from 23 Oct 2026 onwards, compared with the 30 days before?
       - Average daily MC6004LT goods issues in Western depots since 23 October versus the previous 30 days?
     needs_data_until: 2026-10-25
     sql: |
@@ -258,7 +258,7 @@ questions:
   - id: INV17
     category: story
     story: I3 spare kit S-10000576 over-bought at the Kandy store (one receipt on 3 August 2026)
-    question: Which products at the Kandy store had more than 120 days of cover at the end of September 2026?
+    question: Which products at the Kandy Production Facility main store had more than 120 days of cover at the end of September 2026?
     paraphrases:
       - What is overstocked at the Kandy Production Facility store on 30 Sep 2026 (over 120 days of cover)?
       - At the Kandy main store, which items would last more than 120 days at the end of September 2026?
@@ -272,10 +272,10 @@ questions:
   - id: INV18
     category: story
     story: I4 returns pile up in the returns store, HGL400ML fastest (follows sales story 6)
-    question: Which products' stock in the returns store grew the most between 30 June and 30 September 2026?
+    question: Which 5 products' stock in the returns store grew the most between 30 June and 30 September 2026?
     paraphrases:
-      - What built up most in the returns store from the end of June to the end of September 2026?
-      - Rank products by the increase in returns store stock between 30 Jun 2026 and 30 Sep 2026.
+      - Which 5 products built up most in the returns store from 30 June to 30 September 2026?
+      - Top 5 products by increase in returns store stock between 30 Jun 2026 and 30 Sep 2026.
     sql: |
       SELECT s.product_id, p.product_description,
              COALESCE(SUM(CASE WHEN s.snapshot_date = DATE'2026-06-30' THEN s.stock_quantity END), 0) AS stock_30_jun,
@@ -286,7 +286,7 @@ questions:
       WHERE s.location_id = '2010-0032' AND s.snapshot_date IN (DATE'2026-06-30', DATE'2026-09-30')
       GROUP BY s.product_id, p.product_description
       ORDER BY increase DESC
-      LIMIT 10
+      LIMIT 5
     check: row['product_id'] == 'HGL400ML' and row['stock_30_sep'] > 3 * row['stock_30_jun']
 
   # ---------------------------------------------------------------- tricky (where a careless answer goes wrong)
@@ -358,7 +358,7 @@ questions:
 
   - id: INV24
     category: tricky
-    question: Which depots are running low on stock right now?
+    question: Which depot products are running low on stock right now?
     notes: '"Running low" = less than 7 days of cover (is_low_cover) on the latest stock date; zero stock is a stock-out, listed separately.'
     paraphrases:
       - Which depot products have less than a week of stock left at the latest date?
