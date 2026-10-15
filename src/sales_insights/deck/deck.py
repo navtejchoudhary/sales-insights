@@ -9,6 +9,7 @@ Charts are native PowerPoint charts, so anyone can click them, see values and re
     slide 4  outlook: last 6 complete months + the forecast to the end of the fiscal year
     slide 5  what moved revenue: change by province and by product group
     slide 6  alerts: revenue drop, possible stock-outs, unusual days
+    (slide 6b stock: confirmed stock-outs, low cover, overstock; only when stock findings are given)
     slide 7  summary: the narrative
     slide 8  about these numbers: definitions and data checks
 """
@@ -69,6 +70,8 @@ class DeckData:
     )  # (month, actual, forecast) LKR M
     outlook_caption: str = ""
     outlook_notes: list[str] = field(default_factory=list)  # forecast ranges + the method, in words
+    stock: list[str] = field(default_factory=list)  # stock findings (inventory area); empty = no Stock slide
+    stock_caption: str = ""
 
 
 # ---------------------------------------------------------------------------
@@ -309,6 +312,27 @@ def _slide_alerts(prs, d: DeckData):
         y += Inches(1.25)
 
 
+def _slide_stock(prs, d: DeckData):
+    """Stock findings from the inventory area (only added when there are any)."""
+    s = _blank(prs)
+    _title(s, "Stock", d.stock_caption)
+    lines = d.stock[:6]
+    gap = Inches(0.15)
+    ch = min(Inches(0.9), int((Inches(5.3) - gap * (len(lines) - 1)) / len(lines)))
+    y = Inches(1.9)
+    for text in lines:
+        alert = text.startswith("Confirmed stock-out")
+        _card(s, MARGIN, y, W - 2 * MARGIN, ch)
+        dot = s.shapes.add_shape(MSO_SHAPE.OVAL, MARGIN + Inches(0.3), y + (ch - Inches(0.4)) // 2, Inches(0.4),
+                                 Inches(0.4))  # fmt: skip
+        dot.fill.solid()
+        dot.fill.fore_color.rgb = DOWN if alert else MOSS
+        dot.line.fill.background()
+        _text(s, MARGIN + Inches(1.0), y, W - 2 * MARGIN - Inches(1.3), ch, text, size=14, color=INK,
+              anchor=MSO_ANCHOR.MIDDLE)  # fmt: skip
+        y += ch + gap
+
+
 def _slide_summary(prs, d: DeckData):
     s = _blank(prs)
     _title(s, "Summary", "The most important points, in order")
@@ -342,8 +366,8 @@ def _slide_about(prs, d: DeckData):
 def build_deck(d: DeckData, path: str | Path) -> Path:
     prs = Presentation()
     prs.slide_width, prs.slide_height = Emu(W), Emu(H)
-    slides = (_slide_title, _slide_glance, _slide_trend, _slide_outlook, _slide_movers, _slide_alerts, _slide_summary,
-              _slide_about)  # fmt: skip
+    slides = (_slide_title, _slide_glance, _slide_trend, _slide_outlook, _slide_movers, _slide_alerts,
+              *((_slide_stock,) if d.stock else ()), _slide_summary, _slide_about)  # fmt: skip
     for make in slides:
         make(prs, d)
     path = Path(path)

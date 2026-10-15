@@ -473,6 +473,19 @@ def test_every_stock_benchmark_query_runs(world, spark):
         assert rows[0]["data_until"] not in ("", "None"), agent.name
 
 
+def test_stock_insights_run_on_the_real_tables(world, spark):
+    from sales_insights.insights import job
+    from sales_insights.insights import stock as st
+
+    out = job.run_stock(spark, world["cfg"], lake=world["lake"], sales_lake=world["sales_lake"])
+    assert out["as_of"] == DAYS[-1]
+    assert {i.kind for i in out["insights"]} <= set(st.STOCK_KINDS)
+    written = world["lake"].read("gold", "insights").filter(F.col("run_id") == out["run_id"])
+    assert written.count() == len(out["insights"])
+    as_of, lines = job.latest_stock_findings(world["lake"])
+    assert as_of == DAYS[-1] and len(lines) <= len(out["insights"])
+
+
 def test_a_lost_movement_fails_the_checks(world, spark):
     """Remove one goods issue from gold: reconciliation, roll-forward and the sales cross-check must all FAIL."""
     lake, cfg = world["lake"], world["cfg"]

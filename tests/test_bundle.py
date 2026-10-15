@@ -98,13 +98,15 @@ def _alerts():
 
 def test_alerts_read_the_latest_insights_run_and_email_the_owner():
     from sales_insights.insights.narrative import ALERT_KINDS
+    from sales_insights.insights.stock import ALERT_KINDS as STOCK_ALERT_KINDS
 
     alerts = _alerts()
-    assert set(alerts) == {"sales_revenue_drop", "sales_stock_out"}
+    assert set(alerts) == {"sales_revenue_drop", "sales_stock_out", "stock_confirmed_stock_out"}
     kinds = set()
     for name, a in alerts.items():
         q = a["query_text"]
-        assert "${var.catalog}.gold.insights" in q and "max_by(run_id, generated_ts)" in q, name  # latest run only
+        table = "${var.inventory_catalog}" if name.startswith("stock_") else "${var.catalog}"
+        assert f"{table}.gold.insights" in q and "max_by(run_id, generated_ts)" in q, name  # latest run only
         kinds.add(q.split("kind = '")[1].split("'")[0])
         assert a["warehouse_id"] == "${var.warehouse_id}", name  # found by name: no warehouse ID in git
         ev = a["evaluation"]
@@ -115,13 +117,15 @@ def test_alerts_read_the_latest_insights_run_and_email_the_owner():
         s = a["schedule"]
         when = (s["quartz_cron_schedule"], s["timezone_id"], s["pause_status"])
         assert when == ("0 0 8 * * ?", "Asia/Colombo", "UNPAUSED"), name  # 08:00, after the 06:30 daily job
-    assert kinds == {"revenue_drop", "stock_out"} and kinds <= set(ALERT_KINDS)
+    assert kinds == {"revenue_drop", "stock_out", "stock_out_confirmed"}
+    assert kinds <= set(ALERT_KINDS) | set(STOCK_ALERT_KINDS)
 
 
 def test_alert_variables_match_the_config():
     bundle = yaml.safe_load((ROOT / "databricks.yml").read_text())
     v = bundle["variables"]
     assert v["catalog"]["default"] == load_config("dev").catalog
+    assert v["inventory_catalog"]["default"] == load_config("dev", area="inventory").catalog
     assert v["warehouse_id"]["lookup"] == {"warehouse": "sales-insights-wh"}
 
 

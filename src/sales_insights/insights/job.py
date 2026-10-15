@@ -2,6 +2,7 @@
 
     uv run python -m sales_insights.insights.job            # insights -> gold.insights, deck -> output/
     uv run python -m sales_insights.insights.job --no-deck  # insights only
+    uv run python -m sales_insights.insights.job --area inventory   # stock insights -> inventory gold.insights
 
 Runs after gold. Steps:
   1. like-for-like comparisons for the latest data date (insights/periods.py)
@@ -11,6 +12,10 @@ Runs after gold. Steps:
   5. narrative: template sentences; on Databricks optionally rewritten by ai_query (numbers checked)
   6. gold.insights (appended, one run_id per run), gold.forecast (rebuilt) and the weekly PowerPoint deck
 The Databricks SQL alerts (bundle/resources/alerts.yml) read gold.insights and email when an alert is found.
+
+Inventory area (`run_stock`, the inventory pipeline's insights step): confirmed stock-outs, low cover and
+overstock (insights/stock.py) -> gold.insights of the inventory catalog, same columns. The weekly deck shows
+the latest of them on a "Stock" slide when a stock lake is given.
 """
 
 from __future__ import annotations
@@ -30,6 +35,7 @@ from sales_insights.insights import data as dt
 from sales_insights.insights import forecast as fc
 from sales_insights.insights import narrative as nr
 from sales_insights.insights import periods as pr
+from sales_insights.insights import stock as st
 
 MOVER_COMPARISONS = ["month_vs_last_year", "mtd_vs_last_year"]
 STOCK_OUT_WINDOW_DAYS = 60  # 28-day baseline before the last sale + up to a month without sales
@@ -76,6 +82,20 @@ FORECAST_COLUMNS = {
     "growth_basis": "Which months the growth compares, e.g. Apr-Sep 2026 vs Apr-Sep 2025.",
     "method": "How the forecast is made, in words.",
 }
+STOCK_INSIGHTS_DESCRIPTION = (
+    "Automatic stock insights, one row per finding per run: confirmed stock-outs (zero stock of a product the "
+    "location issues), low cover (under 7 days) and overstock (over 120 days of cover, ranked by the value above "
+    "that level). Computed from gold.fact_stock_daily on the latest stock date."
+)
+STOCK_INSIGHTS_COLUMNS = {
+    **INSIGHTS_COLUMNS,
+    "as_of_date": "Latest stock date in the data the run used.",
+    "kind": "stock_out_confirmed, low_cover, overstock or overstock_total.",
+    "dimension": "location_product for findings about one stock position; empty for totals.",
+    "item": "Product and location, e.g. MC600 WEEDICIDE 1LTR (CASE) | Colombo Depot.",
+    "metric": "What is measured: stock, days_of_cover or excess_stock_value.",
+}
+STOCK_SLIDE_LINES = 6
 OUTLOOK_HISTORY_MONTHS = 6  # complete months of actuals shown before the forecast on the deck slide
 
 
@@ -107,8 +127,16 @@ def collect(lake: Lake, fy_start_month: int = 4) -> tuple[date, dict, list[an.In
     return as_of, ctx, an.rank(insights), fact
 
 
-def write(spark: SparkSession, lake: Lake, as_of: date, insights: list[an.Insight]) -> str:
-    run_id = f"insights-{datetime.now(UTC):%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}"
+def write(
+    spark: SparkSession,
+    lake: Lake,
+    as_of: date,
+    insights: list[an.Insight],
+    description: str = INSIGHTS_DESCRIPTION,
+    columns: dict[str, str] = INSIGHTS_COLUMNS,
+    prefix: str = "insights",
+) -> str:
+    run_id = f"{prefix}-{datetime.now(UTC):%Y%m%d-%H%M%S}-{uuid.uuid4().hex[:6]}"
     now = datetime.now(UTC)
     rows = [(run_id, now, as_of, *i.as_row().values()) for i in insights]
     schema = (
@@ -117,11 +145,37 @@ def write(spark: SparkSession, lake: Lake, as_of: date, insights: list[an.Insigh
         "severity int, text string"
     )
     df = spark.createDataFrame(rows, schema)
-    for col, text in INSIGHTS_COLUMNS.items():
+    for col, text in columns.items():
         df = df.withMetadata(col, {"comment": text})
     lake.append(df, "gold", "insights")
-    lake.describe("gold", "insights", INSIGHTS_DESCRIPTION, INSIGHTS_COLUMNS)
+    lake.describe("gold", "insights", description, columns)
     return run_id
+
+
+def run_stock(spark: SparkSession, cfg: Config, lake: Lake | None = None, sales_lake: Lake | None = None) -> dict:
+    """Inventory area: stock findings on the latest stock date -> gold.insights of the inventory catalog."""
+    from sales_insights.insights import stock_data as sd
+
+    lake = lake or Lake(spark, cfg)
+    sales_lake = sales_lake or Lake(spark, cfg.for_area("sales"))
+    as_of, positions = sd.latest_positions(lake, sales_lake)
+    if as_of is None:
+        return {"run_id": None, "as_of": None, "insights": []}
+    insights = st.stock_insights(positions, as_of)
+    run_id = write(spark, lake, as_of, insights, STOCK_INSIGHTS_DESCRIPTION, STOCK_INSIGHTS_COLUMNS, "stock")
+    return {"run_id": run_id, "as_of": as_of, "insights": insights}
+
+
+def latest_stock_findings(stock_lake: Lake | None) -> tuple[date | None, list[str]]:
+    """The newest stock insights run (for the deck): alerts first, then low cover, then the overstock total."""
+    if stock_lake is None or not stock_lake.exists("gold", "insights"):
+        return None, []
+    ins = stock_lake.read("gold", "insights")
+    latest = ins.agg(F.max_by("run_id", "generated_ts")).first()[0]
+    rows = ins.filter(F.col("run_id") == latest).select("as_of_date", "kind", "severity", "text").collect()
+    order = {k: i for i, k in enumerate(st.STOCK_KINDS)}
+    picked = sorted((r for r in rows if r["kind"] != "overstock"), key=lambda r: (order.get(r["kind"], 9), r["text"]))
+    return (rows[0]["as_of_date"] if rows else None), [r["text"] for r in picked]
 
 
 def write_forecast(spark: SparkSession, lake: Lake, run_id: str, as_of: date, forecast: fc.Forecast | None) -> int:
@@ -161,7 +215,16 @@ def reconciliation_status(lake: Lake) -> str:
     )
 
 
-def deck_data(fact, as_of: date, ctx: dict, insights: list[an.Insight], summary: list[str], lake: Lake):
+def deck_data(
+    fact,
+    as_of: date,
+    ctx: dict,
+    insights: list[an.Insight],
+    summary: list[str],
+    lake: Lake,
+    stock_as_of: date | None = None,
+    stock_lines: list[str] | None = None,
+):
     from sales_insights.deck.deck import DeckData, KpiCard
 
     comps, totals = ctx["comparisons"], ctx["totals"]
@@ -187,6 +250,7 @@ def deck_data(fact, as_of: date, ctx: dict, insights: list[an.Insight], summary:
         "By product group": [(i, (c - p) / 1e6) for i, c, p in dt.period_by(fact, month, "product_group")],
     }
     alerts = [i.text for i in insights if i.kind in nr.ALERT_KINDS]
+    stock_lines = stock_lines or []
     forecast, monthly = ctx["forecast"], ctx["monthly"]
     history = [pr.shift_months(last_m, -k) for k in range(OUTLOOK_HISTORY_MONTHS - 1, -1, -1)]
     outlook = [(m.strftime("%b %y"), monthly.get(m, 0.0) / 1e6, None) for m in history]
@@ -224,10 +288,21 @@ def deck_data(fact, as_of: date, ctx: dict, insights: list[an.Insight], summary:
         outlook_caption=f"Net revenue per month, LKR millions: last {OUTLOOK_HISTORY_MONTHS} complete months (actual) "
         "and the forecast to the end of the fiscal year",
         outlook_notes=outlook_notes,
-    )
+        stock=stock_lines[:STOCK_SLIDE_LINES],
+        stock_caption=(f"Stock data up to {stock_as_of:%d %b %Y}: depots and stores with no stock, under "
+                       f"{st.LOW_COVER_DAYS} days of cover, and stock above {st.OVERSTOCK_DAYS} days of cover"
+                       if stock_as_of else ""),
+    )  # fmt: skip
 
 
-def run(spark: SparkSession, cfg: Config, lake: Lake | None = None, deck_dir: Path | None = None) -> dict:
+def run(
+    spark: SparkSession,
+    cfg: Config,
+    lake: Lake | None = None,
+    deck_dir: Path | None = None,
+    stock_lake: Lake | None = None,
+) -> dict:
+    """Sales insights, forecast and (optionally) the deck. `stock_lake` (the inventory area) adds a Stock slide."""
     lake = lake or Lake(spark, cfg)
     as_of, ctx, insights, fact = collect(lake, int(cfg.business.get("fiscal_year_start_month", 4)))
     facts = nr.summary(insights)
@@ -239,7 +314,9 @@ def run(spark: SparkSession, cfg: Config, lake: Lake | None = None, deck_dir: Pa
     if deck_dir is not None:
         from sales_insights.deck.deck import build_deck
 
-        deck = build_deck(deck_data(fact, as_of, ctx, insights, summary, lake), deck_dir / f"weekly_deck_{as_of}.pptx")
+        stock_as_of, stock_lines = latest_stock_findings(stock_lake)
+        data = deck_data(fact, as_of, ctx, insights, summary, lake, stock_as_of, stock_lines)
+        deck = build_deck(data, deck_dir / f"weekly_deck_{as_of}.pptx")
     if lake.by_path:
         fact.unpersist()
     return {"run_id": run_id, "as_of": as_of, "insights": insights, "summary": summary, "deck": deck,
@@ -252,11 +329,18 @@ def main(argv: list[str] | None = None) -> None:
 
     parser = argparse.ArgumentParser(description="Compute sales insights and the weekly deck.")
     parser.add_argument("--no-deck", action="store_true", help="skip the PowerPoint deck")
+    parser.add_argument("--area", default="sales", choices=["sales", "inventory"], help="business area")
     args = parser.parse_args(argv)
-    cfg = load_config()
-    out = run(
-        get_spark(cfg, app_name="insights"), cfg, deck_dir=None if args.no_deck else Path(cfg.path(cfg.output_path))
-    )
+    cfg = load_config(area=args.area)
+    spark = get_spark(cfg, app_name="insights")
+    if cfg.area == "inventory":
+        out = run_stock(spark, cfg)
+        print(f"  run {out['run_id']}  stock up to {out['as_of']}  {len(out['insights'])} findings")
+        for i in out["insights"]:
+            print(f"    - {i.text}")
+        return
+    stock_lake = Lake(spark, cfg.for_area("inventory")) if "inventory" in cfg.area_names() else None
+    out = run(spark, cfg, deck_dir=None if args.no_deck else Path(cfg.path(cfg.output_path)), stock_lake=stock_lake)
     ins = out["insights"]
     kinds = {k: sum(1 for i in ins if i.kind == k)
              for k in ("headline", "mover", "revenue_drop", "stock_out", "anomaly", "forecast")}  # fmt: skip
