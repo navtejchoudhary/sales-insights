@@ -49,7 +49,7 @@ def test_three_days_through_every_step(spark, cfg, source, tmp_path):
         deck_dir=tmp_path / "output", strict_stories=False, write_answer_key=False, echo=lines.append,
     )  # fmt: skip
     assert [r.ok for r in results] == [True, True, True]
-    assert [len(r.steps) for r in results] == [2, 2, 8]  # drip + bronze daily, everything after the last day
+    assert [len(r.steps) for r in results] == [1, 1, 8]  # drip daily, everything (bronze too) after the last day
     final = {st.step: st.detail for st in results[-1].steps}
     assert final["reconcile"].endswith("checks passed")
     assert final["kpis"] == "4 KPI views match the metric view"
