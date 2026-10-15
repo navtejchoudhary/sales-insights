@@ -131,14 +131,27 @@ def uses(mv: MetricView, measure: str) -> set[str]:
     return out
 
 
-def compile_query(mv: MetricView, tables: dict[str, str], fields: list[str], measures: list[str]) -> str:
-    """Plain Spark SQL equivalent of: SELECT <fields>, MEASURE(<measures>) FROM metric_view GROUP BY ALL."""
+def field_condition(mv: MetricView, condition: str) -> str:
+    """A condition written with field names ("is_last_complete_month AND location_type = 'Depot'") rewritten
+    with the fields' expressions, so it runs on the joined tables. Text in quotes is left alone."""
+    names = sorted(mv.fields, key=len, reverse=True)
+    pattern = re.compile(r"'[^']*'|\b(" + "|".join(map(re.escape, names)) + r")\b")
+    return pattern.sub(lambda m: f"({mv.fields[m.group(1)]})" if m.group(1) else m.group(0), condition)
+
+
+def compile_query(
+    mv: MetricView, tables: dict[str, str], fields: list[str], measures: list[str], where: str | None = None
+) -> str:
+    """Plain Spark SQL equivalent of: SELECT <fields>, MEASURE(<measures>) FROM metric_view [WHERE <where>]
+    GROUP BY ALL. `where` uses field names, as a WHERE on the metric view itself does; it also limits the rows
+    the window measures pick their last day from."""
     spec = mv.spec
     body = [f"FROM {Template(spec['source']).substitute(tables)} AS source"]
     for j in spec.get("joins", []):
         on = j.get("on", j.get(True))  # PyYAML reads an unquoted `on:` key as the boolean True
         body.append(f"LEFT JOIN {Template(j['source']).substitute(tables)} AS {j['name']} ON {on}")
-    where = [f"WHERE {spec['filter']}"] if spec.get("filter") else []
+    conditions = [f"({c})" for c in (spec.get("filter"), where and field_condition(mv, where)) if c]
+    where = [f"WHERE {' AND '.join(conditions)}"] if conditions else []
     group = ["GROUP BY " + ", ".join(str(i + 1) for i in range(len(fields)))] if fields else []
 
     sel = [f"{mv.fields[f]} AS `{f}`" for f in fields] + [f"{expand(mv, m, windows=True)} AS `{m}`" for m in measures]
@@ -166,11 +179,17 @@ def table_names(lake, sales_lake=None) -> dict[str, str]:
 
 
 def query(
-    spark, lake, fields: list[str], measures: list[str], mv: MetricView | None = None, tables: dict | None = None
+    spark,
+    lake,
+    fields: list[str],
+    measures: list[str],
+    mv: MetricView | None = None,
+    tables: dict | None = None,
+    where: str | None = None,
 ):
     """Run the metric view locally (or anywhere) as plain SQL."""
     mv = mv or load()
-    return spark.sql(compile_query(mv, tables or table_names(lake), fields, measures))
+    return spark.sql(compile_query(mv, tables or table_names(lake), fields, measures, where))
 
 
 def publish(spark, cfg, lake, mv: MetricView | None = None, tables: dict | None = None) -> str | None:

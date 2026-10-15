@@ -1,0 +1,131 @@
+# Company (CEO) dashboard (AI/BI): sales and stock on one page, for management.
+# Source of dashboards/ceo.lvdash.json; see dashboards/sales.yaml for the format.
+# `same_as: <dashboard>.<dataset>` reuses a dataset of another dashboard word for word.
+
+title: Company overview
+audience: [management]
+
+datasets:
+  sales_fytd:
+    metric_view: sales_metrics
+    fields: [is_fiscal_year_to_date]
+    measures: [net_revenue, gross_margin_pct, active_customers]
+    where: is_fiscal_year_to_date OR is_same_period_last_fiscal_year
+    select:
+      - CAST(MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) AS revenue_fytd
+      - CAST(ROUND((MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date)
+          / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_fiscal_year_to_date), 0) - 1) * 100, 1) AS DOUBLE)
+          AS revenue_change_pct
+      - CAST(ROUND(MAX(gross_margin_pct) FILTER (WHERE is_fiscal_year_to_date), 1) AS DOUBLE) AS margin_pct_fytd
+
+  stock_today:
+    same_as: stock.stock_today
+
+  revenue_trend:
+    same_as: sales.revenue_trend
+
+  province_mtd:
+    # Sales next to depot stock, per province, this month to date (stock: the latest day).
+    metric_view: sales_and_stock
+    fields: [province]
+    measures: [net_revenue, units_sold, stock_out_days, depot_days_of_cover]
+    where: is_month_to_date AND province IS NOT NULL
+    select:
+      - province
+      - ROUND(CAST(net_revenue AS DOUBLE) / 1e6, 1) AS lkr_m
+      - CAST(units_sold AS DOUBLE) AS units_sold
+      - CAST(stock_out_days AS DOUBLE) AS stock_out_days
+      - CAST(ROUND(depot_days_of_cover, 1) AS DOUBLE) AS days_of_cover
+    order_by: lkr_m DESC
+
+  top_findings:
+    # The most important findings of the latest sales run and the latest stock run.
+    sql: |
+      WITH s AS (SELECT max_by(run_id, generated_ts) AS run_id FROM ${sales_insights}),
+      k AS (SELECT max_by(run_id, generated_ts) AS run_id FROM ${stock_insights}),
+      findings AS (
+        SELECT 'Sales' AS area, i.severity, i.kind, i.change, i.text
+        FROM ${sales_insights} i JOIN s ON i.run_id = s.run_id
+        WHERE i.kind IN ('revenue_drop', 'stock_out', 'anomaly')
+           OR (i.kind = 'headline' AND i.metric = 'net_revenue' AND i.comparison = 'mtd_vs_last_year')
+           OR (i.kind = 'forecast' AND i.dimension = 'month')
+        UNION ALL
+        SELECT 'Stock', i.severity, i.kind, i.change, i.text
+        FROM ${stock_insights} i JOIN k ON i.run_id = k.run_id
+        WHERE i.kind IN ('stock_out_confirmed', 'overstock_total')
+      )
+      SELECT CASE severity WHEN 1 THEN 'Act now' WHEN 2 THEN 'Notable' ELSE 'Context' END AS priority,
+             area, text AS finding,
+             ROW_NUMBER() OVER (ORDER BY severity, area, abs(change) DESC) AS row_order
+      FROM findings
+      ORDER BY row_order
+      LIMIT 10
+
+  trust:
+    sql: |
+      WITH sales AS (
+        SELECT SUM(CASE WHEN status = 'PASS' THEN 1 ELSE 0 END) AS ok, COUNT(*) AS n FROM ${sales_reconciliation}
+        WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM ${sales_reconciliation})
+      ),
+      stock AS (
+        SELECT SUM(CASE WHEN status = 'PASS' THEN 1 ELSE 0 END) AS ok, COUNT(*) AS n FROM ${stock_reconciliation}
+        WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM ${stock_reconciliation})
+      ),
+      dates AS (
+        SELECT (SELECT MAX(invoice_date) FROM ${fact_sales}) AS sales_d,
+               (SELECT MAX(snapshot_date) FROM ${fact_stock_daily}) AS stock_d
+      )
+      SELECT concat('Sales up to ', date_format(dates.sales_d, 'd MMM yyyy'), ' (', CAST(sales.ok AS STRING), '/', CAST(sales.n AS STRING),
+                    ' checks passed)  |  Stock up to ', date_format(dates.stock_d, 'd MMM yyyy'), ' (',
+                    CAST(stock.ok AS STRING), '/', CAST(stock.n AS STRING), ' checks passed)') AS status
+      FROM sales CROSS JOIN stock CROSS JOIN dates
+
+pages:
+  - title: Company overview
+    widgets:
+      - text: |
+          ## Company overview: sales and stock
+          Fiscal year to date against the same period last year; stock on the latest day.
+          Ask the Sales & Stock agent (Genie) for anything not on this page.
+        size: [6, 2]
+      - table: {dataset: trust, title: Data status, columns: [{field: status, title: " "}]}
+        size: [6, 2]
+      - counter: {dataset: sales_fytd, value: revenue_fytd, title: Net revenue, fiscal year to date (LKR), format: compact}
+        size: [2, 3]
+      - counter: {dataset: sales_fytd, value: revenue_change_pct, title: vs same period last year (%)}
+        size: [2, 3]
+      - counter: {dataset: sales_fytd, value: margin_pct_fytd, title: Gross margin, fiscal year to date (%)}
+        size: [2, 3]
+      - counter: {dataset: stock_today, value: stock_value, title: Stock value today (LKR), format: compact}
+        size: [2, 3]
+      - counter: {dataset: stock_today, value: days_of_cover, title: Days of cover}
+        size: [2, 3]
+      - counter: {dataset: stock_today, value: stock_out_positions, title: Stock-outs today}
+        size: [2, 3]
+      - table:
+          dataset: top_findings
+          title: What needs attention
+          order_by: row_order
+          columns:
+            - {field: priority, title: Priority}
+            - {field: area, title: Area}
+            - {field: finding, title: Finding, wide: true}
+        size: [6, 6]
+      - line:
+          dataset: revenue_trend
+          title: Net revenue by month and forecast to March (LKR m)
+          x: {field: month, title: Month, temporal: month}
+          y: {field: lkr_m, title: LKR m}
+          color: {field: series, title: Series}
+        size: [3, 6]
+      - table:
+          dataset: province_mtd
+          title: Sales and depot stock by province, month to date
+          order_by: lkr_m DESC
+          columns:
+            - {field: province, title: Province}
+            - {field: lkr_m, title: Net revenue LKR m, type: number}
+            - {field: units_sold, title: Units sold, type: number}
+            - {field: stock_out_days, title: Stock-out days, type: number}
+            - {field: days_of_cover, title: Depot days of cover, type: number}
+        size: [3, 6]

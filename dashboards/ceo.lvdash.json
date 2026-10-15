@@ -1,0 +1,883 @@
+{
+  "datasets": [
+    {
+      "name": "44ec0be9",
+      "displayName": "sales_fytd",
+      "queryLines": [
+        "SELECT\n",
+        "  CAST(MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) AS revenue_fytd,\n",
+        "  CAST(ROUND((MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_fiscal_year_to_date), 0) - 1) * 100, 1) AS DOUBLE) AS revenue_change_pct,\n",
+        "  CAST(ROUND(MAX(gross_margin_pct) FILTER (WHERE is_fiscal_year_to_date), 1) AS DOUBLE) AS margin_pct_fytd\n",
+        "FROM (\n",
+        "  SELECT `is_fiscal_year_to_date`, MEASURE(`net_revenue`) AS `net_revenue`, MEASURE(`gross_margin_pct`) AS `gross_margin_pct`, MEASURE(`active_customers`) AS `active_customers`\n",
+        "  FROM sales_dev.gold.sales_metrics\n",
+        "  WHERE is_fiscal_year_to_date OR is_same_period_last_fiscal_year\n",
+        "  GROUP BY ALL\n",
+        ") AS q"
+      ]
+    },
+    {
+      "name": "6ef3f1ac",
+      "displayName": "stock_today",
+      "queryLines": [
+        "SELECT\n",
+        "  CAST(stock_value AS DOUBLE) AS stock_value,\n",
+        "  CAST(in_transit AS DOUBLE) AS in_transit,\n",
+        "  CAST(ROUND(days_of_cover, 1) AS DOUBLE) AS days_of_cover,\n",
+        "  CAST(stock_out_positions AS DOUBLE) AS stock_out_positions,\n",
+        "  CAST(low_cover_positions AS DOUBLE) AS low_cover_positions,\n",
+        "  CAST(ROUND(stock_out_rate_pct, 2) AS DOUBLE) AS stock_out_rate_pct\n",
+        "FROM (\n",
+        "  SELECT MEASURE(`stock_value`) AS `stock_value`, MEASURE(`in_transit`) AS `in_transit`, MEASURE(`days_of_cover`) AS `days_of_cover`, MEASURE(`stock_out_positions`) AS `stock_out_positions`, MEASURE(`low_cover_positions`) AS `low_cover_positions`, MEASURE(`stock_out_rate_pct`) AS `stock_out_rate_pct`\n",
+        "  FROM inventory_dev.gold.inventory_metrics\n",
+        ") AS q"
+      ]
+    },
+    {
+      "name": "4ab6b5b8",
+      "displayName": "revenue_trend",
+      "queryLines": [
+        "WITH last_full AS (\n",
+        "  SELECT MAX(month_start_date) AS m FROM sales_dev.gold.dim_date WHERE is_last_complete_month\n",
+        "),\n",
+        "actual AS (\n",
+        "  SELECT d.month_start_date AS month, SUM(f.net_revenue_amount) AS amount\n",
+        "  FROM sales_dev.gold.fact_sales f\n",
+        "  JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date\n",
+        "  CROSS JOIN last_full\n",
+        "  WHERE d.month_start_date BETWEEN add_months(last_full.m, -12) AND last_full.m\n",
+        "  GROUP BY d.month_start_date\n",
+        ")\n",
+        "SELECT month, 'Actual' AS series, ROUND(CAST(amount AS DOUBLE) / 1e6, 1) AS lkr_m FROM actual\n",
+        "UNION ALL\n",
+        "SELECT month_start_date, s.series, ROUND(s.amount / 1e6, 1)\n",
+        "FROM sales_dev.gold.forecast\n",
+        "LATERAL VIEW stack(3, 'Forecast', CAST(forecast_net_revenue AS DOUBLE),\n",
+        "                      'Forecast low', CAST(low_net_revenue AS DOUBLE),\n",
+        "                      'Forecast high', CAST(high_net_revenue AS DOUBLE)) s AS series, amount"
+      ]
+    },
+    {
+      "name": "a3283fde",
+      "displayName": "province_mtd",
+      "queryLines": [
+        "SELECT\n",
+        "  province,\n",
+        "  ROUND(CAST(net_revenue AS DOUBLE) / 1e6, 1) AS lkr_m,\n",
+        "  CAST(units_sold AS DOUBLE) AS units_sold,\n",
+        "  CAST(stock_out_days AS DOUBLE) AS stock_out_days,\n",
+        "  CAST(ROUND(depot_days_of_cover, 1) AS DOUBLE) AS days_of_cover\n",
+        "FROM (\n",
+        "  SELECT `province`, MEASURE(`net_revenue`) AS `net_revenue`, MEASURE(`units_sold`) AS `units_sold`, MEASURE(`stock_out_days`) AS `stock_out_days`, MEASURE(`depot_days_of_cover`) AS `depot_days_of_cover`\n",
+        "  FROM inventory_dev.gold.sales_and_stock\n",
+        "  WHERE is_month_to_date AND province IS NOT NULL\n",
+        "  GROUP BY ALL\n",
+        ") AS q\n",
+        "ORDER BY lkr_m DESC"
+      ]
+    },
+    {
+      "name": "3ea48750",
+      "displayName": "top_findings",
+      "queryLines": [
+        "WITH s AS (SELECT max_by(run_id, generated_ts) AS run_id FROM sales_dev.gold.insights),\n",
+        "k AS (SELECT max_by(run_id, generated_ts) AS run_id FROM inventory_dev.gold.insights),\n",
+        "findings AS (\n",
+        "  SELECT 'Sales' AS area, i.severity, i.kind, i.change, i.text\n",
+        "  FROM sales_dev.gold.insights i JOIN s ON i.run_id = s.run_id\n",
+        "  WHERE i.kind IN ('revenue_drop', 'stock_out', 'anomaly')\n",
+        "     OR (i.kind = 'headline' AND i.metric = 'net_revenue' AND i.comparison = 'mtd_vs_last_year')\n",
+        "     OR (i.kind = 'forecast' AND i.dimension = 'month')\n",
+        "  UNION ALL\n",
+        "  SELECT 'Stock', i.severity, i.kind, i.change, i.text\n",
+        "  FROM inventory_dev.gold.insights i JOIN k ON i.run_id = k.run_id\n",
+        "  WHERE i.kind IN ('stock_out_confirmed', 'overstock_total')\n",
+        ")\n",
+        "SELECT CASE severity WHEN 1 THEN 'Act now' WHEN 2 THEN 'Notable' ELSE 'Context' END AS priority,\n",
+        "       area, text AS finding,\n",
+        "       ROW_NUMBER() OVER (ORDER BY severity, area, abs(change) DESC) AS row_order\n",
+        "FROM findings\n",
+        "ORDER BY row_order\n",
+        "LIMIT 10"
+      ]
+    },
+    {
+      "name": "caf07220",
+      "displayName": "trust",
+      "queryLines": [
+        "WITH sales AS (\n",
+        "  SELECT SUM(CASE WHEN status = 'PASS' THEN 1 ELSE 0 END) AS ok, COUNT(*) AS n FROM sales_dev.ops.reconciliation\n",
+        "  WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM sales_dev.ops.reconciliation)\n",
+        "),\n",
+        "stock AS (\n",
+        "  SELECT SUM(CASE WHEN status = 'PASS' THEN 1 ELSE 0 END) AS ok, COUNT(*) AS n FROM inventory_dev.ops.reconciliation\n",
+        "  WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM inventory_dev.ops.reconciliation)\n",
+        "),\n",
+        "dates AS (\n",
+        "  SELECT (SELECT MAX(invoice_date) FROM sales_dev.gold.fact_sales) AS sales_d,\n",
+        "         (SELECT MAX(snapshot_date) FROM inventory_dev.gold.fact_stock_daily) AS stock_d\n",
+        ")\n",
+        "SELECT concat('Sales up to ', date_format(dates.sales_d, 'd MMM yyyy'), ' (', CAST(sales.ok AS STRING), '/', CAST(sales.n AS STRING),\n",
+        "              ' checks passed)  |  Stock up to ', date_format(dates.stock_d, 'd MMM yyyy'), ' (',\n",
+        "              CAST(stock.ok AS STRING), '/', CAST(stock.n AS STRING), ' checks passed)') AS status\n",
+        "FROM sales CROSS JOIN stock CROSS JOIN dates"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "a45a48d8",
+      "displayName": "Company overview",
+      "layout": [
+        {
+          "widget": {
+            "name": "7d11ad1d",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Company overview: sales and stock\n",
+                "Fiscal year to date against the same period last year; stock on the latest day.\n",
+                "Ask the Sales & Stock agent (Genie) for anything not on this page."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "94ae9d24",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "caf07220",
+                  "fields": [
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "allowHTMLByDefault": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "status",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": " ",
+                    "displayName": "status",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Data status"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "3e78b20b",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "44ec0be9",
+                  "fields": [
+                    {
+                      "name": "max(revenue_fytd)",
+                      "expression": "MAX(`revenue_fytd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(revenue_fytd)",
+                  "displayName": "Net revenue",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Net revenue"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "625e3798",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "44ec0be9",
+                  "fields": [
+                    {
+                      "name": "max(revenue_change_pct)",
+                      "expression": "MAX(`revenue_change_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(revenue_change_pct)",
+                  "displayName": "vs same period last year (%)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "vs same period last year (%)"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 4,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "3b02f1bf",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "44ec0be9",
+                  "fields": [
+                    {
+                      "name": "max(margin_pct_fytd)",
+                      "expression": "MAX(`margin_pct_fytd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(margin_pct_fytd)",
+                  "displayName": "Gross margin"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Gross margin"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 4,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "14be61ef",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "6ef3f1ac",
+                  "fields": [
+                    {
+                      "name": "max(stock_value)",
+                      "expression": "MAX(`stock_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(stock_value)",
+                  "displayName": "Stock value today (LKR)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Stock value today (LKR)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "8149b7aa",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "6ef3f1ac",
+                  "fields": [
+                    {
+                      "name": "max(days_of_cover)",
+                      "expression": "MAX(`days_of_cover`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(days_of_cover)",
+                  "displayName": "Days of cover"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Days of cover"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 7,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "2d04895d",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "6ef3f1ac",
+                  "fields": [
+                    {
+                      "name": "max(stock_out_positions)",
+                      "expression": "MAX(`stock_out_positions`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(stock_out_positions)",
+                  "displayName": "Stock-outs today"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Stock-outs today"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 7,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "5da888fd",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "3ea48750",
+                  "fields": [
+                    {
+                      "name": "priority",
+                      "expression": "`priority`"
+                    },
+                    {
+                      "name": "area",
+                      "expression": "`area`"
+                    },
+                    {
+                      "name": "finding",
+                      "expression": "`finding`"
+                    },
+                    {
+                      "name": "row_order",
+                      "expression": "`row_order`"
+                    }
+                  ],
+                  "disaggregated": true,
+                  "orders": [
+                    {
+                      "direction": "ASC",
+                      "expression": "`row_order`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "allowHTMLByDefault": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "priority",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": "Priority",
+                    "displayName": "priority",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "area",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100001,
+                    "title": "Area",
+                    "displayName": "area",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "finding",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100002,
+                    "title": "Finding",
+                    "displayName": "finding",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "defaultColumnWidth": 700
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "What needs attention"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "5e367b83",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4ab6b5b8",
+                  "fields": [
+                    {
+                      "name": "monthly(month)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `month`)"
+                    },
+                    {
+                      "name": "sum(lkr_m)",
+                      "expression": "SUM(`lkr_m`)"
+                    },
+                    {
+                      "name": "series",
+                      "expression": "`series`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(month)",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Month"
+                },
+                "y": {
+                  "fieldName": "sum(lkr_m)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "LKR m"
+                },
+                "color": {
+                  "fieldName": "series",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Series"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Net revenue by month and forecast to March (LKR m)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 16,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "cf6da162",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "a3283fde",
+                  "fields": [
+                    {
+                      "name": "province",
+                      "expression": "`province`"
+                    },
+                    {
+                      "name": "lkr_m",
+                      "expression": "`lkr_m`"
+                    },
+                    {
+                      "name": "units_sold",
+                      "expression": "`units_sold`"
+                    },
+                    {
+                      "name": "stock_out_days",
+                      "expression": "`stock_out_days`"
+                    },
+                    {
+                      "name": "days_of_cover",
+                      "expression": "`days_of_cover`"
+                    }
+                  ],
+                  "disaggregated": true,
+                  "orders": [
+                    {
+                      "direction": "DESC",
+                      "expression": "`lkr_m`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "allowHTMLByDefault": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "province",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": "Province",
+                    "displayName": "province",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "lkr_m",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100001,
+                    "title": "Net revenue LKR m",
+                    "displayName": "lkr_m",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  },
+                  {
+                    "fieldName": "units_sold",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "title": "Units sold",
+                    "displayName": "units_sold",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  },
+                  {
+                    "fieldName": "stock_out_days",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100003,
+                    "title": "Stock-out days",
+                    "displayName": "stock_out_days",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  },
+                  {
+                    "fieldName": "days_of_cover",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100004,
+                    "title": "Depot days of cover",
+                    "displayName": "days_of_cover",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Sales and depot stock by province, month to date"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 16,
+            "width": 3,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    }
+  ]
+}

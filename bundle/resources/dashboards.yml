@@ -1,0 +1,42 @@
+# AI/BI dashboards, as code. Each .lvdash.json is generated from its YAML (dashboards/*.yaml):
+#   uv run python -m sales_insights.semantic.dashboards   # then: databricks bundle deploy -t dev
+#
+# embed_credentials: false -> every viewer's queries run with THEIR OWN Unity Catalog rights
+# (sql/setup/permissions.sql), so the dashboard can never show more than the viewer may read.
+# The groups must exist before the first deploy with this file (docs/access.md, step 1); otherwise the
+# deploy stops with "principal does not exist".
+# A dashboard edited in the browser is overwritten by the next deploy: change the YAML instead (or pull the
+# edits back with `databricks bundle generate dashboard --resource <name> --force`).
+
+resources:
+  dashboards:
+    sales_dashboard:
+      display_name: Sales
+      file_path: ../../dashboards/sales.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      embed_credentials: false
+      permissions:
+        - group_name: sales_team
+          level: CAN_RUN
+        - group_name: management
+          level: CAN_RUN
+
+    stock_dashboard:
+      display_name: Stock
+      file_path: ../../dashboards/stock.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      embed_credentials: false
+      permissions:
+        - group_name: stock_team
+          level: CAN_RUN
+        - group_name: management
+          level: CAN_RUN
+
+    ceo_dashboard:
+      display_name: Company overview
+      file_path: ../../dashboards/ceo.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      embed_credentials: false
+      permissions:
+        - group_name: management
+          level: CAN_RUN
