@@ -70,3 +70,18 @@ def test_deck_without_forecast_says_so(tmp_path):
     prs = Presentation(build_deck(sample(forecast=False), tmp_path / "deck.pptx"))
     s = list(prs.slides)[3]
     assert "Not enough history for a forecast" in _texts(s) and not any(sh.has_chart for sh in s.shapes)
+
+
+def test_stock_slide_appears_only_with_stock_findings(tmp_path):
+    d = sample()
+    d.stock = [
+        "Confirmed stock-out: Colombo Depot has had no MC600 WEEDICIDE 1LTR (CASE) since 22 Oct (8 days).",
+        "Low cover: Galle Depot has 1 MAN1KG left, about 0.4 days at its usual 2.5 a day.",
+        "Overstock: 47 stock positions hold more than 120 days of cover, LKR 12.2M of stock above that level.",
+    ]
+    d.stock_caption = "Stock data up to 29 Oct 2026"
+    prs = Presentation(str(build_deck(d, tmp_path / "with_stock.pptx")))
+    assert len(prs.slides) == 9
+    stock = list(prs.slides)[6]  # right after the alerts slide
+    assert "Stock data up to 29 Oct 2026" in _texts(stock) and "Confirmed stock-out: Colombo Depot" in _texts(stock)
+    assert "Summary" in _texts(list(prs.slides)[7])

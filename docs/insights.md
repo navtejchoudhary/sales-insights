@@ -81,3 +81,23 @@ charts, so values can be clicked and restyled. On Databricks the job writes the 
 `ai_forecast` and `ai_detect_anomalies` are Databricks-only functions. `ai_forecast` works on the
 workspace but is not used (see section 3). `ai_detect_anomalies` needs the Predictive AI Functions preview,
 which is not yet enabled; the unusual-day rule above covers the demo stories.
+
+## Stock insights (inventory area, `insights/stock.py`)
+
+The inventory pipeline's last step (`run_pipeline --area inventory`, step `insights`; daily at 07:00 on
+Databricks) looks at every stock position on the latest stock date and appends its findings to
+`gold.insights` of the inventory catalog (same columns as the sales findings).
+
+| Kind | Rule | Severity |
+|---|---|---|
+| Confirmed stock-out | Zero stock of a product the location issued in the last 28 days. Says since when, the usual daily rate, and how much the supplying hub still holds | 1 |
+| Low cover | A depot with stock for less than 7 days at its 28-day issue rate (up to 5, shortest first) | 2 |
+| Overstock | More than 120 days of cover. Ranked by the stock VALUE above 120 days (about 50 slow sellers are above 120 days; listing them all would hide the few that tie up real money): one total line plus the top 5 | 3 |
+
+The sales "possible stock-out" guesses from sales alone; the confirmed one is the stock data saying the
+shelf is empty. Both stay: the first works even when stock data is late.
+
+- **Alert:** `Stock - confirmed stock-out` (bundle/resources/alerts.yml) emails at 08:00 when the latest
+  stock run has one.
+- **Weekly deck:** a "Stock" slide after the alerts slide, with the latest stock findings (confirmed
+  stock-outs, low cover, the overstock total) and their stock date. No stock data: no slide.

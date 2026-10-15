@@ -66,3 +66,32 @@ resources:
         quartz_cron_schedule: "0 0 8 * * ?"  # 08:00 every day
         timezone_id: Asia/Colombo
         pause_status: UNPAUSED
+
+    stock_confirmed_stock_out:
+      display_name: Stock - confirmed stock-out
+      custom_summary: "A depot or store holds none of a product it normally issues"
+      warehouse_id: ${var.warehouse_id}
+      query_text: |
+        -- Confirmed stock-outs in the latest stock insights run (rule: insights/stock.py confirmed_stock_outs).
+        -- Written by the 07:00 inventory job to the inventory catalog.
+        SELECT COUNT(*) AS findings, concat_ws(' | ', collect_list(text)) AS details
+        FROM ${var.inventory_catalog}.gold.insights
+        WHERE run_id = (SELECT max_by(run_id, generated_ts) FROM ${var.inventory_catalog}.gold.insights)
+          AND kind = 'stock_out_confirmed'
+      evaluation:
+        source:
+          name: findings
+        comparison_operator: GREATER_THAN
+        threshold:
+          value:
+            double_value: 0
+        empty_result_state: OK
+        notification:
+          notify_on_ok: true
+          retrigger_seconds: 0
+          subscriptions:
+            - user_email: ${workspace.current_user.userName}
+      schedule:
+        quartz_cron_schedule: "0 0 8 * * ?"  # 08:00 every day, after the 07:00 inventory job
+        timezone_id: Asia/Colombo
+        pause_status: UNPAUSED

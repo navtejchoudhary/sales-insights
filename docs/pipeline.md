@@ -54,6 +54,7 @@ bronze/silver/gold tables; areas share only the dimension tables.
 
 | kpis | `semantic/kpis.py` | `sql/kpis/inventory/*.sql` must equal the `inventory_metrics` and `sales_and_stock` metric views (stock = last day of the period) |
 | answer_key | `semantic/answer_key.py` | Runs the Stock (`genie/inventory/`) and Sales & Stock (`genie/sales_and_stock/`) benchmarks; story checks I1-I4 must PASS (or wait for their date) |
+| insights | `insights/stock.py`, `insights/stock_data.py` | Confirmed stock-outs, low cover, overstock -> inventory `gold.insights` (docs/insights.md) |
 
 Products, dates and regions come from the sales gold (read only).
 

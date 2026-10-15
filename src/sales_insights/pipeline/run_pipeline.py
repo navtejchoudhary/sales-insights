@@ -19,7 +19,8 @@ For each business day:
 Inventory area (--area inventory): drip, bronze (same code, inventory files), silver (inventory_silver),
 gold (inventory_gold), checks (inventory_checks: source totals, stock roll-forward, cross-check with sales),
 kpis (inventory KPI SQL = the inventory_metrics and sales_and_stock metric views), answer_key (the Stock and
-Sales & Stock Genie answer keys + stories I1-I4). It reads the sales gold, so run sales first for the same day.
+Sales & Stock Genie answer keys + stories I1-I4), insights (confirmed stock-outs, low cover, overstock).
+It reads the sales gold, so run sales first for the same day. The sales deck shows the latest stock findings.
 
 `--downstream last` only delivers (drip) each day's files and runs everything else, bronze included, once
 at the end (much faster: bronze checks every landed file each time it runs; the final numbers are identical
@@ -49,7 +50,7 @@ from sales_insights.generator import masters as m
 from sales_insights.generator import simulate as s
 
 STEPS = ["drip", "bronze", "silver", "gold", "reconcile", "kpis", "answer_key", "insights"]
-INVENTORY_STEPS = ["drip", "bronze", "silver", "gold", "checks", "kpis", "answer_key"]
+INVENTORY_STEPS = ["drip", "bronze", "silver", "gold", "checks", "kpis", "answer_key", "insights"]
 # Business areas this command can run (config.yaml `areas:`). Sales is the default and runs exactly as before.
 # Inventory reads the sales gold (shared dimensions, cross-area check), so run sales first each day.
 AREA_STEPS = {"sales": STEPS, "inventory": INVENTORY_STEPS}
@@ -227,8 +228,9 @@ def _insights(ctx: dict, d: date) -> str:
     from sales_insights.insights.narrative import ALERT_KINDS
 
     out = job.run(
-        ctx["spark"], ctx["cfg"], lake=ctx["lake"], deck_dir=ctx["deck_dir"] if ctx["last_day"] == d else None
-    )
+        ctx["spark"], ctx["cfg"], lake=ctx["lake"], deck_dir=ctx["deck_dir"] if ctx["last_day"] == d else None,
+        stock_lake=ctx.get("stock_lake"),
+    )  # fmt: skip
     ins = out["insights"]
     ctx["alerts"] = [i.text for i in ins if i.kind in ALERT_KINDS]
     deck = f", deck {Path(out['deck']).name}" if out["deck"] else ""
@@ -274,9 +276,23 @@ def _inventory_checks(ctx: dict, d: date) -> str:
     return f"{summary} passed"
 
 
+def _inventory_insights(ctx: dict, d: date) -> str:
+    from sales_insights.insights import job
+    from sales_insights.insights.stock import ALERT_KINDS
+
+    out = job.run_stock(ctx["spark"], ctx["cfg"], lake=ctx["lake"], sales_lake=ctx["sales_lake"])
+    ins = out["insights"]
+    ctx["alerts"] = [i.text for i in ins if i.kind in ALERT_KINDS]
+    counts = {k: sum(1 for i in ins if i.kind == k) for k in ("stock_out_confirmed", "low_cover", "overstock")}
+    return (
+        f"{counts['stock_out_confirmed']} confirmed stock-out(s), {counts['low_cover']} low cover, "
+        f"top {counts['overstock']} overstock"
+    )
+
+
 INVENTORY_STEP_FUNCS: dict[str, Callable[[dict, date], str]] = {
     "drip": _drip, "bronze": _bronze, "silver": _inventory_silver, "gold": _inventory_gold,
-    "checks": _inventory_checks, "kpis": _kpis, "answer_key": _answer_key,
+    "checks": _inventory_checks, "kpis": _kpis, "answer_key": _answer_key, "insights": _inventory_insights,
 }  # fmt: skip
 AREA_STEP_FUNCS = {"sales": STEP_FUNCS, "inventory": INVENTORY_STEP_FUNCS}
 
@@ -317,6 +333,7 @@ def run_range(
     write_answer_key: bool = True,
     echo: Callable[[str], None] = print,
     sales_lake: Lake | None = None,
+    stock_lake: Lake | None = None,
 ) -> list[DayResult]:
     for note in ensure_source(cfg, staging, landing, max(days)):
         echo(f"  {note}")
@@ -326,6 +343,7 @@ def run_range(
         "last_day": max(days), "strict_stories": strict_stories, "write_answer_key": write_answer_key, "alerts": [],
         "funcs": AREA_STEP_FUNCS[cfg.area],
         "sales_lake": sales_lake or (Lake(spark, cfg.for_area("sales")) if cfg.area != "sales" else lake),
+        "stock_lake": stock_lake,
     }  # fmt: skip
     results = []
     for d in days:
@@ -380,11 +398,16 @@ def main(argv: list[str] | None = None) -> None:
     spark = get_spark(cfg, app_name="pipeline")
     out = Path(cfg.path(cfg.output_path))
     lake = Lake(spark, cfg)
+    # the sales deck shows the latest stock findings when the inventory area exists
+    stock_lake = (
+        Lake(spark, cfg.for_area("inventory")) if cfg.area == "sales" and "inventory" in cfg.area_names() else None
+    )
     t0 = time.perf_counter()
     results = run_range(
         spark, cfg, days,
         staging=Path(cfg.path(cfg.staging_path)), landing=Path(cfg.path(cfg.landing_path)), lake=lake,
         downstream=args.downstream, deck_dir=None if args.no_deck else out, write_answer_key=lake.by_path,
+        stock_lake=stock_lake,
     )  # fmt: skip
     report = write_report(results, out / f"pipeline_report_{days[0]}_{days[-1]}.csv", AREA_STEPS[cfg.area])
     ok = results and results[-1].ok and len(results) == len(days)

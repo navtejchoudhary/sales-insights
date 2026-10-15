@@ -22,6 +22,9 @@ variables:
   catalog:
     description: Unity Catalog catalog of this project (same as `catalog` in config/config.yaml, profile dev)
     default: sales_dev
+  inventory_catalog:
+    description: Catalog of the inventory area (same as areas.inventory.dev.catalog in config/config.yaml)
+    default: inventory_dev
   warehouse_id:
     description: SQL warehouse that runs the alerts, found by its name (no ID in git)
     lookup:
