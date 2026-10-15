@@ -3,6 +3,7 @@
 import importlib.util
 from pathlib import Path
 
+import pytest
 import yaml
 
 from sales_insights.common.config import load_config
@@ -122,3 +123,57 @@ def test_alert_variables_match_the_config():
     v = bundle["variables"]
     assert v["catalog"]["default"] == load_config("dev").catalog
     assert v["warehouse_id"]["lookup"] == {"warehouse": "sales-insights-wh"}
+
+
+def test_launcher_turns_today_into_the_sri_lanka_date():
+    from datetime import UTC, datetime
+
+    run = _launcher()
+    late_utc = datetime(2026, 10, 15, 20, 0, tzinfo=UTC)  # 01:30 on 16 Oct in Sri Lanka
+    sri_lanka = late_utc.astimezone(run.ZoneInfo(run.TIMEZONE))
+    assert run.resolve_today(["--to", "today"], sri_lanka) == ["--to", "2026-10-16"]
+    assert run.resolve_today(["--to", "2026-10-29"], sri_lanka) == ["--to", "2026-10-29"]  # a fixed date stays
+
+
+def _params(job):
+    return job["tasks"][0]["spark_python_task"]["parameters"]
+
+
+@pytest.mark.parametrize("name", ["sales_backfill", "inventory_backfill"])
+def test_backfills_run_to_data_until_which_defaults_to_today(name):
+    job = _jobs()[name]
+    assert job["parameters"] == [{"name": "data_until", "default": "today"}]
+    params = _params(job)
+    assert params[params.index("--to") + 1] == "{{job.parameters.data_until}}"
+    assert params[params.index("--from") + 1] == "2026-10-01"
+
+
+def test_sales_jobs_never_name_an_area():
+    """Sales stays the default everywhere: its jobs run exactly the commands they always ran."""
+    for name, job in _jobs().items():
+        if name.startswith("sales_"):
+            assert "--area" not in _params(job), name
+
+
+def test_inventory_jobs_run_the_inventory_area_after_sales():
+    jobs = _jobs()
+    inventory = {n: j for n, j in jobs.items() if n.startswith("inventory_")}
+    assert set(inventory) == {"inventory_backfill", "inventory_daily_pipeline", "inventory_publish_semantic"}
+    for name, job in inventory.items():
+        params = _params(job)
+        assert params[params.index("--area") + 1] == "inventory", name
+    daily = inventory["inventory_daily_pipeline"]["schedule"]
+    assert (daily["timezone_id"], daily["pause_status"]) == ("Asia/Colombo", "UNPAUSED")
+    assert daily["quartz_cron_expression"] == "0 0 7 * * ?"  # 07:00: after the 06:30 sales job, whose gold it reads
+    assert jobs["sales_daily_pipeline"]["schedule"]["quartz_cron_expression"] == "0 30 6 * * ?"
+
+
+def test_inventory_setup_sql_matches_the_config():
+    sql = (ROOT / "sql" / "setup" / "inventory_dev.sql").read_text()
+    dev = load_config("dev", area="inventory")
+    assert f"CREATE CATALOG IF NOT EXISTS {dev.catalog}" in sql
+    for layer in ("raw", "bronze", "silver", "gold", "ops"):
+        assert f"CREATE SCHEMA IF NOT EXISTS {dev.catalog}.{layer}" in sql
+    for path in (dev.staging_path, dev.landing_path, dev.output_path):
+        volume = ".".join(path.removeprefix("/Volumes/").split("/"))  # /Volumes/c/s/v -> c.s.v
+        assert f"CREATE VOLUME IF NOT EXISTS {volume};" in sql

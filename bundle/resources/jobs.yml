@@ -35,21 +35,26 @@ resources:
               - pyyaml>=6.0.3
               - python-pptx==1.0.2
 
-    # Once, on Day 15: generate and load everything from 1 Oct up to today (downstream steps only at the end)
+    # Generate and load everything from 1 Oct up to `data_until` (downstream steps only at the end).
+    # data_until = "today" by default; give a date to run the simulated days ahead, e.g. for a demo:
+    #   databricks bundle run -t dev sales_backfill --params data_until=2026-10-29
     sales_backfill:
       name: sales-insights-backfill
-      description: First load on Databricks - master data, 18-month history and every day from 1 Oct to today.
+      description: Load on Databricks - master data, 18-month history and every day from 1 Oct to data_until (default today).
       max_concurrent_runs: 1
       timeout_seconds: 7200  # cost guard: stopped after 2 hours
       email_notifications:
         on_failure:
           - ${workspace.current_user.userName}
+      parameters:
+        - name: data_until
+          default: today  # bundle/run.py turns "today" into today's date (Asia/Colombo)
       tasks:
         - task_key: backfill
           environment_key: default
           spark_python_task:
             python_file: ../run.py
-            parameters: ["pipeline", "--profile", "dev", "--from", "2026-10-01", "--to", "{{job.start_time.iso_date}}", "--downstream", "last"]
+            parameters: ["pipeline", "--profile", "dev", "--from", "2026-10-01", "--to", "{{job.parameters.data_until}}", "--downstream", "last"]
       environments:
         - environment_key: default
           spec:
@@ -115,3 +120,91 @@ resources:
               - pyyaml>=6.0.3
               - python-pptx==1.0.2
               - databricks-sdk  # latest: the Genie evaluation API is new (beta)
+
+    # ---------------------------------------------------------------- inventory area (catalog inventory_dev)
+    # Same code, `--area inventory`. It reads the sales gold, so it runs after the sales job.
+    # First: run inventory_backfill once (after sales_backfill reached the same date), then the daily job
+    # carries on by itself. Sales jobs and the sales_dev catalog are not touched by any of these.
+
+    # Once: the stock locations, 18 months of stock history and every day from 1 Oct to data_until
+    inventory_backfill:
+      name: inventory-backfill
+      description: Inventory first load - locations, stock history and every day from 1 Oct to data_until (default today). Run after sales_backfill.
+      max_concurrent_runs: 1
+      timeout_seconds: 7200  # cost guard: stopped after 2 hours
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      parameters:
+        - name: data_until
+          default: today  # use the same date as the sales backfill
+      tasks:
+        - task_key: backfill
+          environment_key: default
+          spark_python_task:
+            python_file: ../run.py
+            parameters: ["pipeline", "--profile", "dev", "--area", "inventory", "--from", "2026-10-01", "--to", "{{job.parameters.data_until}}", "--downstream", "last"]
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "6"  # serverless environment 6: Python 3.12
+            dependencies:
+              - numpy>=2.5.3
+              - pandas>=3.0.6
+              - pyyaml>=6.0.3
+              - python-pptx==1.0.2
+
+    # Every morning at 07:00, after the 06:30 sales job: drip -> bronze -> silver -> gold -> checks -> KPIs -> answer keys
+    inventory_daily_pipeline:
+      name: inventory-daily
+      performance_target: STANDARD  # cost: scheduled, nobody waits
+      description: Daily inventory pipeline (docs/pipeline.md, inventory area). Fails if a stock check, KPI or story check fails; sales is unaffected.
+      max_concurrent_runs: 1
+      timeout_seconds: 3600  # cost guard: stopped after 1 hour
+      schedule:
+        quartz_cron_expression: "0 0 7 * * ?"  # 07:00 every day, 30 minutes after the sales job
+        timezone_id: Asia/Colombo
+        pause_status: UNPAUSED
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      tasks:
+        - task_key: pipeline
+          environment_key: default
+          spark_python_task:
+            python_file: ../run.py
+            parameters: ["pipeline", "--profile", "dev", "--area", "inventory", "--date", "{{job.start_time.iso_date}}"]
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "6"  # serverless environment 6: Python 3.12
+            dependencies:
+              - numpy>=2.5.3
+              - pandas>=3.0.6
+              - pyyaml>=6.0.3
+              - python-pptx==1.0.2
+
+    # After the inventory gold exists: KPI views + the two metric views (inventory_metrics, sales_and_stock)
+    inventory_publish_semantic:
+      name: inventory-publish-semantic
+      description: Creates inventory_dev.gold.kpi_* views and the metric views inventory_metrics and sales_and_stock, then proves they agree.
+      max_concurrent_runs: 1
+      timeout_seconds: 1800  # cost guard: stopped after 30 minutes
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      tasks:
+        - task_key: publish
+          environment_key: default
+          spark_python_task:
+            python_file: ../run.py
+            parameters: ["kpis", "--profile", "dev", "--area", "inventory"]
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "6"  # serverless environment 6: Python 3.12
+            dependencies:
+              - numpy>=2.5.3
+              - pandas>=3.0.6
+              - pyyaml>=6.0.3
+              - python-pptx==1.0.2
