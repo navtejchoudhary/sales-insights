@@ -143,6 +143,19 @@ If 11.5 fails on the metric view (window measures refused), keep going: the KPI 
 `inventory_dev.gold.kpi_stock_month_end` and `kpi_stock_daily` hold the same numbers; point Genie and the
 dashboard at them and tell Claude the exact error.
 
+## 12. Dashboards and access, added 15 Oct
+
+Full explanation: `docs/access.md`. Do the steps in order (the deploy in 12.3 needs the groups).
+
+| # | Do | You should see |
+|---|---|---|
+| 12.1 | Settings > Identity and access > Groups > Manage > Add group > Add new: `sales_team`, `stock_team`, `management`; add yourself to `management` | three groups |
+| 12.2 | SQL editor: run `sql/setup/permissions.sql`; SQL Warehouses > `sales-insights-wh` > Permissions: the 3 groups, *Can use* | `SHOW GRANTS ON SCHEMA sales_dev.gold;` lists sales_team and management |
+| 12.3 | Mac: `git pull`, `databricks bundle deploy -t dev` | `Sales`, `Stock`, `Company overview` under Dashboards |
+| 12.4 | Open each dashboard | every widget shows data; "Data status" says all checks passed |
+| 12.5 | Each Genie agent > Share: Sales -> sales_team + management; Stock -> stock_team + management; Sales & Stock -> management (*Can run*) | |
+| 12.6 | Before deleting the workspace: `uv run python -m sales_insights.semantic.export_workspace --space sales=<id> --space inventory=<id> --space sales_and_stock=<id>` | files in `output/export/` |
+
 ## If something goes wrong
 
 | Symptom | Likely cause | Fix |

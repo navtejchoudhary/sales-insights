@@ -72,11 +72,13 @@ src/sales_insights/common/     config.py (load_config), spark.py (get_spark) —
 src/sales_insights/generator/  stories.py (settings), masters.py, engine.py (shared per-day sales + per-invoice fates), history.py, simulate.py (daily drops), dirt.py, inventory.py (inventory area: locations, stock movements, daily stock; reads sales, never changes them)
 src/sales_insights/drip/       drip.py: staging -> landing copy (manifest last; missing day, Monday redelivery)
 src/sales_insights/pipeline/   bronze.py, silver.py, gold.py, reconcile.py, run_pipeline.py
-src/sales_insights/semantic/    metric_views.py (load/compile/publish metric view), kpis.py (KPI views + agreement check), answer_key.py (Genie benchmarks)
+src/sales_insights/semantic/    metric_views.py (load/compile/publish metric view), kpis.py (KPI views + agreement check), answer_key.py (Genie benchmarks), dashboards.py (dashboard files), export_workspace.py (Genie + dashboard export)
 src/sales_insights/insights/   periods.py, analysis.py, data.py, narrative.py, job.py (Phase 2)
 src/sales_insights/deck/       deck.py: python-pptx weekly deck from DeckData (Phase 3)
 sql/kpis/                 KPI SQL views (sales); sql/kpis/inventory/ (stock, sales & stock)
 sql/metric_views/         metric view YAML: sales_metrics, inventory_metrics, sales_and_stock
+sql/setup/                inventory_dev.sql (catalog), permissions.sql (3 groups, read-only grants; docs/access.md)
+dashboards/               <name>.yaml (datasets + widgets) -> <name>.lvdash.json (generated: semantic/dashboards.py; deployed by bundle/resources/dashboards.yml)
 genie/                    space.yaml (agent config), benchmarks.yaml (questions + SQL), answer_key.csv (generated), README.md (setup); same files in genie/inventory/ and genie/sales_and_stock/
 databricks.yml            Asset Bundle (dev target); bundle/resources/jobs.yml jobs; bundle/run.py job entry point
 tests/

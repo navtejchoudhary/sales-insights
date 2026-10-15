@@ -1,0 +1,877 @@
+{
+  "datasets": [
+    {
+      "name": "4da38200",
+      "displayName": "stock_today",
+      "queryLines": [
+        "SELECT\n",
+        "  CAST(stock_value AS DOUBLE) AS stock_value,\n",
+        "  CAST(in_transit AS DOUBLE) AS in_transit,\n",
+        "  CAST(ROUND(days_of_cover, 1) AS DOUBLE) AS days_of_cover,\n",
+        "  CAST(stock_out_positions AS DOUBLE) AS stock_out_positions,\n",
+        "  CAST(low_cover_positions AS DOUBLE) AS low_cover_positions,\n",
+        "  CAST(ROUND(stock_out_rate_pct, 2) AS DOUBLE) AS stock_out_rate_pct\n",
+        "FROM (\n",
+        "  SELECT MEASURE(`stock_value`) AS `stock_value`, MEASURE(`in_transit`) AS `in_transit`, MEASURE(`days_of_cover`) AS `days_of_cover`, MEASURE(`stock_out_positions`) AS `stock_out_positions`, MEASURE(`low_cover_positions`) AS `low_cover_positions`, MEASURE(`stock_out_rate_pct`) AS `stock_out_rate_pct`\n",
+        "  FROM inventory_dev.gold.inventory_metrics\n",
+        ") AS q"
+      ]
+    },
+    {
+      "name": "9fa8d3d0",
+      "displayName": "positions_by_day",
+      "queryLines": [
+        "SELECT snapshot_date, s.series, s.positions\n",
+        "FROM (\n",
+        "  SELECT `snapshot_date`, MEASURE(`stock_out_positions`) AS `stock_out_positions`, MEASURE(`low_cover_positions`) AS `low_cover_positions`\n",
+        "  FROM inventory_dev.gold.inventory_metrics\n",
+        "  WHERE is_current_fiscal_year\n",
+        "  GROUP BY ALL\n",
+        ") AS previous\n",
+        "LATERAL VIEW stack(2, 'Stock-outs', CAST(stock_out_positions AS DOUBLE),\n",
+        "                      'Low cover (under 7 days)', CAST(low_cover_positions AS DOUBLE)) s AS series, positions"
+      ]
+    },
+    {
+      "name": "fa168f6b",
+      "displayName": "value_by_location",
+      "queryLines": [
+        "SELECT\n",
+        "  location,\n",
+        "  location_type,\n",
+        "  ROUND(CAST(stock_value AS DOUBLE) / 1e6, 2) AS lkr_m\n",
+        "FROM (\n",
+        "  SELECT `location`, `location_type`, MEASURE(`stock_value`) AS `stock_value`\n",
+        "  FROM inventory_dev.gold.inventory_metrics\n",
+        "  GROUP BY ALL\n",
+        ") AS q"
+      ]
+    },
+    {
+      "name": "449e4e31",
+      "displayName": "depot_cover_by_group",
+      "queryLines": [
+        "SELECT\n",
+        "  product_group,\n",
+        "  CAST(ROUND(days_of_cover, 1) AS DOUBLE) AS days_of_cover,\n",
+        "  CAST(stock_out_positions AS DOUBLE) AS stock_out_positions\n",
+        "FROM (\n",
+        "  SELECT `product_group`, MEASURE(`days_of_cover`) AS `days_of_cover`, MEASURE(`stock_out_positions`) AS `stock_out_positions`\n",
+        "  FROM inventory_dev.gold.inventory_metrics\n",
+        "  WHERE location_type = 'Depot'\n",
+        "  GROUP BY ALL\n",
+        ") AS q"
+      ]
+    },
+    {
+      "name": "0903d1c7",
+      "displayName": "stock_out_days_by_depot",
+      "queryLines": [
+        "SELECT\n",
+        "  location,\n",
+        "  CAST(stock_out_days AS DOUBLE) AS stock_out_days\n",
+        "FROM (\n",
+        "  SELECT `location`, MEASURE(`stock_out_days`) AS `stock_out_days`\n",
+        "  FROM inventory_dev.gold.inventory_metrics\n",
+        "  WHERE is_month_to_date AND location_type = 'Depot'\n",
+        "  GROUP BY ALL\n",
+        ") AS q"
+      ]
+    },
+    {
+      "name": "ae9bc525",
+      "displayName": "stock_findings",
+      "queryLines": [
+        "WITH latest AS (SELECT max_by(run_id, generated_ts) AS run_id FROM inventory_dev.gold.insights)\n",
+        "SELECT CASE i.severity WHEN 1 THEN 'Act now' WHEN 2 THEN 'Notable' ELSE 'Context' END AS priority,\n",
+        "       CASE i.kind WHEN 'stock_out_confirmed' THEN 'Stock-out' WHEN 'low_cover' THEN 'Low cover'\n",
+        "                   ELSE 'Overstock' END AS type,\n",
+        "       i.text AS finding,\n",
+        "       ROW_NUMBER() OVER (ORDER BY i.severity, CASE WHEN i.kind = 'overstock_total' THEN 0 ELSE 1 END,\n",
+        "                                   i.item) AS row_order\n",
+        "FROM inventory_dev.gold.insights i\n",
+        "JOIN latest ON i.run_id = latest.run_id\n",
+        "ORDER BY row_order"
+      ]
+    },
+    {
+      "name": "07c9c4c4",
+      "displayName": "stock_trust",
+      "queryLines": [
+        "WITH latest AS (SELECT MAX(snapshot_date) AS d FROM inventory_dev.gold.fact_stock_daily),\n",
+        "rec AS (\n",
+        "  SELECT SUM(CASE WHEN status = 'PASS' THEN 1 ELSE 0 END) AS ok, COUNT(*) AS n FROM inventory_dev.ops.reconciliation\n",
+        "  WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM inventory_dev.ops.reconciliation)\n",
+        "),\n",
+        "rf AS (\n",
+        "  SELECT SUM(checked - failed) AS ok, SUM(checked) AS n FROM inventory_dev.ops.stock_rollforward\n",
+        "  WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM inventory_dev.ops.stock_rollforward)\n",
+        "),\n",
+        "xc AS (\n",
+        "  SELECT SUM(checked - failed) AS ok, SUM(checked) AS n FROM inventory_dev.ops.cross_checks\n",
+        "  WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM inventory_dev.ops.cross_checks)\n",
+        ")\n",
+        "SELECT concat('Stock data up to ', date_format(latest.d, 'd MMM yyyy'),\n",
+        "              '  |  totals vs source ', CAST(rec.ok AS STRING), '/', CAST(rec.n AS STRING),\n",
+        "              '  |  stock roll-forward ', CAST(rf.ok AS STRING), '/', CAST(rf.n AS STRING),\n",
+        "              '  |  cross-check with sales ', CAST(xc.ok AS STRING), '/', CAST(xc.n AS STRING), ' passed') AS status\n",
+        "FROM latest CROSS JOIN rec CROSS JOIN rf CROSS JOIN xc"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "f88de3ca",
+      "displayName": "Stock today",
+      "layout": [
+        {
+          "widget": {
+            "name": "444d0c2e",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Stock today\n",
+                "Latest stock date across all depots and stores. Days of cover = stock / average daily issues of the\n",
+                "last 28 days. Low cover = under 7 days; overstock = over 120 days."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "0be8769f",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "07c9c4c4",
+                  "fields": [
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "allowHTMLByDefault": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "status",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": " ",
+                    "displayName": "status",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Data status"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "a7686f5c",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4da38200",
+                  "fields": [
+                    {
+                      "name": "max(stock_value)",
+                      "expression": "MAX(`stock_value`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(stock_value)",
+                  "displayName": "Stock value (LKR at standard cost)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Stock value (LKR at standard cost)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 4,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "589ac694",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4da38200",
+                  "fields": [
+                    {
+                      "name": "max(days_of_cover)",
+                      "expression": "MAX(`days_of_cover`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(days_of_cover)",
+                  "displayName": "Days of cover"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Days of cover"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 4,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "88a75a9f",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4da38200",
+                  "fields": [
+                    {
+                      "name": "max(in_transit)",
+                      "expression": "MAX(`in_transit`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(in_transit)",
+                  "displayName": "In transit (units)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "In transit (units)"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 4,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "0051b690",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4da38200",
+                  "fields": [
+                    {
+                      "name": "max(stock_out_positions)",
+                      "expression": "MAX(`stock_out_positions`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(stock_out_positions)",
+                  "displayName": "Stock-outs (location x product)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Stock-outs (location x product)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 7,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "76961b95",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4da38200",
+                  "fields": [
+                    {
+                      "name": "max(low_cover_positions)",
+                      "expression": "MAX(`low_cover_positions`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(low_cover_positions)",
+                  "displayName": "Low cover positions"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Low cover positions"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 7,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "c277425d",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "4da38200",
+                  "fields": [
+                    {
+                      "name": "max(stock_out_rate_pct)",
+                      "expression": "MAX(`stock_out_rate_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(stock_out_rate_pct)",
+                  "displayName": "Stock-out rate (%)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Stock-out rate (%)"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 7,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "326b8052",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "ae9bc525",
+                  "fields": [
+                    {
+                      "name": "priority",
+                      "expression": "`priority`"
+                    },
+                    {
+                      "name": "type",
+                      "expression": "`type`"
+                    },
+                    {
+                      "name": "finding",
+                      "expression": "`finding`"
+                    },
+                    {
+                      "name": "row_order",
+                      "expression": "`row_order`"
+                    }
+                  ],
+                  "disaggregated": true,
+                  "orders": [
+                    {
+                      "direction": "ASC",
+                      "expression": "`row_order`"
+                    }
+                  ]
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "condensed": true,
+              "allowHTMLByDefault": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "priority",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": "Priority",
+                    "displayName": "priority",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "type",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100001,
+                    "title": "Type",
+                    "displayName": "type",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "finding",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100002,
+                    "title": "Finding",
+                    "displayName": "finding",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "defaultColumnWidth": 700
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "What needs attention (latest daily stock insights)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 10,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "9ed86716",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "9fa8d3d0",
+                  "fields": [
+                    {
+                      "name": "daily(snapshot_date)",
+                      "expression": "DATE_TRUNC(\"DAY\", `snapshot_date`)"
+                    },
+                    {
+                      "name": "sum(positions)",
+                      "expression": "SUM(`positions`)"
+                    },
+                    {
+                      "name": "series",
+                      "expression": "`series`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "daily(snapshot_date)",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Date"
+                },
+                "y": {
+                  "fieldName": "sum(positions)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Positions"
+                },
+                "color": {
+                  "fieldName": "series",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Series"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Stock-outs and low-cover positions per day, this fiscal year"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 16,
+            "width": 6,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "2ca020f5",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "fa168f6b",
+                  "fields": [
+                    {
+                      "name": "location",
+                      "expression": "`location`"
+                    },
+                    {
+                      "name": "sum(lkr_m)",
+                      "expression": "SUM(`lkr_m`)"
+                    },
+                    {
+                      "name": "location_type",
+                      "expression": "`location_type`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "location",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Location"
+                },
+                "y": {
+                  "fieldName": "sum(lkr_m)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "LKR m"
+                },
+                "color": {
+                  "fieldName": "location_type",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Type"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Stock value by location (LKR m)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 22,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "1e1c8875",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "449e4e31",
+                  "fields": [
+                    {
+                      "name": "product_group",
+                      "expression": "`product_group`"
+                    },
+                    {
+                      "name": "sum(days_of_cover)",
+                      "expression": "SUM(`days_of_cover`)"
+                    },
+                    {
+                      "name": "sum(stock_out_positions)",
+                      "expression": "SUM(`stock_out_positions`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "combo",
+              "encodings": {
+                "x": {
+                  "fieldName": "product_group",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Product group"
+                },
+                "label": {
+                  "show": false
+                },
+                "y": {
+                  "primary": {
+                    "fields": [
+                      {
+                        "fieldName": "sum(days_of_cover)",
+                        "displayName": "Days of cover"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  },
+                  "secondary": {
+                    "fields": [
+                      {
+                        "fieldName": "sum(stock_out_positions)",
+                        "displayName": "Stock-outs"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Depots - days of cover and stock-outs by product group"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 22,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "08549b5e",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "0903d1c7",
+                  "fields": [
+                    {
+                      "name": "location",
+                      "expression": "`location`"
+                    },
+                    {
+                      "name": "sum(stock_out_days)",
+                      "expression": "SUM(`stock_out_days`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "location",
+                  "scale": {
+                    "type": "categorical",
+                    "sort": {
+                      "by": "y-reversed"
+                    }
+                  },
+                  "displayName": "Depot"
+                },
+                "y": {
+                  "fieldName": "sum(stock_out_days)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Stock-out days"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Stock-out days by depot, month to date (location x product x day at zero)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 28,
+            "width": 6,
+            "height": 5
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    }
+  ]
+}

@@ -1,0 +1,377 @@
+# Sales dashboard (AI/BI). Source of dashboards/sales.lvdash.json, which the Asset Bundle deploys
+# (bundle/resources/dashboards.yml). After editing this file:
+#   uv run python -m sales_insights.semantic.dashboards        # rewrites dashboards/*.lvdash.json
+#
+# Datasets: `metric_view` datasets ask the metric view for fields and MEASURE()s (the same KPI definitions
+# Genie and the alerts use); `select`/`then` only reshape the answer (pivot, LKR millions, labels).
+# `sql` datasets read gold tables directly, only for what is not a KPI: the insights, the forecast and the
+# data checks. Placeholders such as ${sales_insights} become real table names (config/config.yaml).
+# Layout: widgets fill a 6-column grid left to right; `size: [width, height]`.
+
+title: Sales
+audience: [sales_team, management]
+
+datasets:
+  headline_mtd:
+    metric_view: sales_metrics
+    fields: [is_month_to_date]
+    measures: [net_revenue, gross_margin_pct, invoice_count, active_customers, average_invoice_value, returns_rate_pct]
+    where: is_month_to_date OR is_same_days_last_year
+    select:
+      - MAX(net_revenue) FILTER (WHERE is_month_to_date) AS revenue_mtd
+      - MAX(net_revenue) FILTER (WHERE NOT is_month_to_date) AS revenue_ly
+      - MAX(gross_margin_pct) FILTER (WHERE is_month_to_date) AS margin_pct_mtd
+      - MAX(gross_margin_pct) FILTER (WHERE NOT is_month_to_date) AS margin_pct_ly
+      - MAX(invoice_count) FILTER (WHERE is_month_to_date) AS invoices_mtd
+      - MAX(invoice_count) FILTER (WHERE NOT is_month_to_date) AS invoices_ly
+      - MAX(active_customers) FILTER (WHERE is_month_to_date) AS customers_mtd
+      - MAX(active_customers) FILTER (WHERE NOT is_month_to_date) AS customers_ly
+      - MAX(average_invoice_value) FILTER (WHERE is_month_to_date) AS aiv_mtd
+      - MAX(average_invoice_value) FILTER (WHERE NOT is_month_to_date) AS aiv_ly
+      - MAX(returns_rate_pct) FILTER (WHERE is_month_to_date) AS returns_pct_mtd
+      - MAX(returns_rate_pct) FILTER (WHERE NOT is_month_to_date) AS returns_pct_ly
+    then: |
+      SELECT *, ROUND(this_period_raw, 1) AS this_period, ROUND(last_year_raw, 1) AS same_days_last_year,
+             ROUND(change_raw, 1) AS change_vs_ly
+      FROM (
+      SELECT CAST(revenue_mtd AS DOUBLE) AS revenue_mtd,
+             CAST(ROUND((revenue_mtd / NULLIF(revenue_ly, 0) - 1) * 100, 1) AS DOUBLE) AS revenue_change_pct,
+             CAST(ROUND(margin_pct_mtd, 1) AS DOUBLE) AS margin_pct_mtd,
+             stack(6,
+               1, 'Net revenue (LKR m)', CAST(revenue_mtd / 1e6 AS DOUBLE), CAST(revenue_ly / 1e6 AS DOUBLE),
+                  CAST((revenue_mtd / NULLIF(revenue_ly, 0) - 1) * 100 AS DOUBLE),
+               2, 'Gross margin %', CAST(margin_pct_mtd AS DOUBLE), CAST(margin_pct_ly AS DOUBLE),
+                  CAST(margin_pct_mtd - margin_pct_ly AS DOUBLE),
+               3, 'Paid invoices', CAST(invoices_mtd AS DOUBLE), CAST(invoices_ly AS DOUBLE),
+                  CAST((invoices_mtd / NULLIF(invoices_ly, 0) - 1) * 100 AS DOUBLE),
+               4, 'Active customers', CAST(customers_mtd AS DOUBLE), CAST(customers_ly AS DOUBLE),
+                  CAST((customers_mtd / NULLIF(customers_ly, 0) - 1) * 100 AS DOUBLE),
+               5, 'Average invoice value (LKR 000)', CAST(aiv_mtd / 1e3 AS DOUBLE), CAST(aiv_ly / 1e3 AS DOUBLE),
+                  CAST((aiv_mtd / NULLIF(aiv_ly, 0) - 1) * 100 AS DOUBLE),
+               6, 'Returns rate %', CAST(returns_pct_mtd AS DOUBLE), CAST(returns_pct_ly AS DOUBLE),
+                  CAST(returns_pct_mtd - returns_pct_ly AS DOUBLE)
+             ) AS (row_order, kpi, this_period_raw, last_year_raw, change_raw)
+      FROM {previous}
+      ) AS kpis
+
+  revenue_trend:
+    # Last 13 complete months (actual) + the forecast to March with its likely range. Company total.
+    sql: |
+      WITH last_full AS (
+        SELECT MAX(month_start_date) AS m FROM ${dim_date} WHERE is_last_complete_month
+      ),
+      actual AS (
+        SELECT d.month_start_date AS month, SUM(f.net_revenue_amount) AS amount
+        FROM ${fact_sales} f
+        JOIN ${dim_date} d ON f.invoice_date = d.date
+        CROSS JOIN last_full
+        WHERE d.month_start_date BETWEEN add_months(last_full.m, -12) AND last_full.m
+        GROUP BY d.month_start_date
+      )
+      SELECT month, 'Actual' AS series, ROUND(CAST(amount AS DOUBLE) / 1e6, 1) AS lkr_m FROM actual
+      UNION ALL
+      SELECT month_start_date, s.series, ROUND(s.amount / 1e6, 1)
+      FROM ${sales_forecast}
+      LATERAL VIEW stack(3, 'Forecast', CAST(forecast_net_revenue AS DOUBLE),
+                            'Forecast low', CAST(low_net_revenue AS DOUBLE),
+                            'Forecast high', CAST(high_net_revenue AS DOUBLE)) s AS series, amount
+
+  what_changed:
+    # The latest insights run: alerts first, then the headline, the forecast and the biggest movers.
+    sql: |
+      WITH latest AS (SELECT max_by(run_id, generated_ts) AS run_id FROM ${sales_insights})
+      SELECT CASE i.severity WHEN 1 THEN 'Act now' WHEN 2 THEN 'Notable' ELSE 'Context' END AS priority,
+             CASE i.kind WHEN 'revenue_drop' THEN 'Alert' WHEN 'stock_out' THEN 'Alert'
+                         WHEN 'anomaly' THEN 'Unusual day' WHEN 'headline' THEN 'Headline'
+                         WHEN 'mover' THEN 'What moved' WHEN 'forecast' THEN 'Forecast' END AS type,
+             i.text AS finding,
+             ROW_NUMBER() OVER (ORDER BY i.severity,
+                 CASE i.kind WHEN 'revenue_drop' THEN 1 WHEN 'stock_out' THEN 2 WHEN 'anomaly' THEN 3
+                             WHEN 'headline' THEN 4 WHEN 'forecast' THEN 5 ELSE 6 END,
+                 abs(i.change) DESC) AS row_order
+      FROM ${sales_insights} i
+      JOIN latest ON i.run_id = latest.run_id
+      WHERE i.kind IN ('revenue_drop', 'stock_out', 'anomaly')
+         OR (i.kind = 'forecast' AND i.dimension = 'month')
+         OR (i.kind = 'headline' AND i.metric = 'net_revenue'
+             AND i.comparison IN ('mtd_vs_last_year', 'month_vs_last_year'))
+         OR (i.kind = 'mover' AND i.severity <= 2 AND i.comparison = 'month_vs_last_year'
+             AND i.dimension IN ('province', 'product_group'))
+      ORDER BY row_order
+      LIMIT 8
+
+  trust:
+    # "Data up to ... | N of N checks against SAP totals passed" (latest reconciliation run).
+    sql: |
+      WITH rec AS (
+        SELECT * FROM ${sales_reconciliation}
+        WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM ${sales_reconciliation})
+      ),
+      latest AS (SELECT MAX(invoice_date) AS d FROM ${fact_sales})
+      SELECT concat('Data up to ', date_format(MAX(latest.d), 'd MMM yyyy'), '  |  ',
+                    CAST(SUM(CASE WHEN rec.status = 'PASS' THEN 1 ELSE 0 END) AS STRING), ' of ', CAST(COUNT(*) AS STRING),
+                    ' daily checks against the SAP control totals passed') AS status
+      FROM rec CROSS JOIN latest
+
+  province_month:
+    metric_view: sales_metrics
+    fields: [province, is_last_complete_month]
+    measures: [net_revenue]
+    where: is_last_complete_month OR is_last_complete_month_last_year
+    select:
+      - province
+      - ROUND(CAST(MAX(net_revenue) FILTER (WHERE is_last_complete_month) AS DOUBLE) / 1e6, 1) AS lkr_m
+      - ROUND((MAX(net_revenue) FILTER (WHERE is_last_complete_month)
+          / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_last_complete_month), 0) - 1) * 100, 1) AS change_pct
+    group_by: [province]
+
+  product_group_month:
+    metric_view: sales_metrics
+    fields: [product_group, is_last_complete_month]
+    measures: [net_revenue]
+    where: is_last_complete_month OR is_last_complete_month_last_year
+    select:
+      - product_group
+      - ROUND(CAST(MAX(net_revenue) FILTER (WHERE is_last_complete_month) AS DOUBLE) / 1e6, 1) AS lkr_m
+      - ROUND((MAX(net_revenue) FILTER (WHERE is_last_complete_month)
+          / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_last_complete_month), 0) - 1) * 100, 1) AS change_pct
+    group_by: [product_group]
+
+  monthly_by_product_group:
+    metric_view: sales_metrics
+    fields: [month, product_group]
+    measures: [net_revenue]
+    where: is_current_fiscal_year OR is_previous_fiscal_year
+    select:
+      - month
+      - product_group
+      - ROUND(CAST(net_revenue AS DOUBLE) / 1e6, 1) AS lkr_m
+
+  top_products_fytd:
+    metric_view: sales_metrics
+    fields: [product, product_group, is_fiscal_year_to_date]
+    measures: [net_revenue, units, gross_margin_pct]
+    where: is_fiscal_year_to_date OR is_same_period_last_fiscal_year
+    select:
+      - product
+      - product_group
+      - ROUND(CAST(MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) / 1e6, 2) AS lkr_m
+      - ROUND((MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date)
+          / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_fiscal_year_to_date), 0) - 1) * 100, 1) AS change_pct
+      - CAST(MAX(units) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) AS units
+      - ROUND(MAX(gross_margin_pct) FILTER (WHERE is_fiscal_year_to_date), 1) AS margin_pct
+    group_by: [product, product_group]
+    order_by: lkr_m DESC NULLS LAST
+    limit: 10
+
+  channel_fytd:
+    metric_view: sales_metrics
+    fields: [channel]
+    measures: [net_revenue]
+    where: is_fiscal_year_to_date
+    select:
+      - channel
+      - ROUND(CAST(net_revenue AS DOUBLE) / 1e6, 1) AS lkr_m
+
+  top_customers_fytd:
+    metric_view: sales_metrics
+    fields: [customer_name, customer_group, province, is_fiscal_year_to_date]
+    measures: [net_revenue, invoice_count]
+    where: is_fiscal_year_to_date OR is_same_period_last_fiscal_year
+    select:
+      - customer_name
+      - customer_group
+      - province
+      - ROUND(CAST(MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) / 1e6, 2) AS lkr_m
+      - ROUND((MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date)
+          / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_fiscal_year_to_date), 0) - 1) * 100, 1) AS change_pct
+      - CAST(MAX(invoice_count) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) AS invoices
+    group_by: [customer_name, customer_group, province]
+    order_by: lkr_m DESC NULLS LAST
+    limit: 15
+
+  customer_group_month:
+    metric_view: sales_metrics
+    fields: [customer_group]
+    measures: [active_customers, net_revenue]
+    where: is_last_complete_month
+    select:
+      - customer_group
+      - CAST(active_customers AS DOUBLE) AS active_customers
+      - ROUND(CAST(net_revenue AS DOUBLE) / 1e6, 1) AS lkr_m
+
+  returns_by_month:
+    metric_view: sales_metrics
+    fields: [month]
+    measures: [returns_rate_pct, gross_margin_pct]
+    where: is_current_fiscal_year OR is_previous_fiscal_year
+    select:
+      - month
+      - ROUND(returns_rate_pct, 2) AS returns_rate_pct
+      - ROUND(gross_margin_pct, 1) AS margin_pct
+
+  data_checks:
+    # Every check of the latest run of each kind (ops.dq_results): what was compared, and the result.
+    sql: |
+      SELECT layer, check_name, status, COUNT(*) AS results,
+             date_format(from_utc_timestamp(MAX(checked_ts), 'Asia/Colombo'), 'd MMM yyyy HH:mm') AS last_run
+      FROM ${sales_dq_results}
+      WHERE run_id IN (SELECT max_by(run_id, checked_ts) FROM ${sales_dq_results} GROUP BY layer, check_name)
+      GROUP BY layer, check_name, status
+      ORDER BY CASE layer WHEN 'bronze' THEN 1 WHEN 'silver' THEN 2 ELSE 3 END, check_name, status
+
+  dirt_caught:
+    # The deliberately dirty data the source sent, and that the pipeline caught (from the manifests).
+    sql: |
+      SELECT dirt AS problem, file, COUNT(*) AS row_count, COUNT(DISTINCT business_date) AS day_count
+      FROM ${sales_manifest_dirt}
+      GROUP BY dirt, file
+      ORDER BY row_count DESC
+
+pages:
+  - title: How are we doing?
+    widgets:
+      - text: |
+          ## Sales: how are we doing?
+          Month to date against the same days last year (never a part month against a whole month).
+          Every number comes from the sales metric view, the same definitions Genie and the alerts use.
+        size: [6, 2]
+      - table: {dataset: trust, title: Data status, columns: [{field: status, title: " "}]}
+        size: [6, 2]
+      - counter: {dataset: headline_mtd, value: revenue_mtd, title: Net revenue month to date (LKR), format: compact}
+        size: [2, 3]
+      - counter: {dataset: headline_mtd, value: revenue_change_pct, title: vs same days last year (%)}
+        size: [2, 3]
+      - counter: {dataset: headline_mtd, value: margin_pct_mtd, title: Gross margin month to date (%)}
+        size: [2, 3]
+      - table:
+          dataset: headline_mtd
+          title: Month to date vs the same days last year
+          description: Change is % for amounts and counts, percentage points for rates.
+          order_by: row_order
+          columns:
+            - {field: kpi, title: KPI}
+            - {field: this_period, title: Month to date, type: number}
+            - {field: same_days_last_year, title: Same days last year, type: number}
+            - {field: change_vs_ly, title: Change, type: number}
+        size: [3, 6]
+      - table:
+          dataset: what_changed
+          title: What changed (latest daily insights)
+          order_by: row_order
+          columns:
+            - {field: priority, title: Priority}
+            - {field: type, title: Type}
+            - {field: finding, title: Finding, wide: true}
+        size: [3, 6]
+      - line:
+          dataset: revenue_trend
+          title: Net revenue by month and forecast to March (LKR m)
+          description: Forecast = same month last year x fiscal-year-to-date growth; low/high = the likely range.
+          x: {field: month, title: Month, temporal: month}
+          y: {field: lkr_m, title: LKR m}
+          color: {field: series, title: Series}
+        size: [6, 6]
+
+  - title: Where the money comes from
+    widgets:
+      - text: |
+          ## Where the money comes from
+          Bars: net revenue of the last complete month. Line: change against the same month last year (%).
+        size: [6, 1]
+      - combo:
+          dataset: province_month
+          title: Net revenue by province, last complete month
+          x: {field: province, title: Province}
+          bars: [{field: lkr_m, title: LKR m}]
+          line: [{field: change_pct, title: vs same month last year %}]
+        size: [3, 6]
+      - combo:
+          dataset: product_group_month
+          title: Net revenue by product group, last complete month
+          x: {field: product_group, title: Product group}
+          bars: [{field: lkr_m, title: LKR m}]
+          line: [{field: change_pct, title: vs same month last year %}]
+        size: [3, 6]
+      - bar:
+          dataset: monthly_by_product_group
+          title: Net revenue by month and product group, this and last fiscal year (LKR m)
+          x: {field: month, title: Month, temporal: month}
+          y: {field: lkr_m, title: LKR m}
+          color: {field: product_group, title: Product group}
+        size: [6, 6]
+      - table:
+          dataset: top_products_fytd
+          title: Top 10 products, fiscal year to date
+          order_by: lkr_m DESC
+          columns:
+            - {field: product, title: Product}
+            - {field: product_group, title: Group}
+            - {field: lkr_m, title: LKR m, type: number}
+            - {field: change_pct, title: vs last year %, type: number}
+            - {field: units, title: Units, type: number}
+            - {field: margin_pct, title: Margin %, type: number}
+        size: [4, 6]
+      - bar:
+          dataset: channel_fytd
+          title: Net revenue by channel, fiscal year to date (LKR m)
+          x: {field: channel, title: Channel}
+          y: {field: lkr_m, title: LKR m}
+        size: [2, 6]
+
+  - title: Customers and data trust
+    widgets:
+      - table:
+          dataset: top_customers_fytd
+          title: Top 15 customers, fiscal year to date
+          order_by: lkr_m DESC
+          columns:
+            - {field: customer_name, title: Customer}
+            - {field: customer_group, title: Group}
+            - {field: province, title: Province}
+            - {field: lkr_m, title: LKR m, type: number}
+            - {field: change_pct, title: vs last year %, type: number}
+            - {field: invoices, title: Invoices, type: number}
+        size: [4, 7]
+      - bar:
+          dataset: customer_group_month
+          title: Active customers by customer group, last complete month
+          x: {field: customer_group, title: Customer group}
+          y: {field: active_customers, title: Active customers}
+        size: [2, 7]
+      - line:
+          dataset: returns_by_month
+          title: Returns rate % by month
+          x: {field: month, title: Month, temporal: month}
+          y: {field: returns_rate_pct, title: Returns rate %}
+        size: [3, 5]
+      - line:
+          dataset: returns_by_month
+          title: Gross margin % by month
+          x: {field: month, title: Month, temporal: month}
+          y: {field: margin_pct, title: Gross margin %}
+        size: [3, 5]
+      - text: |
+          ## Can we trust the numbers?
+          The source sends deliberately dirty files. Every day the pipeline checks each file, quarantines bad
+          rows, fixes what it can and reconciles gold with the SAP control totals.
+        size: [6, 2]
+      - table:
+          dataset: data_checks
+          title: Latest data checks
+          columns:
+            - {field: layer, title: Layer}
+            - {field: check_name, title: Check}
+            - {field: status, title: Result}
+            - {field: results, title: Results, type: number}
+            - {field: last_run, title: Last run (Colombo time)}
+        size: [3, 6]
+      - table:
+          dataset: dirt_caught
+          title: Problems in the source files, caught by the pipeline
+          columns:
+            - {field: problem, title: Problem}
+            - {field: file, title: File}
+            - {field: row_count, title: Rows, type: number}
+            - {field: day_count, title: Days, type: number}
+        size: [3, 6]

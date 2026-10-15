@@ -486,6 +486,57 @@ def test_stock_insights_run_on_the_real_tables(world, spark):
     assert as_of == DAYS[-1] and len(lines) <= len(out["insights"])
 
 
+def test_every_dashboard_dataset_runs(world, spark, cfg):
+    """Every dataset of the 3 dashboards runs on real sales + stock tables (metric view datasets compiled
+    locally), returns the columns its widgets show, and the headline numbers agree with the metric views."""
+    from sales_insights.insights import job
+    from sales_insights.pipeline import reconcile as rc
+    from sales_insights.semantic import dashboards as db
+    from sales_insights.semantic import metric_views as mvs
+
+    sales_lake, stock_lake = world["sales_lake"], world["lake"]
+    rc.run_reconcile(spark, cfg, lake=sales_lake)  # ops.reconciliation (sales)
+    job.run(spark, cfg, lake=sales_lake)  # gold.insights + gold.forecast (sales)
+    job.run_stock(spark, world["cfg"], lake=stock_lake, sales_lake=sales_lake)  # gold.insights (stock)
+    tables = db.lake_names(sales_lake, stock_lake)
+
+    results = {}
+    for name in db.NAMES:
+        spec = db.load(name)
+        for key, ds in db.datasets(spec).items():
+            df = spark.sql(db.local_sql(ds, tables))
+            results[(name, key)] = (df.columns, df.collect())
+        for page in spec["pages"]:
+            for w in page["widgets"]:
+                kind = db.widget_kind(w)
+                if kind == "text":
+                    continue
+                body = w[kind]
+                shown = {c["field"] for c in body.get("columns", [])}
+                shown |= {body[k]["field"] for k in ("x", "y", "color") if k in body}
+                shown |= {b["field"] for b in body.get("bars", []) + body.get("line", [])}
+                shown |= {body["value"]} if "value" in body else set()
+                shown |= {body["order_by"].split()[0]} if body.get("order_by") else set()
+                columns = set(results[(name, body["dataset"])][0])
+                assert shown <= columns, (name, body["dataset"], shown - columns)
+
+    for key in [("sales", "headline_mtd"), ("sales", "trust"), ("sales", "province_month"), ("stock", "stock_today"),
+                ("stock", "stock_findings"), ("stock", "stock_trust"), ("ceo", "province_mtd"), ("ceo", "trust")]:  # fmt: skip
+        assert results[key][1], f"{key} returned no rows"
+
+    # The KPI table shows what the metric view says (month to date = 1-12 Oct in this world)
+    rows = {r["kpi"]: r for r in results[("sales", "headline_mtd")][1]}
+    mv = mvs.query(spark, sales_lake, [], ["net_revenue"], where="is_month_to_date").collect()[0]
+    assert rows["Net revenue (LKR m)"]["this_period"] == round(float(mv["net_revenue"]) / 1e6, 1)
+    stock = results[("stock", "stock_today")][1][0]
+    daily = stock_lake.read("gold", "fact_stock_daily")
+    last = daily.agg(F.max("snapshot_date")).collect()[0][0]
+    assert (
+        stock["stock_out_positions"] == daily.filter((F.col("snapshot_date") == last) & F.col("is_stock_out")).count()
+    )
+    assert "checks" in results[("sales", "trust")][1][0]["status"]
+
+
 def test_a_lost_movement_fails_the_checks(world, spark):
     """Remove one goods issue from gold: reconciliation, roll-forward and the sales cross-check must all FAIL."""
     lake, cfg = world["lake"], world["cfg"]

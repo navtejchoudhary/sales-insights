@@ -1,0 +1,153 @@
+# Stock dashboard (AI/BI). Source of dashboards/stock.lvdash.json; see dashboards/sales.yaml for the format.
+# Stock is a level: the stock measures of inventory_metrics are window measures, so without a date in the
+# chart they give the LATEST day, and per day/week/month they give that period's last day.
+
+title: Stock
+audience: [stock_team, management]
+
+datasets:
+  stock_today:
+    metric_view: inventory_metrics
+    fields: []
+    measures: [stock_value, in_transit, days_of_cover, stock_out_positions, low_cover_positions, stock_out_rate_pct]
+    select:
+      - CAST(stock_value AS DOUBLE) AS stock_value
+      - CAST(in_transit AS DOUBLE) AS in_transit
+      - CAST(ROUND(days_of_cover, 1) AS DOUBLE) AS days_of_cover
+      - CAST(stock_out_positions AS DOUBLE) AS stock_out_positions
+      - CAST(low_cover_positions AS DOUBLE) AS low_cover_positions
+      - CAST(ROUND(stock_out_rate_pct, 2) AS DOUBLE) AS stock_out_rate_pct
+
+  positions_by_day:
+    metric_view: inventory_metrics
+    fields: [snapshot_date]
+    measures: [stock_out_positions, low_cover_positions]
+    where: is_current_fiscal_year
+    then: |
+      SELECT snapshot_date, s.series, s.positions
+      FROM {previous}
+      LATERAL VIEW stack(2, 'Stock-outs', CAST(stock_out_positions AS DOUBLE),
+                            'Low cover (under 7 days)', CAST(low_cover_positions AS DOUBLE)) s AS series, positions
+
+  value_by_location:
+    metric_view: inventory_metrics
+    fields: [location, location_type]
+    measures: [stock_value]
+    select:
+      - location
+      - location_type
+      - ROUND(CAST(stock_value AS DOUBLE) / 1e6, 2) AS lkr_m
+
+  depot_cover_by_group:
+    metric_view: inventory_metrics
+    fields: [product_group]
+    measures: [days_of_cover, stock_out_positions]
+    where: location_type = 'Depot'
+    select:
+      - product_group
+      - CAST(ROUND(days_of_cover, 1) AS DOUBLE) AS days_of_cover
+      - CAST(stock_out_positions AS DOUBLE) AS stock_out_positions
+
+  stock_out_days_by_depot:
+    metric_view: inventory_metrics
+    fields: [location]
+    measures: [stock_out_days]
+    where: is_month_to_date AND location_type = 'Depot'
+    select:
+      - location
+      - CAST(stock_out_days AS DOUBLE) AS stock_out_days
+
+  stock_findings:
+    # The latest stock insights run: confirmed stock-outs first, then low cover, then overstock.
+    sql: |
+      WITH latest AS (SELECT max_by(run_id, generated_ts) AS run_id FROM ${stock_insights})
+      SELECT CASE i.severity WHEN 1 THEN 'Act now' WHEN 2 THEN 'Notable' ELSE 'Context' END AS priority,
+             CASE i.kind WHEN 'stock_out_confirmed' THEN 'Stock-out' WHEN 'low_cover' THEN 'Low cover'
+                         ELSE 'Overstock' END AS type,
+             i.text AS finding,
+             ROW_NUMBER() OVER (ORDER BY i.severity, CASE WHEN i.kind = 'overstock_total' THEN 0 ELSE 1 END,
+                                         i.item) AS row_order
+      FROM ${stock_insights} i
+      JOIN latest ON i.run_id = latest.run_id
+      ORDER BY row_order
+
+  stock_trust:
+    # Latest run of each stock check: totals against the source, stock roll-forward, cross-check with sales.
+    sql: |
+      WITH latest AS (SELECT MAX(snapshot_date) AS d FROM ${fact_stock_daily}),
+      rec AS (
+        SELECT SUM(CASE WHEN status = 'PASS' THEN 1 ELSE 0 END) AS ok, COUNT(*) AS n FROM ${stock_reconciliation}
+        WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM ${stock_reconciliation})
+      ),
+      rf AS (
+        SELECT SUM(checked - failed) AS ok, SUM(checked) AS n FROM ${stock_rollforward}
+        WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM ${stock_rollforward})
+      ),
+      xc AS (
+        SELECT SUM(checked - failed) AS ok, SUM(checked) AS n FROM ${stock_cross_checks}
+        WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM ${stock_cross_checks})
+      )
+      SELECT concat('Stock data up to ', date_format(latest.d, 'd MMM yyyy'),
+                    '  |  totals vs source ', CAST(rec.ok AS STRING), '/', CAST(rec.n AS STRING),
+                    '  |  stock roll-forward ', CAST(rf.ok AS STRING), '/', CAST(rf.n AS STRING),
+                    '  |  cross-check with sales ', CAST(xc.ok AS STRING), '/', CAST(xc.n AS STRING), ' passed') AS status
+      FROM latest CROSS JOIN rec CROSS JOIN rf CROSS JOIN xc
+
+pages:
+  - title: Stock today
+    widgets:
+      - text: |
+          ## Stock today
+          Latest stock date across all depots and stores. Days of cover = stock / average daily issues of the
+          last 28 days. Low cover = under 7 days; overstock = over 120 days.
+        size: [6, 2]
+      - table: {dataset: stock_trust, title: Data status, columns: [{field: status, title: " "}]}
+        size: [6, 2]
+      - counter: {dataset: stock_today, value: stock_value, title: Stock value (LKR at standard cost), format: compact}
+        size: [2, 3]
+      - counter: {dataset: stock_today, value: days_of_cover, title: Days of cover}
+        size: [2, 3]
+      - counter: {dataset: stock_today, value: in_transit, title: In transit (units), format: compact}
+        size: [2, 3]
+      - counter: {dataset: stock_today, value: stock_out_positions, title: Stock-outs (location x product)}
+        size: [2, 3]
+      - counter: {dataset: stock_today, value: low_cover_positions, title: Low cover positions}
+        size: [2, 3]
+      - counter: {dataset: stock_today, value: stock_out_rate_pct, title: Stock-out rate (%)}
+        size: [2, 3]
+      - table:
+          dataset: stock_findings
+          title: What needs attention (latest daily stock insights)
+          order_by: row_order
+          columns:
+            - {field: priority, title: Priority}
+            - {field: type, title: Type}
+            - {field: finding, title: Finding, wide: true}
+        size: [6, 6]
+      - line:
+          dataset: positions_by_day
+          title: Stock-outs and low-cover positions per day, this fiscal year
+          x: {field: snapshot_date, title: Date, temporal: day}
+          y: {field: positions, title: Positions}
+          color: {field: series, title: Series}
+        size: [6, 6]
+      - bar:
+          dataset: value_by_location
+          title: Stock value by location (LKR m)
+          x: {field: location, title: Location}
+          y: {field: lkr_m, title: LKR m}
+          color: {field: location_type, title: Type}
+        size: [3, 6]
+      - combo:
+          dataset: depot_cover_by_group
+          title: Depots - days of cover and stock-outs by product group
+          x: {field: product_group, title: Product group}
+          bars: [{field: days_of_cover, title: Days of cover}]
+          line: [{field: stock_out_positions, title: Stock-outs}]
+        size: [3, 6]
+      - bar:
+          dataset: stock_out_days_by_depot
+          title: Stock-out days by depot, month to date (location x product x day at zero)
+          x: {field: location, title: Depot}
+          y: {field: stock_out_days, title: Stock-out days}
+        size: [6, 5]
