@@ -53,6 +53,7 @@ datasets:
              ) AS (row_order, kpi, this_period_raw, last_year_raw, change_raw)
       FROM {previous}
       ) AS kpis
+      ORDER BY row_order
 
   revenue_trend:
     # Last 13 complete months (actual) + the forecast to March with its likely range. Company total.
@@ -237,7 +238,7 @@ pages:
           Every number comes from the sales metric view, the same definitions Genie and the alerts use.
         size: [6, 2]
       - table: {dataset: trust, title: Data status, columns: [{field: status, title: " "}]}
-        size: [6, 2]
+        size: [6, 3]
       - counter: {dataset: headline_mtd, value: revenue_mtd, title: Net revenue month to date (LKR), format: compact}
         size: [2, 3]
       - counter: {dataset: headline_mtd, value: revenue_change_pct, title: vs same days last year (%)}
@@ -248,7 +249,6 @@ pages:
           dataset: headline_mtd
           title: Month to date vs the same days last year
           description: Change is % for amounts and counts, percentage points for rates.
-          order_by: row_order
           columns:
             - {field: kpi, title: KPI}
             - {field: this_period, title: Month to date, type: number}
@@ -258,7 +258,6 @@ pages:
       - table:
           dataset: what_changed
           title: What changed (latest daily insights)
-          order_by: row_order
           columns:
             - {field: priority, title: Priority}
             - {field: type, title: Type}
@@ -303,7 +302,6 @@ pages:
       - table:
           dataset: top_products_fytd
           title: Top 10 products, fiscal year to date
-          order_by: lkr_m DESC
           columns:
             - {field: product, title: Product}
             - {field: product_group, title: Group}
@@ -324,7 +322,6 @@ pages:
       - table:
           dataset: top_customers_fytd
           title: Top 15 customers, fiscal year to date
-          order_by: lkr_m DESC
           columns:
             - {field: customer_name, title: Customer}
             - {field: customer_group, title: Group}

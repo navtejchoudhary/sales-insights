@@ -168,8 +168,12 @@
             "spec": {
               "version": 1,
               "widgetType": "table",
-              "condensed": true,
+              "invisibleColumns": [],
               "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
               "encodings": {
                 "columns": [
                   {
@@ -211,7 +215,7 @@
             "x": 0,
             "y": 2,
             "width": 6,
-            "height": 2
+            "height": 3
           }
         },
         {
@@ -257,7 +261,7 @@
           },
           "position": {
             "x": 0,
-            "y": 4,
+            "y": 5,
             "width": 2,
             "height": 3
           }
@@ -297,7 +301,7 @@
           },
           "position": {
             "x": 2,
-            "y": 4,
+            "y": 5,
             "width": 2,
             "height": 3
           }
@@ -337,7 +341,7 @@
           },
           "position": {
             "x": 4,
-            "y": 4,
+            "y": 5,
             "width": 2,
             "height": 3
           }
@@ -385,7 +389,7 @@
           },
           "position": {
             "x": 0,
-            "y": 7,
+            "y": 8,
             "width": 2,
             "height": 3
           }
@@ -425,7 +429,7 @@
           },
           "position": {
             "x": 2,
-            "y": 7,
+            "y": 8,
             "width": 2,
             "height": 3
           }
@@ -465,7 +469,7 @@
           },
           "position": {
             "x": 4,
-            "y": 7,
+            "y": 8,
             "width": 2,
             "height": 3
           }
@@ -490,27 +494,21 @@
                     {
                       "name": "finding",
                       "expression": "`finding`"
-                    },
-                    {
-                      "name": "row_order",
-                      "expression": "`row_order`"
                     }
                   ],
-                  "disaggregated": true,
-                  "orders": [
-                    {
-                      "direction": "ASC",
-                      "expression": "`row_order`"
-                    }
-                  ]
+                  "disaggregated": true
                 }
               }
             ],
             "spec": {
               "version": 1,
               "widgetType": "table",
-              "condensed": true,
+              "invisibleColumns": [],
               "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
               "encodings": {
                 "columns": [
                   {
@@ -605,7 +603,7 @@
           },
           "position": {
             "x": 0,
-            "y": 10,
+            "y": 11,
             "width": 6,
             "height": 6
           }
@@ -670,7 +668,7 @@
           },
           "position": {
             "x": 0,
-            "y": 16,
+            "y": 17,
             "width": 3,
             "height": 6
           }
@@ -705,21 +703,19 @@
                       "expression": "`days_of_cover`"
                     }
                   ],
-                  "disaggregated": true,
-                  "orders": [
-                    {
-                      "direction": "DESC",
-                      "expression": "`lkr_m`"
-                    }
-                  ]
+                  "disaggregated": true
                 }
               }
             ],
             "spec": {
               "version": 1,
               "widgetType": "table",
-              "condensed": true,
+              "invisibleColumns": [],
               "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
               "encodings": {
                 "columns": [
                   {
@@ -871,7 +867,7 @@
           },
           "position": {
             "x": 3,
-            "y": 16,
+            "y": 17,
             "width": 3,
             "height": 6
           }

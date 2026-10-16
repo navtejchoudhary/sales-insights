@@ -190,12 +190,10 @@ def _field(name: str, agg: str | None = None, temporal: str | None = None) -> di
     return {"name": name, "expression": f"`{name}`"}
 
 
-def _query(dataset_id: str, fields: list[dict], disaggregated: bool, order_by: str | None = None) -> list[dict]:
-    q = {"datasetName": dataset_id, "fields": fields, "disaggregated": disaggregated}
-    if order_by:
-        col, *direction = order_by.split()
-        q["orders"] = [{"direction": (direction or ["ASC"])[0].upper(), "expression": f"`{col}`"}]
-    return [{"name": "main_query", "query": q}]
+def _query(dataset_id: str, fields: list[dict], disaggregated: bool) -> list[dict]:
+    return [
+        {"name": "main_query", "query": {"datasetName": dataset_id, "fields": fields, "disaggregated": disaggregated}}
+    ]
 
 
 def _frame(w: dict) -> dict:
@@ -233,20 +231,16 @@ def _widget(kind: str, w: dict, ds_ids: dict[str, str], name: str) -> dict:
         spec = {"version": 2, "widgetType": "counter", "encodings": {"value": value}}
         queries = _query(ds, [_field(w["value"], "max")], False)
     elif kind == "table":
-        fields = [_field(c["field"]) for c in w["columns"]]
-        order = w.get("order_by")
-        if order and order.split()[0] not in {c["field"] for c in w["columns"]}:
-            fields.append(_field(order.split()[0]))  # sort column, not shown
-        spec = {"version": 1, "widgetType": "table", "condensed": True, "allowHTMLByDefault": False,
+        # Same settings as the tables in Databricks' own exported dashboards; rows keep the dataset's ORDER BY
+        spec = {"version": 1, "widgetType": "table", "invisibleColumns": [], "allowHTMLByDefault": False,
+                "itemsPerPage": 25, "paginationSize": "default", "condensed": True, "withRowNumber": False,
                 "encodings": {"columns": [_column(c, i) for i, c in enumerate(w["columns"])]}}  # fmt: skip
-        queries = _query(ds, fields, True, order)
+        queries = _query(ds, [_field(c["field"]) for c in w["columns"]], True)
     elif kind in ("bar", "line"):
         x, y = w["x"], w["y"]
         xf, yf = _field(x["field"], temporal=x.get("temporal")), _field(y["field"], "sum")
         fields = [xf, yf]
         x_scale = {"type": "temporal"} if x.get("temporal") else {"type": "categorical"}
-        if kind == "bar" and not x.get("temporal") and not w.get("color"):
-            x_scale["sort"] = {"by": "y-reversed"}
         enc = {
             "x": {"fieldName": xf["name"], "scale": x_scale, "displayName": x.get("title", x["field"])},
             "y": {"fieldName": yf["name"], "scale": {"type": "quantitative"}, "displayName": y.get("title", y["field"])},
@@ -267,10 +261,9 @@ def _widget(kind: str, w: dict, ds_ids: dict[str, str], name: str) -> dict:
             "x": {"fieldName": xf["name"], "scale": {"type": "categorical"}, "displayName": x.get("title", x["field"])},
             "label": {"show": False},
             "y": {
-                "primary": {"fields": [{"fieldName": f["name"], "displayName": b.get("title", b["field"])}
-                                       for f, b in zip(bars, w["bars"], strict=True)], "scale": {"type": "quantitative"}},
-                "secondary": {"fields": [{"fieldName": f["name"], "displayName": b.get("title", b["field"])}
-                                         for f, b in zip(line, w["line"], strict=True)], "scale": {"type": "quantitative"}},
+                # exactly the shape of the combo charts in Databricks' exported dashboards (fields: fieldName only)
+                "primary": {"fields": [{"fieldName": f["name"]} for f in bars], "scale": {"type": "quantitative"}},
+                "secondary": {"fields": [{"fieldName": f["name"]} for f in line], "scale": {"type": "quantitative"}},
             },
         }  # fmt: skip
         spec = {"version": 1, "widgetType": "combo", "encodings": enc}

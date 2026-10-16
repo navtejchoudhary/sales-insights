@@ -89,7 +89,7 @@ pages:
           Ask the Sales & Stock agent (Genie) for anything not on this page.
         size: [6, 2]
       - table: {dataset: trust, title: Data status, columns: [{field: status, title: " "}]}
-        size: [6, 2]
+        size: [6, 3]
       - counter: {dataset: sales_fytd, value: revenue_fytd, title: Net revenue, fiscal year to date (LKR), format: compact}
         size: [2, 3]
       - counter: {dataset: sales_fytd, value: revenue_change_pct, title: vs same period last year (%)}
@@ -105,7 +105,6 @@ pages:
       - table:
           dataset: top_findings
           title: What needs attention
-          order_by: row_order
           columns:
             - {field: priority, title: Priority}
             - {field: area, title: Area}
@@ -121,7 +120,6 @@ pages:
       - table:
           dataset: province_mtd
           title: Sales and depot stock by province, month to date
-          order_by: lkr_m DESC
           columns:
             - {field: province, title: Province}
             - {field: lkr_m, title: Net revenue LKR m, type: number}
