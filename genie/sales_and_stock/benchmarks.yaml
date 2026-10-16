@@ -65,10 +65,10 @@ questions:
     needs_data_until: 2026-10-25
     sql: |
       SELECT
-        ROUND(SUM(CASE WHEN f.activity_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22' THEN f.invoiced_quantity END) / 30, 1)
+        SUM(CASE WHEN f.activity_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22' THEN f.invoiced_quantity END) / 30
           AS avg_daily_units_before,
-        ROUND(SUM(CASE WHEN f.activity_date >= DATE'2026-10-23' THEN f.invoiced_quantity END)
-              / NULLIF(COUNT(DISTINCT CASE WHEN f.activity_date >= DATE'2026-10-23' THEN f.activity_date END), 0), 1)
+        SUM(CASE WHEN f.activity_date >= DATE'2026-10-23' THEN f.invoiced_quantity END)
+          / NULLIF(COUNT(DISTINCT CASE WHEN f.activity_date >= DATE'2026-10-23' THEN f.activity_date END), 0)
           AS avg_daily_units_since
       FROM ${fact_sales_stock_daily} f JOIN ${dim_location} l ON f.location_id = l.location_id
       WHERE f.product_id = 'MC6004LT' AND l.province = 'Western'
@@ -145,7 +145,7 @@ questions:
       - MC6001LT depot days of cover by province at the end of September 2026.
     sql: |
       SELECT l.province,
-             ROUND(SUM(f.stock_quantity) / NULLIF(SUM(f.avg_daily_issued_quantity_28d), 0), 1) AS days_of_cover
+             SUM(f.stock_quantity) / NULLIF(SUM(f.avg_daily_issued_quantity_28d), 0) AS days_of_cover
       FROM ${fact_sales_stock_daily} f JOIN ${dim_location} l ON f.location_id = l.location_id
       WHERE f.product_id = 'MC6001LT' AND f.activity_date = DATE'2026-09-30'
       GROUP BY l.province
@@ -197,7 +197,7 @@ questions:
       - Average daily units of MC6001LT sold in the Western province from 23 September to 22 October 2026?
     needs_data_until: 2026-10-23
     sql: |
-      SELECT ROUND(SUM(f.invoiced_quantity) / 30, 1) AS avg_daily_units
+      SELECT SUM(f.invoiced_quantity) / 30 AS avg_daily_units
       FROM ${fact_sales_stock_daily} f JOIN ${dim_location} l ON f.location_id = l.location_id
       WHERE f.product_id = 'MC6001LT' AND l.province = 'Western'
         AND f.activity_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22'
