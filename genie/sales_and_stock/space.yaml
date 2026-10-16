@@ -19,7 +19,7 @@ data:
   - ${dim_product}
 
 instructions: |
-  - Money is Sri Lankan rupees (LKR) excluding VAT; quantities are in each product's base unit. Round money to 2 decimal places.
+  - Money is Sri Lankan rupees (LKR) excluding VAT; quantities are in each product's base unit.
   - fact_sales_stock_daily has one row per day, sales office and product: the sales office's sales next to the closing stock of the depot that serves it. Province and depot come from dim_location via location_id; customers are served by the depot of their sales office, so the depot's province is the customers' province.
   - Sales columns (net_revenue_amount, sales_quantity, invoiced_quantity, issued_quantity) add up over days. Stock columns (stock_quantity, in_transit_quantity) are levels: for a period use the last day of the period, never a sum over days (MEASURE(depot_stock) in sales_and_stock does this).
   - "Revenue" means net revenue, SUM(net_revenue_amount). To see whether a product is still selling use invoiced_quantity: net sales_quantity can be negative on a day when older invoices are returned or cancelled.
@@ -27,7 +27,12 @@ instructions: |
   - Products not held at depots (services, building solutions, raw materials) have empty depot stock; that is not a stock-out. A stock-out is is_stock_out = true.
   - "Current" or "now" means the latest activity_date in fact_sales_stock_daily (the latest day both sales and stock have arrived).
   - When explaining a drop in sales, check depot stock (stock_quantity, is_stock_out), the hub's stock and the last transfer (movement 315) to that depot, and say which product customers bought instead.
-  - The fiscal year runs April to March and is named by its start year (FY2026 = 1 April 2026 to 31 March 2027).
+  - The fiscal year runs April to March and is named by its start year (FY2026 = 1 April 2026 to 31 March 2027). Months: the month field of sales_and_stock, or CAST(DATE_TRUNC('MONTH', activity_date) AS DATE); never a timestamp.
+  - "Units sold" = invoiced_quantity (units on invoices, the same goods the depot issues); sales_quantity is net of returns and cancellations.
+  - "Kandy store"/"Kandy main store" = 4020-0010 (Kandy Production Facility - Main Store); "Kandy depot" = 2010-8003. When listing products, always include product_id.
+  - Answer in the shape asked: "how much / how many" = one total row unless "per province/depot/product/day/month" is asked; "which ... most" = full ranking unless a number is given.
+  - Before/after comparisons: ONE row, one column per period (e.g. avg_daily_units_before, avg_daily_units_since). "From/since <date>" includes it, up to the latest activity_date; "the N days before" ends the day before. Average per day = total of all locations / days in the period.
+  - Round percentages and days to 1 decimal, money to 2. Always state the date of the stock you used.
 sample_questions:
   - Why did sales of MC6001LT stop in Western province?
   - Which products are out of stock at a depot while customers still order them?

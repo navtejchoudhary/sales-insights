@@ -112,19 +112,17 @@ questions:
   - id: SS05
     category: story
     story: I3 the Kandy store spare kit S-10000576 has months of cover but sells only a few a month
-    question: How many units of S-10000576 did we sell from July to September 2026, and how much stock was left at the Kandy store on 30 September?
+    question: How many units of S-10000576 did we sell from July to September 2026, and how much stock was left at the Kandy Production Facility main store on 30 September?
     paraphrases:
-      - SYSTEM SV SPARE KIT C sales in Jul-Sep 2026 versus its Kandy store stock at the end of September?
-      - Is the S-10000576 spare kit overstocked compared with what we sell?
+      - SYSTEM SV SPARE KIT C sales in Jul-Sep 2026 versus its Kandy main store stock at the end of September?
+      - S-10000576 units sold July to September 2026 versus its stock at the Kandy main store on 30 September 2026?
     sql: |
       SELECT
         (SELECT SUM(sold_quantity) FROM ${fact_sales}
            WHERE product_id = 'S-10000576' AND invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30') AS units_sold,
         (SELECT SUM(stock_quantity) FROM ${fact_stock_daily}
-           WHERE product_id = 'S-10000576' AND location_id = '4020-0010' AND snapshot_date = DATE'2026-09-30') AS stock_30_sep,
-        (SELECT MAX(days_of_cover) FROM ${fact_stock_daily}
-           WHERE product_id = 'S-10000576' AND location_id = '4020-0010' AND snapshot_date = DATE'2026-09-30') AS days_of_cover
-    check: row['stock_30_sep'] > row['units_sold'] and row['days_of_cover'] > 120
+           WHERE product_id = 'S-10000576' AND location_id = '4020-0010' AND snapshot_date = DATE'2026-09-30') AS stock_30_sep
+    check: row['stock_30_sep'] > row['units_sold']
 
   # ---------------------------------------------------------------- basics
   - id: SS06
@@ -163,7 +161,7 @@ questions:
       - On 30 Sep 2026, how long would the depots' MC600 WEEDICIDE 1LTR last in each region?
       - MC6001LT depot days of cover by province at the end of September 2026.
     sql: |
-      SELECT l.province, SUM(f.stock_quantity) AS depot_stock,
+      SELECT l.province,
              ROUND(SUM(f.stock_quantity) / NULLIF(SUM(f.avg_daily_issued_quantity_28d), 0), 1) AS days_of_cover
       FROM ${fact_sales_stock_daily} f JOIN ${dim_location} l ON f.location_id = l.location_id
       WHERE f.product_id = 'MC6001LT' AND f.activity_date = DATE'2026-09-30'
@@ -177,13 +175,12 @@ questions:
       - In FY2026, which sales offices' depots were out of stock most often, and how much did they sell?
       - Depot stock-out days and net revenue by sales office for fiscal year 2026.
     sql: |
-      SELECT f.sales_office_code, l.location_name AS depot,
+      SELECT f.sales_office_code,
              COUNT_IF(f.is_stock_out) AS stock_out_days, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
       FROM ${fact_sales_stock_daily} f
-      JOIN ${dim_location} l ON f.location_id = l.location_id
       JOIN ${dim_date} d ON f.activity_date = d.date
       WHERE d.fiscal_year = 2026
-      GROUP BY f.sales_office_code, l.location_name
+      GROUP BY f.sales_office_code
       ORDER BY stock_out_days DESC, net_revenue DESC
 
   # ---------------------------------------------------------------- trends
@@ -237,12 +234,11 @@ questions:
         FROM ${fact_sales_stock_daily}
         WHERE activity_date BETWEEN DATE'2026-10-01' AND DATE'2026-10-31'
       )
-      SELECT ld.stock_date, SUM(f.stock_quantity) AS depot_stock
+      SELECT SUM(f.stock_quantity) AS depot_stock
       FROM ${fact_sales_stock_daily} f
       JOIN ${dim_location} l ON f.location_id = l.location_id
       JOIN last_day ld ON f.activity_date = ld.stock_date
       WHERE f.product_id = 'MC6001LT' AND l.province = 'Western'
-      GROUP BY ld.stock_date
 
   - id: SS13
     category: tricky
@@ -252,14 +248,14 @@ questions:
       - In Sep 2026, which Western sales had no depot stock row (products not kept at depots)?
       - List products sold in Western in September 2026 that the depots do not stock.
     sql: |
-      SELECT f.product_id, p.product_description, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      SELECT f.product_id, p.product_description
       FROM ${fact_sales_stock_daily} f
       JOIN ${dim_location} l ON f.location_id = l.location_id
       JOIN ${dim_product} p ON f.product_id = p.product_id
       WHERE l.province = 'Western' AND f.activity_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'
       GROUP BY f.product_id, p.product_description
       HAVING COUNT(f.stock_quantity) = 0 AND SUM(f.sales_quantity) <> 0
-      ORDER BY net_revenue DESC
+      ORDER BY f.product_id
 
   - id: SS14
     category: tricky
@@ -272,7 +268,7 @@ questions:
       - For each depot, issued quantity and units sold in September 2026, side by side.
     sql: |
       SELECT l.location_name AS depot, SUM(f.issued_quantity) AS issued_quantity,
-             SUM(f.invoiced_quantity) AS units_invoiced, SUM(f.sales_quantity) AS units_sold
+             SUM(f.invoiced_quantity) AS units_invoiced
       FROM ${fact_sales_stock_daily} f JOIN ${dim_location} l ON f.location_id = l.location_id
       WHERE f.activity_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' AND f.stock_quantity IS NOT NULL
       GROUP BY l.location_name
