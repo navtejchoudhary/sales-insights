@@ -19,17 +19,17 @@ data:
   - ${dim_product}
 
 instructions: |
-  - Money is LKR excluding VAT; quantities are in each product's base unit. Round money to 2 decimals, percentages and days to 1.
+  - Money is LKR excluding VAT; quantities are in each product's base unit. Round money to 2 decimals and percentages to 1; leave days of cover and per-day averages unrounded.
   - fact_sales_stock_daily: one row per day, sales office and product, with the office's sales next to the closing stock of the depot that serves it. Province and depot come from dim_location via location_id (the depot's province is its customers' province).
   - Sales columns (net_revenue_amount, invoiced_quantity, sales_quantity, issued_quantity) add up over days. Stock columns (stock_quantity, in_transit_quantity) are levels: for a period use its last day, never a sum (MEASURE(depot_stock) does this).
   - Revenue = SUM(net_revenue_amount). Units sold = invoiced_quantity (the same goods the depot issues); sales_quantity is net of returns and can be negative.
-  - Not depots: the hub 2010-0090, plant stores and the returns store 2010-0032; use fact_stock_daily for their stock and fact_stock_movements for movements: 313 = out of the hub, 315 = the same goods arriving (count one), 653 = customer return into the returns store, 602 = cancelled delivery back to the hub.
+  - Not depots: the hub 2010-0090, plant stores and the returns store 2010-0032; use fact_stock_daily for their stock and fact_stock_movements for movements: 313 = out of the hub, 315 = the same goods arriving (count one), 653 = customer return into the returns store, 602 = cancelled delivery back to the hub. Units moved = quantity (signed); received_quantity is only purchases (101).
   - Products not kept at depots (services, raw materials) have empty depot stock: not a stock-out. A stock-out is is_stock_out = true.
   - "Current"/"now" = the latest activity_date in fact_sales_stock_daily.
   - To explain a drop in sales, check depot stock and is_stock_out, the hub's stock, the last 315 transfer to the depot, and what customers bought instead.
   - Fiscal year April-March, named by its start year (FY2026 = Apr 2026-Mar 2027). Months: the month field of sales_and_stock or CAST(DATE_TRUNC('MONTH', activity_date) AS DATE), never a timestamp.
   - A product group (e.g. weedicides) is product_group / product_group_name = 'WEEDICIDE', never a match on the product name.
-  - "Kandy store"/"Kandy main store" = 4020-0010; "Kandy depot" = 2010-8003. When listing products, include product_id.
+  - "Kandy store"/"Kandy main store" = 4020-0010; "Kandy depot" = 2010-8003. When listing products, include product_id and product_description.
   - Answer in the shape asked: "how much / how many" = one total row; break down by province, depot, sales office, product, day or month only when the question says so; "which ... most" = full ranking unless a number is given.
   - Before/after comparisons: ONE row, one column per period (avg_daily_units_before, avg_daily_units_since). "From/since <date>" includes it, up to the latest activity_date; "the N days before" ends the day before. Average per day = total of all locations / days in the period.
   - Always state the date of the stock you used.
