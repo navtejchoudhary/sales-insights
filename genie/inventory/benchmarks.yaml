@@ -207,7 +207,7 @@ questions:
     story: I1 Western depots run out of MC6001LT at the end of 22 October 2026 while the Galle hub still holds stock
     question: Which Western depots had no MC6001LT left at the end of 22 October 2026, and how much did the Galle hub hold?
     paraphrases:
-      - On 22 Oct 2026, how much MC600 WEEDICIDE 1LTR was left at the Western depots and at the hub?
+      - On 22 Oct 2026, how much MC600 WEEDICIDE 1LTR was left at each Western depot and at the hub?
       - Closing stock of MC6001LT on 22 October 2026 at the Colombo and Negombo depots and the Galle hub?
     needs_data_until: 2026-10-22
     sql: |

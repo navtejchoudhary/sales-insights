@@ -24,11 +24,11 @@ instructions: |
   - Stock is a level: never add stock_quantity over days. For a period use the stock on its last day (MEASURE(stock_on_hand) does this); "stock in September" = stock on 30 September. Issues, receipts and stock-out days are flows and do add up.
   - "Current", "now", "today" = the latest snapshot_date in fact_stock_daily, never CURRENT_DATE.
   - A hub transfer is movement 313 (out of the hub); 315 is the same goods arriving at the depot: count one. Last transfer into a depot = MAX(posting_date) of 315 there, one row per depot.
-  - Depots: location_type = 'Depot' (2010-8001 to 2010-8011); Western depots = Colombo 2010-8001, Negombo 2010-8002. Galle hub = 2010-0090. Returns store 2010-0032 cannot be sold: leave it out of "available"/"sellable" stock. "Kandy store"/"Kandy main store" = 4020-0010 (a plant store); "Kandy depot" = 2010-8003.
+  - Depots: location_type = 'Depot' (2010-8001 to 2010-8011); Western depots = Colombo 2010-8001, Negombo 2010-8002. Galle hub = 2010-0090. Returns store 2010-0032 cannot be sold: leave it out ONLY when the question says available or sellable; stock, stock value and rankings of locations include it. "Kandy store"/"Kandy main store" = 4020-0010 (a plant store); "Kandy depot" = 2010-8003.
   - Days of cover: one location and product = the days_of_cover column; a group = SUM(stock_quantity) / SUM(avg_daily_issued_quantity_28d). Overstock = over 120 days.
   - Low cover / "running low" = is_low_cover (stock above zero, under 7 days); zero stock is a stock-out (is_stock_out), not low cover. List depot x product positions, lowest cover first, never depot totals.
   - Stock-out rate = stock-outs / positions that issued anything in the last 28 days.
-  - Product codes (MC6001LT) are product_id; names are product_description in dim_product.
+  - Product codes (MC6001LT) are product_id; names are product_description in dim_product. When listing products, always include product_id.
   - Fiscal year April-March, named by its start year (FY2026 = Apr 2026-Mar 2027). Months: group by dim_date.month_start_date, never DATE_TRUNC (a timestamp).
   - Answer in the shape asked: "how much / how many" = one total row unless "per location/product/month" is asked; "which ... most" = full ranking unless a number is given ("top 5" = LIMIT 5).
   - Before/after comparisons: ONE row, one column per period (avg_daily_before, avg_daily_since). "From/since <date>" includes it, up to the latest snapshot_date; "the N days before" ends the day before. Average per day = total of all locations / days in the period.
