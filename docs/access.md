@@ -35,6 +35,20 @@ Asset Bundle (`bundle/resources/dashboards.yml`). Tests run every dataset on rea
 widget shows a column its dataset returns. Change a dashboard in the YAML, not in the browser: the next deploy
 overwrites browser edits.
 
+## Colours (Company overview)
+
+One meaning per colour, said in words too (titles, "Act now"), so nothing depends on colour alone:
+
+| Colour | Meaning | Rule (working limits for the demo, set in `dashboards/ceo.yaml`) |
+|---|---|---|
+| Green | On track | Revenue or forecast vs last year 0% or more; margin 20% or more; cover 15-120 days; no stock-outs; returns under 2%; no failed checks; Genie 90% or more |
+| Amber | Watch | Change 0 to -5%; margin 15-20%; cover 7-15 or over 120 days; 1-2 stock-outs; returns 2-4%; Genie 80-90%; overstock |
+| Red | Act now | Change below -5%; margin under 15%; cover under 7 days; 3 or more stock-outs; returns over 4%; any failed check |
+| Rose | Serious (stock health only) | Under 7 days of cover |
+| Blue / light blue / grey | Actual figure / forecast / likely range or context | No target |
+
+Rules are checked top to bottom, first match wins. Colours are the dashboard theme's default palette.
+
 ## Steps (once)
 
 1. **Create the groups** (as workspace admin): user menu > Settings > Identity and access > Groups > Manage >

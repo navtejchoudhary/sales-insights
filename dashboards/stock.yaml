@@ -102,7 +102,7 @@ pages:
           last 28 days. Low cover = under 7 days; overstock = over 120 days.
         size: [6, 2]
       - table: {dataset: stock_trust, title: Data status, columns: [{field: status, title: " "}]}
-        size: [6, 2]
+        size: [6, 3]
       - counter: {dataset: stock_today, value: stock_value, title: Stock value (LKR at standard cost), format: compact}
         size: [2, 3]
       - counter: {dataset: stock_today, value: days_of_cover, title: Days of cover}
@@ -118,7 +118,6 @@ pages:
       - table:
           dataset: stock_findings
           title: What needs attention (latest daily stock insights)
-          order_by: row_order
           columns:
             - {field: priority, title: Priority}
             - {field: type, title: Type}

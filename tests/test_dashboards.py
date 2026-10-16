@@ -118,6 +118,21 @@ def test_where_uses_field_names_and_is_compiled_locally():
         db.databricks_sql({"metric_view": "inventory_metrics", "fields": ["nope"], "measures": ["stock_value"]}, tables)
 
 
+def test_colours_keep_one_meaning():
+    """Status colours only through checked rules; growth and stock-health values always get the same colour."""
+    with pytest.raises(ValueError):
+        db._rules([[">=", 0, "green"]])  # only the comparisons seen in Databricks' exported dashboards
+    with pytest.raises(ValueError):
+        db._rules([["<", 0, "purple"]])
+    meaning = {"Growing": "green", "Flat": "amber", "Falling": "red", "New": "blue", "Stock-out": "red",
+               "Low cover": "rose", "Healthy": "green", "Overstock": "amber", "Actual": "blue", "Forecast": "lightblue"}  # fmt: skip
+    for name in db.NAMES:
+        for kind, w in _widgets(db.load(name)):
+            colors = (w[kind].get("color") or {}).get("colors", {}) if kind in ("bar", "line") else {}
+            for value, color in colors.items():
+                assert meaning.get(value, color) == color, (name, value, color)
+
+
 def test_no_workspace_details_in_the_dashboard_files():
     for path in (ROOT / "dashboards").glob("*.lvdash.json"):
         text = path.read_text()

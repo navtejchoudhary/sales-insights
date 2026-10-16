@@ -1,6 +1,13 @@
 # Company (CEO) dashboard (AI/BI): sales and stock on one page, for management.
 # Source of dashboards/ceo.lvdash.json; see dashboards/sales.yaml for the format.
 # `same_as: <dashboard>.<dataset>` reuses a dataset of another dashboard word for word.
+#
+# Colours have ONE meaning on this page (the key at the top says so; docs/access.md "Colours"):
+#   green = on track, amber = watch, red = act now, rose = serious (stock health only),
+#   blue = an actual figure with no target, light blue = forecast, grey = likely range / context.
+# Status always comes with words too (titles say the rule, findings say "Act now"), never colour alone.
+# Rules are checked top to bottom and the first match wins, so the most severe rule comes first.
+# The limits are working assumptions for the demo (docs/decisions.md), easy to change here.
 
 title: Company overview
 audience: [management]
@@ -9,7 +16,7 @@ datasets:
   sales_fytd:
     metric_view: sales_metrics
     fields: [is_fiscal_year_to_date]
-    measures: [net_revenue, gross_margin_pct, active_customers]
+    measures: [net_revenue, gross_margin_pct, returns_rate_pct]
     where: is_fiscal_year_to_date OR is_same_period_last_fiscal_year
     select:
       - CAST(MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) AS revenue_fytd
@@ -17,12 +24,122 @@ datasets:
           / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_fiscal_year_to_date), 0) - 1) * 100, 1) AS DOUBLE)
           AS revenue_change_pct
       - CAST(ROUND(MAX(gross_margin_pct) FILTER (WHERE is_fiscal_year_to_date), 1) AS DOUBLE) AS margin_pct_fytd
+      - CAST(ROUND(MAX(returns_rate_pct) FILTER (WHERE is_fiscal_year_to_date), 2) AS DOUBLE) AS returns_pct_fytd
+
+  fy_outlook:
+    # Where the fiscal year lands: actual months so far + the forecast from the current month to March,
+    # against the whole previous fiscal year.
+    metric_view: sales_metrics
+    fields: [month, is_current_fiscal_year]
+    measures: [net_revenue]
+    where: is_current_fiscal_year OR is_previous_fiscal_year
+    then: |
+      WITH m AS (SELECT * FROM {previous}),
+      f AS (SELECT MIN(month_start_date) AS first_month, SUM(forecast_net_revenue) AS rest FROM ${sales_forecast}),
+      t AS (
+        SELECT SUM(CASE WHEN m.is_current_fiscal_year AND m.month < f.first_month THEN m.net_revenue ELSE 0 END)
+                 + MAX(f.rest) AS fy_forecast,
+               SUM(CASE WHEN NOT m.is_current_fiscal_year THEN m.net_revenue END) AS last_fy
+        FROM m CROSS JOIN f
+      )
+      SELECT CAST(fy_forecast AS DOUBLE) AS fy_forecast,
+             CAST(ROUND((fy_forecast / NULLIF(last_fy, 0) - 1) * 100, 1) AS DOUBLE) AS fy_change_pct
+      FROM t
 
   stock_today:
     same_as: stock.stock_today
 
   revenue_trend:
     same_as: sales.revenue_trend
+
+  province_growth:
+    # Last complete month vs the same month last year, with a growth status for the bar colour.
+    metric_view: sales_metrics
+    fields: [province, is_last_complete_month]
+    measures: [net_revenue]
+    where: is_last_complete_month OR is_last_complete_month_last_year
+    select:
+      - province
+      - ROUND(CAST(MAX(net_revenue) FILTER (WHERE is_last_complete_month) AS DOUBLE) / 1e6, 1) AS lkr_m
+      - ROUND((MAX(net_revenue) FILTER (WHERE is_last_complete_month)
+          / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_last_complete_month), 0) - 1) * 100, 1) AS change_pct
+    group_by: [province]
+    then: |
+      SELECT *, CASE WHEN change_pct IS NULL THEN 'New' WHEN change_pct >= 0 THEN 'Growing'
+                     WHEN change_pct >= -5 THEN 'Flat' ELSE 'Falling' END AS trend
+      FROM {previous}
+      WHERE province IS NOT NULL
+      ORDER BY lkr_m DESC
+
+  product_group_growth:
+    metric_view: sales_metrics
+    fields: [product_group, is_fiscal_year_to_date]
+    measures: [net_revenue]
+    where: is_fiscal_year_to_date OR is_same_period_last_fiscal_year
+    select:
+      - product_group
+      - ROUND(CAST(MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) / 1e6, 1) AS lkr_m
+      - ROUND((MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date)
+          / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_fiscal_year_to_date), 0) - 1) * 100, 1) AS change_pct
+    group_by: [product_group]
+    then: |
+      SELECT *, CASE WHEN change_pct IS NULL THEN 'New' WHEN change_pct >= 0 THEN 'Growing'
+                     WHEN change_pct >= -5 THEN 'Flat' ELSE 'Falling' END AS trend
+      FROM {previous}
+      WHERE product_group IS NOT NULL
+      ORDER BY lkr_m DESC
+
+  channel_share:
+    metric_view: sales_metrics
+    fields: [channel]
+    measures: [net_revenue]
+    where: is_fiscal_year_to_date
+    then: |
+      SELECT channel,
+             ROUND(CAST(net_revenue AS DOUBLE) * 100 / SUM(CAST(net_revenue AS DOUBLE)) OVER (), 1) AS share_pct
+      FROM {previous}
+      WHERE channel IS NOT NULL
+      ORDER BY share_pct DESC
+
+  stock_health:
+    # Every position that issued anything in the last 28 days, on the latest stock date, in one of 4 states
+    # (the same flags and limits as the stock insights: under 7 days = low cover, over 120 = overstock).
+    sql: |
+      WITH latest AS (SELECT MAX(snapshot_date) AS d FROM ${fact_stock_daily}),
+      p AS (
+        SELECT CASE WHEN s.is_stock_out THEN 'Stock-out' WHEN s.is_low_cover THEN 'Low cover'
+                    WHEN s.days_of_cover > 120 THEN 'Overstock' ELSE 'Healthy' END AS health
+        FROM ${fact_stock_daily} s JOIN latest ON s.snapshot_date = latest.d
+        WHERE s.avg_daily_issued_quantity_28d > 0
+      )
+      SELECT health, CAST(COUNT(*) AS DOUBLE) AS positions
+      FROM p
+      GROUP BY health
+      ORDER BY CASE health WHEN 'Stock-out' THEN 1 WHEN 'Low cover' THEN 2 WHEN 'Healthy' THEN 3 ELSE 4 END
+
+  stock_value_trend:
+    metric_view: inventory_metrics
+    fields: [month]
+    measures: [stock_value]
+    where: month >= add_months(trunc(current_date(), 'MM'), -11)
+    select:
+      - month
+      - ROUND(CAST(stock_value AS DOUBLE) / 1e6, 1) AS lkr_m
+
+  top_customers:
+    metric_view: sales_metrics
+    fields: [customer_name, is_fiscal_year_to_date]
+    measures: [net_revenue]
+    where: is_fiscal_year_to_date OR is_same_period_last_fiscal_year
+    select:
+      - customer_name
+      - ROUND(CAST(MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) / 1e6, 2) AS lkr_m
+      - CAST(ROUND((MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date)
+          / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_fiscal_year_to_date), 0) - 1) * 100, 1) AS DOUBLE)
+          AS change_pct
+    group_by: [customer_name]
+    order_by: lkr_m DESC NULLS LAST
+    limit: 5
 
   province_mtd:
     # Sales next to depot stock, per province, this month to date (stock: the latest day).
@@ -54,11 +171,11 @@ datasets:
         FROM ${stock_insights} i JOIN k ON i.run_id = k.run_id
         WHERE i.kind IN ('stock_out_confirmed', 'overstock_total')
       )
-      SELECT CASE severity WHEN 1 THEN 'Act now' WHEN 2 THEN 'Notable' ELSE 'Context' END AS priority,
-             area, text AS finding,
-             ROW_NUMBER() OVER (ORDER BY severity, area, abs(change) DESC) AS row_order
+      SELECT CAST(severity AS DOUBLE) AS severity,
+             CASE severity WHEN 1 THEN 'Act now' WHEN 2 THEN 'Notable' ELSE 'Context' END AS priority,
+             area, text AS finding
       FROM findings
-      ORDER BY row_order
+      ORDER BY severity, area, abs(change) DESC
       LIMIT 10
 
   trust:
@@ -80,52 +197,229 @@ datasets:
                     CAST(stock.ok AS STRING), '/', CAST(stock.n AS STRING), ' checks passed)') AS status
       FROM sales CROSS JOIN stock CROSS JOIN dates
 
+  trust_numbers:
+    # Checks that failed in the latest runs (sales reconciliation + the three stock checks), problems the
+    # source files contained (caught: fixed or quarantined), and the latest weekly Genie accuracy (sales agent).
+    sql: |
+      WITH s AS (
+        SELECT SUM(CASE WHEN status = 'PASS' THEN 0 ELSE 1 END) AS failed FROM ${sales_reconciliation}
+        WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM ${sales_reconciliation})
+      ),
+      r AS (
+        SELECT SUM(CASE WHEN status = 'PASS' THEN 0 ELSE 1 END) AS failed FROM ${stock_reconciliation}
+        WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM ${stock_reconciliation})
+      ),
+      f AS (
+        SELECT SUM(failed) AS failed FROM ${stock_rollforward}
+        WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM ${stock_rollforward})
+      ),
+      x AS (
+        SELECT SUM(failed) AS failed FROM ${stock_cross_checks}
+        WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM ${stock_cross_checks})
+      ),
+      d AS (SELECT (SELECT COUNT(*) FROM ${sales_manifest_dirt}) + (SELECT COUNT(*) FROM ${stock_manifest_dirt}) AS n),
+      g AS (SELECT max_by(accuracy_pct, checked_ts) AS pct FROM ${sales_genie_accuracy})
+      SELECT CAST(COALESCE(s.failed, 0) + COALESCE(r.failed, 0) + COALESCE(f.failed, 0) + COALESCE(x.failed, 0) AS DOUBLE)
+               AS checks_failed,
+             CAST(d.n AS DOUBLE) AS problems_caught,
+             CAST(g.pct AS DOUBLE) AS genie_pct
+      FROM s CROSS JOIN r CROSS JOIN f CROSS JOIN x CROSS JOIN d CROSS JOIN g
+
 pages:
   - title: Company overview
     widgets:
       - text: |
           ## Company overview: sales and stock
-          Fiscal year to date against the same period last year; stock on the latest day.
-          Ask the Sales & Stock agent (Genie) for anything not on this page.
-        size: [6, 2]
+          Fiscal year to date against the same period last year; stock on the latest day. Ask the Sales & Stock agent (Genie) for anything not on this page.
+
+          **Colour key:** <span style="color:#00A972">● On track</span> &nbsp; <span style="color:#FFAB00">● Watch</span> &nbsp; <span style="color:#FF3621">● Act now</span> &nbsp; <span style="color:#077A9D">● Actual figure (no target)</span> &nbsp; <span style="color:#8BCAE7">● Forecast</span> &nbsp; <span style="color:#919191">● Likely range / context</span>
+        size: [6, 3]
       - table: {dataset: trust, title: Data status, columns: [{field: status, title: " "}]}
-        size: [6, 2]
-      - counter: {dataset: sales_fytd, value: revenue_fytd, title: Net revenue, fiscal year to date (LKR), format: compact}
+        size: [6, 3]
+      # --- sales headline (fiscal year to date) and stock today
+      - counter:
+          dataset: sales_fytd
+          value: revenue_fytd
+          title: Net revenue, fiscal year to date (LKR)
+          format: compact
+          status: [[">", -1000000000000, blue]]
         size: [2, 3]
-      - counter: {dataset: sales_fytd, value: revenue_change_pct, title: vs same period last year (%)}
+      - counter:
+          dataset: sales_fytd
+          value: revenue_change_pct
+          title: vs same period last year (%)
+          description: Green 0% or more, amber 0 to -5%, red below -5%
+          status: [["<", -5, red], ["<", 0, amber], [">", -1000000, green]]
         size: [2, 3]
-      - counter: {dataset: sales_fytd, value: margin_pct_fytd, title: Gross margin, fiscal year to date (%)}
+      - counter:
+          dataset: sales_fytd
+          value: margin_pct_fytd
+          title: Gross margin, fiscal year to date (%)
+          description: Green 20% or more (working target), amber 15-20%, red below 15%
+          status: [["<", 15, red], ["<", 20, amber], [">", -1000, green]]
         size: [2, 3]
-      - counter: {dataset: stock_today, value: stock_value, title: Stock value today (LKR), format: compact}
+      - counter:
+          dataset: stock_today
+          value: stock_value
+          title: Stock value today (LKR)
+          format: compact
+          status: [[">", -1000000000000, blue]]
         size: [2, 3]
-      - counter: {dataset: stock_today, value: days_of_cover, title: Days of cover}
+      - counter:
+          dataset: stock_today
+          value: days_of_cover
+          title: Days of cover
+          description: Green 15-120 days, amber 7-15 or over 120, red under 7
+          status: [["<", 7, red], ["<", 15, amber], [">", 120, amber], [">", -1, green]]
         size: [2, 3]
-      - counter: {dataset: stock_today, value: stock_out_positions, title: Stock-outs today}
+      - counter:
+          dataset: stock_today
+          value: stock_out_positions
+          title: Stock-outs today
+          description: Green none, amber 1-2, red 3 or more
+          status: [[">", 2.5, red], [">", 0.5, amber], [">", -1, green]]
         size: [2, 3]
+      # --- full-year outlook
+      - counter:
+          dataset: fy_outlook
+          value: fy_forecast
+          title: Fiscal year forecast, April to March (LKR)
+          description: Actual months so far + forecast to March
+          format: compact
+          status: [[">", -1000000000000, lightblue]]
+        size: [2, 3]
+      - counter:
+          dataset: fy_outlook
+          value: fy_change_pct
+          title: Forecast vs last fiscal year (%)
+          description: Green 0% or more, amber 0 to -5%, red below -5%
+          status: [["<", -5, red], ["<", 0, amber], [">", -1000000, green]]
+        size: [2, 3]
+      - counter:
+          dataset: sales_fytd
+          value: returns_pct_fytd
+          title: Returns rate, fiscal year to date (%)
+          description: Green under 2%, amber 2-4%, red over 4%
+          status: [[">", 4, red], [">", 2, amber], [">", -1, green]]
+        size: [2, 3]
+      # --- what needs attention
       - table:
           dataset: top_findings
-          title: What needs attention
-          order_by: row_order
+          title: What needs attention (latest daily insights)
+          description: Act now in red, notable in amber, context in grey
           columns:
-            - {field: priority, title: Priority}
+            - {field: priority, title: Priority, color_by: {column: severity, rules: [["<", 1.5, red], ["<", 2.5, amber]]}}
             - {field: area, title: Area}
             - {field: finding, title: Finding, wide: true}
+            - {field: severity, title: Level, type: number, format: "0", color_by: {column: severity, rules: [["<", 1.5, red], ["<", 2.5, amber]]}}
         size: [6, 6]
+      # --- revenue
       - line:
           dataset: revenue_trend
           title: Net revenue by month and forecast to March (LKR m)
+          description: Blue actual, light blue forecast, grey the likely range
           x: {field: month, title: Month, temporal: month}
           y: {field: lkr_m, title: LKR m}
-          color: {field: series, title: Series}
+          color:
+            field: series
+            title: Series
+            colors: {Actual: blue, Forecast: lightblue, Forecast low: grey, Forecast high: grey}
+        size: [3, 6]
+      - bar:
+          dataset: province_growth
+          title: Net revenue by province, last complete month (LKR m)
+          description: Colour = change vs the same month last year (green growing, amber 0 to -5%, red falling)
+          x: {field: province, title: Province}
+          y: {field: lkr_m, title: LKR m}
+          color:
+            field: trend
+            title: vs last year
+            colors: {Growing: green, Flat: amber, Falling: red, New: blue}
+        size: [3, 6]
+      - bar:
+          dataset: product_group_growth
+          title: Net revenue by product group, fiscal year to date (LKR m)
+          description: Colour = change vs the same period last year
+          x: {field: product_group, title: Product group}
+          y: {field: lkr_m, title: LKR m}
+          color:
+            field: trend
+            title: vs last year
+            colors: {Growing: green, Flat: amber, Falling: red, New: blue}
+        size: [3, 6]
+      - bar:
+          dataset: channel_share
+          title: Channel share of net revenue, fiscal year to date (%)
+          description: Actual figures, no target
+          x: {field: channel, title: Channel}
+          y: {field: share_pct, title: Share %}
+        size: [3, 6]
+      # --- stock
+      - bar:
+          dataset: stock_health
+          title: Stock health today (stock positions that sell)
+          description: Red stock-out, rose under 7 days of cover, green healthy, amber over 120 days (money tied up)
+          x: {field: health, title: State}
+          y: {field: positions, title: Positions}
+          color:
+            field: health
+            title: State
+            colors: {Stock-out: red, Low cover: rose, Healthy: green, Overstock: amber}
+        size: [3, 6]
+      - line:
+          dataset: stock_value_trend
+          title: Stock value at each month end (LKR m)
+          description: Money held in stock, at standard cost
+          x: {field: month, title: Month, temporal: month}
+          y: {field: lkr_m, title: LKR m}
+        size: [3, 6]
+      # --- customers and provinces
+      - table:
+          dataset: top_customers
+          title: Top 5 customers, fiscal year to date
+          description: Change vs the same period last year in green, amber or red
+          columns:
+            - {field: customer_name, title: Customer}
+            - {field: lkr_m, title: LKR m, type: number, format: "0,0.00"}
+            - {field: change_pct, title: vs last year %, type: number,
+               color_by: {column: change_pct, rules: [["<", -5, red], ["<", 0, amber], [">", -1000000, green]]}}
         size: [3, 6]
       - table:
           dataset: province_mtd
           title: Sales and depot stock by province, month to date
-          order_by: lkr_m DESC
+          description: Red stock-out days or cover under 7 days; amber cover 7-15 or over 120 days
           columns:
             - {field: province, title: Province}
             - {field: lkr_m, title: Net revenue LKR m, type: number}
-            - {field: units_sold, title: Units sold, type: number}
-            - {field: stock_out_days, title: Stock-out days, type: number}
-            - {field: days_of_cover, title: Depot days of cover, type: number}
+            - {field: units_sold, title: Units sold, type: number, format: "0,0"}
+            - {field: stock_out_days, title: Stock-out days, type: number, format: "0",
+               color_by: {column: stock_out_days, default: green, rules: [[">", 0.5, red]]}}
+            - {field: days_of_cover, title: Depot days of cover, type: number,
+               color_by: {column: days_of_cover, default: green, rules: [["<", 7, red], ["<", 15, amber], [">", 120, amber]]}}
         size: [3, 6]
+      # --- trust
+      - text: |
+          ## Can we trust these numbers?
+          Every day the pipeline checks the source files, quarantines bad rows and reconciles the results with the source totals. Genie's answers are scored every week against known correct answers.
+        size: [6, 2]
+      - counter:
+          dataset: trust_numbers
+          value: checks_failed
+          title: Data checks failed (latest runs)
+          description: Sales reconciliation + 3 stock checks. Green none, red any
+          status: [[">", 0.5, red], [">", -1, green]]
+        size: [2, 3]
+      - counter:
+          dataset: trust_numbers
+          value: problems_caught
+          title: Problems caught in the source files
+          description: Bad rows fixed or quarantined before they reach the numbers
+          status: [[">", -1, blue]]
+        size: [2, 3]
+      - counter:
+          dataset: trust_numbers
+          value: genie_pct
+          title: Genie accuracy, latest weekly check (%)
+          description: Sales agent. Green 90% or more, amber 80-90%, red below 80%
+          status: [["<", 80, red], ["<", 90, amber], [">", -1, green]]
+        size: [2, 3]

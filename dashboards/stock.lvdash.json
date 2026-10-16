@@ -163,8 +163,12 @@
             "spec": {
               "version": 1,
               "widgetType": "table",
-              "condensed": true,
+              "invisibleColumns": [],
               "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
               "encodings": {
                 "columns": [
                   {
@@ -206,7 +210,7 @@
             "x": 0,
             "y": 2,
             "width": 6,
-            "height": 2
+            "height": 3
           }
         },
         {
@@ -252,7 +256,7 @@
           },
           "position": {
             "x": 0,
-            "y": 4,
+            "y": 5,
             "width": 2,
             "height": 3
           }
@@ -292,7 +296,7 @@
           },
           "position": {
             "x": 2,
-            "y": 4,
+            "y": 5,
             "width": 2,
             "height": 3
           }
@@ -340,7 +344,7 @@
           },
           "position": {
             "x": 4,
-            "y": 4,
+            "y": 5,
             "width": 2,
             "height": 3
           }
@@ -380,7 +384,7 @@
           },
           "position": {
             "x": 0,
-            "y": 7,
+            "y": 8,
             "width": 2,
             "height": 3
           }
@@ -420,7 +424,7 @@
           },
           "position": {
             "x": 2,
-            "y": 7,
+            "y": 8,
             "width": 2,
             "height": 3
           }
@@ -460,7 +464,7 @@
           },
           "position": {
             "x": 4,
-            "y": 7,
+            "y": 8,
             "width": 2,
             "height": 3
           }
@@ -485,27 +489,21 @@
                     {
                       "name": "finding",
                       "expression": "`finding`"
-                    },
-                    {
-                      "name": "row_order",
-                      "expression": "`row_order`"
                     }
                   ],
-                  "disaggregated": true,
-                  "orders": [
-                    {
-                      "direction": "ASC",
-                      "expression": "`row_order`"
-                    }
-                  ]
+                  "disaggregated": true
                 }
               }
             ],
             "spec": {
               "version": 1,
               "widgetType": "table",
-              "condensed": true,
+              "invisibleColumns": [],
               "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
               "encodings": {
                 "columns": [
                   {
@@ -600,7 +598,7 @@
           },
           "position": {
             "x": 0,
-            "y": 10,
+            "y": 11,
             "width": 6,
             "height": 6
           }
@@ -665,7 +663,7 @@
           },
           "position": {
             "x": 0,
-            "y": 16,
+            "y": 17,
             "width": 6,
             "height": 6
           }
@@ -730,7 +728,7 @@
           },
           "position": {
             "x": 0,
-            "y": 22,
+            "y": 23,
             "width": 3,
             "height": 6
           }
@@ -779,8 +777,7 @@
                   "primary": {
                     "fields": [
                       {
-                        "fieldName": "sum(days_of_cover)",
-                        "displayName": "Days of cover"
+                        "fieldName": "sum(days_of_cover)"
                       }
                     ],
                     "scale": {
@@ -790,8 +787,7 @@
                   "secondary": {
                     "fields": [
                       {
-                        "fieldName": "sum(stock_out_positions)",
-                        "displayName": "Stock-outs"
+                        "fieldName": "sum(stock_out_positions)"
                       }
                     ],
                     "scale": {
@@ -808,7 +804,7 @@
           },
           "position": {
             "x": 3,
-            "y": 22,
+            "y": 23,
             "width": 3,
             "height": 6
           }
@@ -842,10 +838,7 @@
                 "x": {
                   "fieldName": "location",
                   "scale": {
-                    "type": "categorical",
-                    "sort": {
-                      "by": "y-reversed"
-                    }
+                    "type": "categorical"
                   },
                   "displayName": "Depot"
                 },
@@ -865,7 +858,7 @@
           },
           "position": {
             "x": 0,
-            "y": 28,
+            "y": 29,
             "width": 6,
             "height": 5
           }
