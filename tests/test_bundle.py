@@ -67,8 +67,18 @@ def test_genie_check_runs_weekly_after_the_daily_job():
     job = _jobs()["sales_genie_health"]
     assert job["schedule"]["timezone_id"] == "Asia/Colombo" and job["schedule"]["pause_status"] == "UNPAUSED"
     assert job["schedule"]["quartz_cron_expression"] == "0 0 7 ? * MON"  # Monday 07:00, after the 06:30 run
-    params = job["tasks"][0]["spark_python_task"]["parameters"]
-    assert params[0] == "genie_health" and "${var.genie_space_id}" in params and params[-2:] == ["--target", "90"]
+    tasks = {t["task_key"]: t for t in job["tasks"]}
+    agents = {}
+    for key, task in tasks.items():
+        params = task["spark_python_task"]["parameters"]
+        assert params[0] == "genie_health" and params[-2:] == ["--target", "90"], key
+        agents[params[params.index("--agent") + 1]] = params[params.index("--space-id") + 1]
+        if task.get("depends_on"):
+            assert task["run_if"] == "ALL_DONE", key  # one agent failing never skips the others
+    assert agents == {"sales": "${var.genie_space_id}", "inventory": "${var.inventory_genie_space_id}",
+                      "sales_and_stock": "${var.sales_and_stock_genie_space_id}"}  # fmt: skip
+    bundle = yaml.safe_load((ROOT / "databricks.yml").read_text())
+    assert {v.removeprefix("${var.").removesuffix("}") for v in agents.values()} <= set(bundle["variables"])
     deps = job["environments"][0]["spec"]["dependencies"]
     assert any(d.startswith("databricks-sdk") for d in deps)  # the Genie evaluation API needs a recent SDK
 

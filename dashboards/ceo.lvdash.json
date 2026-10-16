@@ -280,7 +280,12 @@
         "  WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM inventory_dev.ops.cross_checks)\n",
         "),\n",
         "d AS (SELECT (SELECT COUNT(*) FROM sales_dev.ops.manifest_dirt) + (SELECT COUNT(*) FROM inventory_dev.ops.manifest_dirt) AS n),\n",
-        "g AS (SELECT max_by(accuracy_pct, checked_ts) AS pct FROM sales_dev.ops.genie_accuracy)\n",
+        "g AS (\n",
+        "  SELECT MIN(pct) AS pct FROM (\n",
+        "    SELECT COALESCE(agent, 'sales') AS agent, max_by(accuracy_pct, checked_ts) AS pct\n",
+        "    FROM sales_dev.ops.genie_accuracy GROUP BY COALESCE(agent, 'sales')\n",
+        "  ) AS latest\n",
+        ")\n",
         "SELECT CAST(COALESCE(s.failed, 0) + COALESCE(r.failed, 0) + COALESCE(f.failed, 0) + COALESCE(x.failed, 0) AS DOUBLE)\n",
         "         AS checks_failed,\n",
         "       CAST(d.n AS DOUBLE) AS problems_caught,\n",
@@ -2427,7 +2432,7 @@
               "encodings": {
                 "value": {
                   "fieldName": "max(genie_pct)",
-                  "displayName": "Genie accuracy, latest weekly check (%)",
+                  "displayName": "Genie accuracy, weakest of the 3 agents (%)",
                   "style": {
                     "rules": [
                       {
@@ -2475,9 +2480,9 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "Genie accuracy, latest weekly check (%)",
+                "title": "Genie accuracy, weakest of the 3 agents (%)",
                 "showDescription": true,
-                "description": "Sales agent. Green 90% or more, amber 80-90%, red below 80%"
+                "description": "Latest weekly check of the Sales, Stock and Sales & Stock agents. Green 90% or more, amber 80-90%, red below 80%"
               }
             }
           },
