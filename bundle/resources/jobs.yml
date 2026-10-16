@@ -90,13 +90,14 @@ resources:
               - pyyaml>=6.0.3
               - python-pptx==1.0.2
 
-    # Every Monday after the daily run: run all Genie benchmarks, record the score, fail (= email) below 90%
+    # Every Monday after the daily run: run all benchmarks of the 3 Genie agents one after the other, record each
+    # score in sales_dev.ops.genie_accuracy (column agent), fail (= email) when any agent is below 90%
     sales_genie_health:
       name: sales-insights-genie-health
       performance_target: STANDARD  # cost: scheduled, nobody waits; a few minutes slower start, cheaper serverless
-      description: Weekly Genie accuracy check (all benchmark questions, Chat mode). Fails below the 90% target.
+      description: Weekly Genie accuracy check of the Sales, Stock and Sales & Stock agents (all benchmark questions, Chat mode). Fails below the 90% target.
       max_concurrent_runs: 1
-      timeout_seconds: 3600  # cost guard: a full evaluation takes about 15 minutes
+      timeout_seconds: 5400  # cost guard: 3 evaluations of about 15-20 minutes each
       schedule:
         quartz_cron_expression: "0 0 7 ? * MON"  # Monday 07:00
         timezone_id: Asia/Colombo
@@ -104,12 +105,26 @@ resources:
       email_notifications:
         on_failure:
           - ${workspace.current_user.userName}
-      tasks:
+      tasks:  # one after the other (one warehouse); each runs even when the one before failed (run_if ALL_DONE)
         - task_key: genie_health
           environment_key: default
           spark_python_task:
             python_file: ../run.py
-            parameters: ["genie_health", "--profile", "dev", "--space-id", "${var.genie_space_id}", "--target", "90"]
+            parameters: ["genie_health", "--profile", "dev", "--space-id", "${var.genie_space_id}", "--agent", "sales", "--target", "90"]
+        - task_key: genie_health_stock
+          depends_on: [{task_key: genie_health}]
+          run_if: ALL_DONE
+          environment_key: default
+          spark_python_task:
+            python_file: ../run.py
+            parameters: ["genie_health", "--profile", "dev", "--space-id", "${var.inventory_genie_space_id}", "--agent", "inventory", "--target", "90"]
+        - task_key: genie_health_sales_and_stock
+          depends_on: [{task_key: genie_health_stock}]
+          run_if: ALL_DONE
+          environment_key: default
+          spark_python_task:
+            python_file: ../run.py
+            parameters: ["genie_health", "--profile", "dev", "--space-id", "${var.sales_and_stock_genie_space_id}", "--agent", "sales_and_stock", "--target", "90"]
       environments:
         - environment_key: default
           spec:

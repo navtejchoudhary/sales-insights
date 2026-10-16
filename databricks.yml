@@ -30,8 +30,14 @@ variables:
     lookup:
       warehouse: sales-insights-wh
   genie_space_id:
-    description: Genie agent ID (Genie > agent > About > Agent ID), used by the weekly accuracy check
+    description: Sales Genie agent ID (Genie > agent > About > Agent ID), used by the weekly accuracy check
     default: 01f1c2e0d41d11268063932055c6f749
+  inventory_genie_space_id:
+    description: Stock Genie agent ID, used by the weekly accuracy check
+    default: 01f1c86d6ae21194be2ec84dabd96651
+  sales_and_stock_genie_space_id:
+    description: Sales & Stock (combined) Genie agent ID, used by the weekly accuracy check
+    default: 01f1c94655c31de39585e07ce3c2e9f7
 
 targets:
   dev:

@@ -1,13 +1,13 @@
 """Genie health check: run every benchmark question, record the accuracy, fail when it drops below target.
 
-    run.py genie_health --profile dev --space-id <Agent ID> [--target 90]     (weekly Databricks job)
+    run.py genie_health --profile dev --space-id <Agent ID> --agent sales [--target 90]   (weekly Databricks job)
 
 Why: the benchmark answers are SQL, re-run on every evaluation, so moving dates ("last month") and new data
 are handled. What we cannot control is Genie itself (Databricks updates its model, wording drifts). This job
 turns "remember to re-run the benchmarks" into an automatic check:
   1. starts a Chat-mode evaluation of every benchmark question (Genie API, same as "Run all benchmarks");
   2. waits for it, reads every assessment (GOOD / BAD / NEEDS_REVIEW);
-  3. appends one row to ops.genie_accuracy (the score history);
+  3. appends one row to ops.genie_accuracy (the score history; `agent` says which of the 3 agents);
   4. exits with an error below the target, so the job's failure email tells us within a week.
 Runs inside a Databricks job, where the SDK signs in automatically (no token in code or config).
 """
@@ -117,7 +117,7 @@ def evaluate(evals: GenieEvals, poll_seconds: int = 30, max_wait_seconds: int = 
     return eval_run_id, score([evals.details(eval_run_id, r) for r in results])
 
 
-def record(spark, lake, eval_run_id: str, s: Score, target: float) -> None:
+def record(spark, lake, eval_run_id: str, s: Score, target: float, agent: str = "sales") -> None:
     from pyspark.sql import types as T
 
     schema = T.StructType([
@@ -129,9 +129,11 @@ def record(spark, lake, eval_run_id: str, s: Score, target: float) -> None:
         T.StructField("target_pct", T.DoubleType()),
         T.StructField("status", T.StringType()),
         T.StructField("failed_questions", T.StringType()),
+        T.StructField("agent", T.StringType()),  # sales | inventory | sales_and_stock (empty = sales, older rows)
     ])  # fmt: skip
     status = "PASS" if s.accuracy_pct >= target else "FAIL"
-    row = (datetime.now(UTC), eval_run_id, s.good, s.total, s.accuracy_pct, float(target), status, " | ".join(s.failed))
+    row = (datetime.now(UTC), eval_run_id, s.good, s.total, s.accuracy_pct, float(target), status, " | ".join(s.failed),
+           agent)  # fmt: skip
     lake.append(spark.createDataFrame([row], schema), "ops", "genie_accuracy")
 
 
@@ -145,17 +147,20 @@ def main(argv: list[str] | None = None) -> None:
     parser = argparse.ArgumentParser(description="Run the Genie benchmarks and fail below the target accuracy.")
     parser.add_argument("--space-id", required=True, help="Genie agent ID")
     parser.add_argument("--target", type=float, default=90.0, help="minimum accuracy in %% (default 90)")
+    parser.add_argument("--agent", default="sales", help="which agent: sales, inventory or sales_and_stock")
     args = parser.parse_args(argv)
 
     eval_run_id, s = evaluate(GenieEvals(WorkspaceClient().genie, args.space_id))
-    print(f"  evaluation {eval_run_id}: {s.good}/{s.total} = {s.accuracy_pct}% (target {args.target}%)")
+    print(
+        f"  {args.agent} agent, evaluation {eval_run_id}: {s.good}/{s.total} = {s.accuracy_pct}% (target {args.target}%)"
+    )
     for q in s.failed:
         print(f"    not good: {q}")
     cfg = load_config()
     spark = get_spark(cfg, app_name="genie_health")
-    record(spark, Lake(spark, cfg), eval_run_id, s, args.target)
+    record(spark, Lake(spark, cfg), eval_run_id, s, args.target, args.agent)  # one history table, in the sales ops
     if s.accuracy_pct < args.target:
-        raise SystemExit(f"Genie accuracy {s.accuracy_pct}% is below the {args.target}% target")
+        raise SystemExit(f"{args.agent} Genie accuracy {s.accuracy_pct}% is below the {args.target}% target")
 
 
 if __name__ == "__main__":

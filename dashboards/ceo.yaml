@@ -199,7 +199,7 @@ datasets:
 
   trust_numbers:
     # Checks that failed in the latest runs (sales reconciliation + the three stock checks), problems the
-    # source files contained (caught: fixed or quarantined), and the latest weekly Genie accuracy (sales agent).
+    # source files contained (caught: fixed or quarantined), and the lowest latest weekly Genie accuracy of the 3 agents.
     sql: |
       WITH s AS (
         SELECT SUM(CASE WHEN status = 'PASS' THEN 0 ELSE 1 END) AS failed FROM ${sales_reconciliation}
@@ -218,7 +218,12 @@ datasets:
         WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM ${stock_cross_checks})
       ),
       d AS (SELECT (SELECT COUNT(*) FROM ${sales_manifest_dirt}) + (SELECT COUNT(*) FROM ${stock_manifest_dirt}) AS n),
-      g AS (SELECT max_by(accuracy_pct, checked_ts) AS pct FROM ${sales_genie_accuracy})
+      g AS (
+        SELECT MIN(pct) AS pct FROM (
+          SELECT COALESCE(agent, 'sales') AS agent, max_by(accuracy_pct, checked_ts) AS pct
+          FROM ${sales_genie_accuracy} GROUP BY COALESCE(agent, 'sales')
+        ) AS latest
+      )
       SELECT CAST(COALESCE(s.failed, 0) + COALESCE(r.failed, 0) + COALESCE(f.failed, 0) + COALESCE(x.failed, 0) AS DOUBLE)
                AS checks_failed,
              CAST(d.n AS DOUBLE) AS problems_caught,
@@ -419,7 +424,7 @@ pages:
       - counter:
           dataset: trust_numbers
           value: genie_pct
-          title: Genie accuracy, latest weekly check (%)
-          description: Sales agent. Green 90% or more, amber 80-90%, red below 80%
+          title: Genie accuracy, weakest of the 3 agents (%)
+          description: Latest weekly check of the Sales, Stock and Sales & Stock agents. Green 90% or more, amber 80-90%, red below 80%
           status: [["<", 80, red], ["<", 90, amber], [">", -1, green]]
         size: [2, 3]

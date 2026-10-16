@@ -196,8 +196,9 @@ def test_every_inventory_story_is_tested():
     assert stories == {"I1", "I2", "I3", "I4"}
     combined = " ".join(q.story for q in ak.load(BOTH.benchmarks) if q.category == "story")
     assert {"I1", "I2", "I3", "I4", "7"} <= set(combined.split())
-    demo = next(q for q in ak.load(BOTH.benchmarks) if q.id == "SS01")
-    assert "Why did sales of MC6001LT stop in Western" in demo.question and demo.check
+    demo = next(q for q in ak.load(BOTH.benchmarks) if q.id == "SS01")  # the facts behind the demo's "why?"
+    assert "MC6001LT" in demo.question and "23 October 2026" in demo.question and demo.check
+    assert any(q.startswith("Why did sales of MC6001LT stop") for q in _space(BOTH)["sample_questions"])
 
 
 def test_checks_can_use_names_inside_generator_expressions():

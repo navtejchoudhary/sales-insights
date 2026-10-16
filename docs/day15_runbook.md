@@ -154,6 +154,7 @@ Full explanation: `docs/access.md`. Do the steps in order (the deploy in 12.3 ne
 | 12.3 | Mac: `git pull`, `databricks bundle deploy -t dev` | `Sales`, `Stock`, `Company overview` under Dashboards |
 | 12.4 | Open each dashboard | every widget shows data; "Data status" says all checks passed |
 | 12.5 | Each Genie agent > Share: Sales -> sales_team + management; Stock -> stock_team + management; Sales & Stock -> management (*Can run*) | |
+| 12.5b | Once, before the next deploy: SQL editor `ALTER TABLE sales_dev.ops.genie_accuracy ADD COLUMNS (agent STRING);` then `databricks bundle deploy`; optionally `databricks bundle run -t dev sales_genie_health` (about 1 hour: all 3 agents) | the weekly check covers the Sales, Stock and Sales & Stock agents; the Company overview shows the weakest score |
 | 12.6 | Before deleting the workspace: `uv run python -m sales_insights.semantic.export_workspace --space sales=<id> --space inventory=<id> --space sales_and_stock=<id>` | files in `output/export/` |
 
 ## If something goes wrong
