@@ -17,13 +17,11 @@ questions:
   - id: SS01
     category: story
     story: 7 + I1 MC6001LT stops selling in Western from 23 October 2026 because the Western depots are empty
-    question: Why did sales of MC6001LT stop in Western province from 23 October 2026?
-    notes: >-
-      Expected answer: no MC6001LT sold in Western since 23 Oct; the Colombo and Negombo depots have had zero stock
-      since the end of 22 Oct; the Galle hub still holds stock; the last transfer to those depots was on 23 Sep.
+    question: How many MC6001LT units did Western invoice from 23 October 2026 onwards, and how much MC6001LT stock did the Western depots hold on 22 October 2026?
+    notes: The demo asks "why did sales stop?" live; Genie answers that in words, which the grader cannot score, so the benchmark checks the two facts behind it.
     paraphrases:
-      - What explains MC600 WEEDICIDE 1LTR sales dropping to zero in the Western region after 23 Oct 2026?
-      - Is the stop in MC6001LT sales in Western since 23 October a stock problem?
+      - MC600 WEEDICIDE 1LTR units invoiced in Western since 23 Oct 2026, and the Western depots' stock of it on 22 Oct 2026?
+      - Since 23 October 2026, how many cases of MC6001LT did Western invoice, and what was the Western depots' MC6001LT stock on 22 October?
     needs_data_until: 2026-10-25
     sql: |
       SELECT
@@ -31,26 +29,11 @@ questions:
            FROM ${fact_sales_stock_daily} f JOIN ${dim_location} l ON f.location_id = l.location_id
            WHERE f.product_id = 'MC6001LT' AND l.province = 'Western' AND f.activity_date >= DATE'2026-10-23')
           AS units_invoiced_since_23_oct,
-        (SELECT ROUND(SUM(f.invoiced_quantity) / 30, 1)
-           FROM ${fact_sales_stock_daily} f JOIN ${dim_location} l ON f.location_id = l.location_id
-           WHERE f.product_id = 'MC6001LT' AND l.province = 'Western'
-             AND f.activity_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22')
-          AS avg_daily_units_before,
         (SELECT SUM(f.stock_quantity)
            FROM ${fact_sales_stock_daily} f JOIN ${dim_location} l ON f.location_id = l.location_id
            WHERE f.product_id = 'MC6001LT' AND l.province = 'Western' AND f.activity_date = DATE'2026-10-22')
-          AS western_depot_stock_22_oct,
-        (SELECT SUM(stock_quantity) FROM ${fact_stock_daily}
-           WHERE product_id = 'MC6001LT' AND location_id = '2010-0090' AND snapshot_date = DATE'2026-10-22')
-          AS hub_stock_22_oct,
-        (SELECT MAX(m.posting_date)
-           FROM ${fact_stock_movements} m JOIN ${dim_location} l ON m.location_id = l.location_id
-           WHERE m.product_id = 'MC6001LT' AND m.movement_type = '315' AND l.province = 'Western')
-          AS last_transfer_to_western_depots
-    check: >-
-      row['units_invoiced_since_23_oct'] == 0 and row['avg_daily_units_before'] > 0
-      and row['western_depot_stock_22_oct'] == 0 and row['hub_stock_22_oct'] > 1000
-      and row['last_transfer_to_western_depots'] == date(2026, 9, 23)
+          AS western_depot_stock_22_oct
+    check: row['units_invoiced_since_23_oct'] == 0 and row['western_depot_stock_22_oct'] == 0
 
   - id: SS02
     category: story
@@ -75,9 +58,9 @@ questions:
   - id: SS03
     category: story
     story: I2 Western buyers switch to the 4-litre pack MC6004LT while MC6001LT is out of stock
-    question: How did daily sales of MC6004LT in Western change after MC6001LT ran out on 23 October 2026?
+    question: How did average daily units of MC6004LT sold in Western change from 23 October 2026 (when MC6001LT ran out), compared with the 30 days before?
     paraphrases:
-      - Did Western customers buy more of the 4-litre MC600 WEEDICIDE pack once the 1-litre pack was out of stock?
+      - Did Western customers buy more of the 4-litre MC600 WEEDICIDE pack per day from 23 Oct 2026, when the 1-litre pack ran out, than in the 30 days before?
       - MC6004LT units sold per day in Western since 23 Oct 2026 versus the 30 days before?
     needs_data_until: 2026-10-25
     sql: |
@@ -96,13 +79,13 @@ questions:
     story: I4 + 6 HGL400ML returns pile up in the returns store
     question: How many HGL400ML units were returned from July to September 2026, and how much did the returns store stock of HGL400ML grow?
     paraphrases:
-      - Compare HGL INSECTICIDE 400ML returns in Q2 of FY2026 with the build-up of its returns store stock.
-      - From 1 Jul to 30 Sep 2026, HGL400ML units returned by customers versus the increase in returns store stock?
+      - In total for July to September 2026, HGL INSECTICIDE 400ML units returned versus the growth of its returns store stock?
+      - HGL400ML units returned by customers from 1 Jul to 30 Sep 2026, versus the increase in returns store stock between 30 Jun and 30 Sep 2026?
     sql: |
       SELECT
-        (SELECT -SUM(returned_quantity) FROM ${fact_sales}
-           WHERE product_id = 'HGL400ML' AND invoice_type = 'ZARE'
-             AND invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30') AS units_returned,
+        (SELECT SUM(quantity) FROM ${fact_stock_movements}
+           WHERE product_id = 'HGL400ML' AND movement_type = '653' AND location_id = '2010-0032'
+             AND posting_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30') AS units_returned,
         (SELECT SUM(CASE WHEN snapshot_date = DATE'2026-09-30' THEN stock_quantity ELSE -stock_quantity END)
            FROM ${fact_stock_daily}
            WHERE product_id = 'HGL400ML' AND location_id = '2010-0032'
@@ -210,7 +193,7 @@ questions:
     category: trend
     question: How many cases of MC6001LT did Western sell per day in the 30 days before 23 October 2026?
     paraphrases:
-      - Before the stock-out, what were daily MC600 WEEDICIDE 1LTR sales in Western (23 Sep to 22 Oct 2026)?
+      - Before the stock-out, what was the average daily number of MC600 WEEDICIDE 1LTR units sold in Western (23 Sep to 22 Oct 2026)?
       - Average daily units of MC6001LT sold in the Western province from 23 September to 22 October 2026?
     needs_data_until: 2026-10-23
     sql: |
@@ -245,7 +228,7 @@ questions:
     question: Which products sold in Western in September 2026 were not stocked at any depot?
     notes: Building solutions, services and raw materials are not held at depots (empty depot stock), which is not a stock-out.
     paraphrases:
-      - In Sep 2026, which Western sales had no depot stock row (products not kept at depots)?
+      - In Sep 2026, which products sold in Western had no depot stock row (products not kept at depots)?
       - List products sold in Western in September 2026 that the depots do not stock.
     sql: |
       SELECT f.product_id, p.product_description
@@ -264,7 +247,7 @@ questions:
       Issues match invoiced units; net units sold are lower because returns and cancellations take goods back
       into the returns store or the hub, not the depot. The difference is by design, not an error.
     paraphrases:
-      - Depot goods issues versus units sold per sales office in Sep 2026.
+      - Goods issues versus units sold for each depot in Sep 2026.
       - For each depot, issued quantity and units sold in September 2026, side by side.
     sql: |
       SELECT l.location_name AS depot, SUM(f.issued_quantity) AS issued_quantity,
