@@ -7,13 +7,36 @@
         "SELECT\n",
         "  CAST(MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) AS revenue_fytd,\n",
         "  CAST(ROUND((MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_fiscal_year_to_date), 0) - 1) * 100, 1) AS DOUBLE) AS revenue_change_pct,\n",
-        "  CAST(ROUND(MAX(gross_margin_pct) FILTER (WHERE is_fiscal_year_to_date), 1) AS DOUBLE) AS margin_pct_fytd\n",
+        "  CAST(ROUND(MAX(gross_margin_pct) FILTER (WHERE is_fiscal_year_to_date), 1) AS DOUBLE) AS margin_pct_fytd,\n",
+        "  CAST(ROUND(MAX(returns_rate_pct) FILTER (WHERE is_fiscal_year_to_date), 2) AS DOUBLE) AS returns_pct_fytd\n",
         "FROM (\n",
-        "  SELECT `is_fiscal_year_to_date`, MEASURE(`net_revenue`) AS `net_revenue`, MEASURE(`gross_margin_pct`) AS `gross_margin_pct`, MEASURE(`active_customers`) AS `active_customers`\n",
+        "  SELECT `is_fiscal_year_to_date`, MEASURE(`net_revenue`) AS `net_revenue`, MEASURE(`gross_margin_pct`) AS `gross_margin_pct`, MEASURE(`returns_rate_pct`) AS `returns_rate_pct`\n",
         "  FROM sales_dev.gold.sales_metrics\n",
         "  WHERE is_fiscal_year_to_date OR is_same_period_last_fiscal_year\n",
         "  GROUP BY ALL\n",
         ") AS q"
+      ]
+    },
+    {
+      "name": "39434e8b",
+      "displayName": "fy_outlook",
+      "queryLines": [
+        "WITH m AS (SELECT * FROM (\n",
+        "  SELECT `month`, `is_current_fiscal_year`, MEASURE(`net_revenue`) AS `net_revenue`\n",
+        "  FROM sales_dev.gold.sales_metrics\n",
+        "  WHERE is_current_fiscal_year OR is_previous_fiscal_year\n",
+        "  GROUP BY ALL\n",
+        ") AS previous),\n",
+        "f AS (SELECT MIN(month_start_date) AS first_month, SUM(forecast_net_revenue) AS rest FROM sales_dev.gold.forecast),\n",
+        "t AS (\n",
+        "  SELECT SUM(CASE WHEN m.is_current_fiscal_year AND m.month < f.first_month THEN m.net_revenue ELSE 0 END)\n",
+        "           + MAX(f.rest) AS fy_forecast,\n",
+        "         SUM(CASE WHEN NOT m.is_current_fiscal_year THEN m.net_revenue END) AS last_fy\n",
+        "  FROM m CROSS JOIN f\n",
+        ")\n",
+        "SELECT CAST(fy_forecast AS DOUBLE) AS fy_forecast,\n",
+        "       CAST(ROUND((fy_forecast / NULLIF(last_fy, 0) - 1) * 100, 1) AS DOUBLE) AS fy_change_pct\n",
+        "FROM t"
       ]
     },
     {
@@ -58,6 +81,119 @@
       ]
     },
     {
+      "name": "0d8802cc",
+      "displayName": "province_growth",
+      "queryLines": [
+        "SELECT *, CASE WHEN change_pct IS NULL THEN 'New' WHEN change_pct >= 0 THEN 'Growing'\n",
+        "               WHEN change_pct >= -5 THEN 'Flat' ELSE 'Falling' END AS trend\n",
+        "FROM (\n",
+        "  SELECT\n",
+        "    province,\n",
+        "    ROUND(CAST(MAX(net_revenue) FILTER (WHERE is_last_complete_month) AS DOUBLE) / 1e6, 1) AS lkr_m,\n",
+        "    ROUND((MAX(net_revenue) FILTER (WHERE is_last_complete_month) / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_last_complete_month), 0) - 1) * 100, 1) AS change_pct\n",
+        "  FROM (\n",
+        "    SELECT `province`, `is_last_complete_month`, MEASURE(`net_revenue`) AS `net_revenue`\n",
+        "    FROM sales_dev.gold.sales_metrics\n",
+        "    WHERE is_last_complete_month OR is_last_complete_month_last_year\n",
+        "    GROUP BY ALL\n",
+        "  ) AS q\n",
+        "  GROUP BY province\n",
+        ") AS previous\n",
+        "WHERE province IS NOT NULL\n",
+        "ORDER BY lkr_m DESC"
+      ]
+    },
+    {
+      "name": "23a5e673",
+      "displayName": "product_group_growth",
+      "queryLines": [
+        "SELECT *, CASE WHEN change_pct IS NULL THEN 'New' WHEN change_pct >= 0 THEN 'Growing'\n",
+        "               WHEN change_pct >= -5 THEN 'Flat' ELSE 'Falling' END AS trend\n",
+        "FROM (\n",
+        "  SELECT\n",
+        "    product_group,\n",
+        "    ROUND(CAST(MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) / 1e6, 1) AS lkr_m,\n",
+        "    ROUND((MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_fiscal_year_to_date), 0) - 1) * 100, 1) AS change_pct\n",
+        "  FROM (\n",
+        "    SELECT `product_group`, `is_fiscal_year_to_date`, MEASURE(`net_revenue`) AS `net_revenue`\n",
+        "    FROM sales_dev.gold.sales_metrics\n",
+        "    WHERE is_fiscal_year_to_date OR is_same_period_last_fiscal_year\n",
+        "    GROUP BY ALL\n",
+        "  ) AS q\n",
+        "  GROUP BY product_group\n",
+        ") AS previous\n",
+        "WHERE product_group IS NOT NULL\n",
+        "ORDER BY lkr_m DESC"
+      ]
+    },
+    {
+      "name": "258160fc",
+      "displayName": "channel_share",
+      "queryLines": [
+        "SELECT channel,\n",
+        "       ROUND(CAST(net_revenue AS DOUBLE) * 100 / SUM(CAST(net_revenue AS DOUBLE)) OVER (), 1) AS share_pct\n",
+        "FROM (\n",
+        "  SELECT `channel`, MEASURE(`net_revenue`) AS `net_revenue`\n",
+        "  FROM sales_dev.gold.sales_metrics\n",
+        "  WHERE is_fiscal_year_to_date\n",
+        "  GROUP BY ALL\n",
+        ") AS previous\n",
+        "WHERE channel IS NOT NULL\n",
+        "ORDER BY share_pct DESC"
+      ]
+    },
+    {
+      "name": "9ad0c8bd",
+      "displayName": "stock_health",
+      "queryLines": [
+        "WITH latest AS (SELECT MAX(snapshot_date) AS d FROM inventory_dev.gold.fact_stock_daily),\n",
+        "p AS (\n",
+        "  SELECT CASE WHEN s.is_stock_out THEN 'Stock-out' WHEN s.is_low_cover THEN 'Low cover'\n",
+        "              WHEN s.days_of_cover > 120 THEN 'Overstock' ELSE 'Healthy' END AS health\n",
+        "  FROM inventory_dev.gold.fact_stock_daily s JOIN latest ON s.snapshot_date = latest.d\n",
+        "  WHERE s.avg_daily_issued_quantity_28d > 0\n",
+        ")\n",
+        "SELECT health, CAST(COUNT(*) AS DOUBLE) AS positions\n",
+        "FROM p\n",
+        "GROUP BY health\n",
+        "ORDER BY CASE health WHEN 'Stock-out' THEN 1 WHEN 'Low cover' THEN 2 WHEN 'Healthy' THEN 3 ELSE 4 END"
+      ]
+    },
+    {
+      "name": "1cf54cab",
+      "displayName": "stock_value_trend",
+      "queryLines": [
+        "SELECT\n",
+        "  month,\n",
+        "  ROUND(CAST(stock_value AS DOUBLE) / 1e6, 1) AS lkr_m\n",
+        "FROM (\n",
+        "  SELECT `month`, MEASURE(`stock_value`) AS `stock_value`\n",
+        "  FROM inventory_dev.gold.inventory_metrics\n",
+        "  WHERE month >= add_months(trunc(current_date(), 'MM'), -11)\n",
+        "  GROUP BY ALL\n",
+        ") AS q"
+      ]
+    },
+    {
+      "name": "85c7f705",
+      "displayName": "top_customers",
+      "queryLines": [
+        "SELECT\n",
+        "  customer_name,\n",
+        "  ROUND(CAST(MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) / 1e6, 2) AS lkr_m,\n",
+        "  CAST(ROUND((MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_fiscal_year_to_date), 0) - 1) * 100, 1) AS DOUBLE) AS change_pct\n",
+        "FROM (\n",
+        "  SELECT `customer_name`, `is_fiscal_year_to_date`, MEASURE(`net_revenue`) AS `net_revenue`\n",
+        "  FROM sales_dev.gold.sales_metrics\n",
+        "  WHERE is_fiscal_year_to_date OR is_same_period_last_fiscal_year\n",
+        "  GROUP BY ALL\n",
+        ") AS q\n",
+        "GROUP BY customer_name\n",
+        "ORDER BY lkr_m DESC NULLS LAST\n",
+        "LIMIT 5"
+      ]
+    },
+    {
       "name": "a3283fde",
       "displayName": "province_mtd",
       "queryLines": [
@@ -93,11 +229,11 @@
         "  FROM inventory_dev.gold.insights i JOIN k ON i.run_id = k.run_id\n",
         "  WHERE i.kind IN ('stock_out_confirmed', 'overstock_total')\n",
         ")\n",
-        "SELECT CASE severity WHEN 1 THEN 'Act now' WHEN 2 THEN 'Notable' ELSE 'Context' END AS priority,\n",
-        "       area, text AS finding,\n",
-        "       ROW_NUMBER() OVER (ORDER BY severity, area, abs(change) DESC) AS row_order\n",
+        "SELECT CAST(severity AS DOUBLE) AS severity,\n",
+        "       CASE severity WHEN 1 THEN 'Act now' WHEN 2 THEN 'Notable' ELSE 'Context' END AS priority,\n",
+        "       area, text AS finding\n",
         "FROM findings\n",
-        "ORDER BY row_order\n",
+        "ORDER BY severity, area, abs(change) DESC\n",
         "LIMIT 10"
       ]
     },
@@ -122,6 +258,35 @@
         "              CAST(stock.ok AS STRING), '/', CAST(stock.n AS STRING), ' checks passed)') AS status\n",
         "FROM sales CROSS JOIN stock CROSS JOIN dates"
       ]
+    },
+    {
+      "name": "d03d5b25",
+      "displayName": "trust_numbers",
+      "queryLines": [
+        "WITH s AS (\n",
+        "  SELECT SUM(CASE WHEN status = 'PASS' THEN 0 ELSE 1 END) AS failed FROM sales_dev.ops.reconciliation\n",
+        "  WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM sales_dev.ops.reconciliation)\n",
+        "),\n",
+        "r AS (\n",
+        "  SELECT SUM(CASE WHEN status = 'PASS' THEN 0 ELSE 1 END) AS failed FROM inventory_dev.ops.reconciliation\n",
+        "  WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM inventory_dev.ops.reconciliation)\n",
+        "),\n",
+        "f AS (\n",
+        "  SELECT SUM(failed) AS failed FROM inventory_dev.ops.stock_rollforward\n",
+        "  WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM inventory_dev.ops.stock_rollforward)\n",
+        "),\n",
+        "x AS (\n",
+        "  SELECT SUM(failed) AS failed FROM inventory_dev.ops.cross_checks\n",
+        "  WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM inventory_dev.ops.cross_checks)\n",
+        "),\n",
+        "d AS (SELECT (SELECT COUNT(*) FROM sales_dev.ops.manifest_dirt) + (SELECT COUNT(*) FROM inventory_dev.ops.manifest_dirt) AS n),\n",
+        "g AS (SELECT max_by(accuracy_pct, checked_ts) AS pct FROM sales_dev.ops.genie_accuracy)\n",
+        "SELECT CAST(COALESCE(s.failed, 0) + COALESCE(r.failed, 0) + COALESCE(f.failed, 0) + COALESCE(x.failed, 0) AS DOUBLE)\n",
+        "         AS checks_failed,\n",
+        "       CAST(d.n AS DOUBLE) AS problems_caught,\n",
+        "       CAST(g.pct AS DOUBLE) AS genie_pct\n",
+        "FROM s CROSS JOIN r CROSS JOIN f CROSS JOIN x CROSS JOIN d CROSS JOIN g"
+      ]
     }
   ],
   "pages": [
@@ -135,8 +300,9 @@
             "multilineTextboxSpec": {
               "lines": [
                 "## Company overview: sales and stock\n",
-                "Fiscal year to date against the same period last year; stock on the latest day.\n",
-                "Ask the Sales & Stock agent (Genie) for anything not on this page."
+                "Fiscal year to date against the same period last year; stock on the latest day. Ask the Sales & Stock agent (Genie) for anything not on this page.\n",
+                "\n",
+                "**Colour key:** <span style=\"color:#00A972\">● On track</span> &nbsp; <span style=\"color:#FFAB00\">● Watch</span> &nbsp; <span style=\"color:#FF3621\">● Act now</span> &nbsp; <span style=\"color:#077A9D\">● Actual figure (no target)</span> &nbsp; <span style=\"color:#8BCAE7\">● Forecast</span> &nbsp; <span style=\"color:#919191\">● Likely range / context</span>"
               ]
             }
           },
@@ -144,7 +310,7 @@
             "x": 0,
             "y": 0,
             "width": 6,
-            "height": 2
+            "height": 3
           }
         },
         {
@@ -213,7 +379,7 @@
           },
           "position": {
             "x": 0,
-            "y": 2,
+            "y": 3,
             "width": 6,
             "height": 3
           }
@@ -242,7 +408,7 @@
               "encodings": {
                 "value": {
                   "fieldName": "max(revenue_fytd)",
-                  "displayName": "Net revenue",
+                  "displayName": "Net revenue, fiscal year to date (LKR)",
                   "format": {
                     "type": "number-plain",
                     "abbreviation": "compact",
@@ -250,18 +416,35 @@
                       "type": "max",
                       "places": 1
                     }
+                  },
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-1000000000000"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 1
+                        }
+                      }
+                    ]
                   }
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Net revenue"
+                "title": "Net revenue, fiscal year to date (LKR)"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 5,
+            "y": 6,
             "width": 2,
             "height": 3
           }
@@ -290,18 +473,63 @@
               "encodings": {
                 "value": {
                   "fieldName": "max(revenue_change_pct)",
-                  "displayName": "vs same period last year (%)"
+                  "displayName": "vs same period last year (%)",
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-5"
+                          },
+                          "operator": "<"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": "<"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-1000000"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      }
+                    ]
+                  }
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "vs same period last year (%)"
+                "title": "vs same period last year (%)",
+                "showDescription": true,
+                "description": "Green 0% or more, amber 0 to -5%, red below -5%"
               }
             }
           },
           "position": {
             "x": 2,
-            "y": 5,
+            "y": 6,
             "width": 2,
             "height": 3
           }
@@ -330,18 +558,63 @@
               "encodings": {
                 "value": {
                   "fieldName": "max(margin_pct_fytd)",
-                  "displayName": "Gross margin"
+                  "displayName": "Gross margin, fiscal year to date (%)",
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "15"
+                          },
+                          "operator": "<"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "20"
+                          },
+                          "operator": "<"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-1000"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      }
+                    ]
+                  }
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Gross margin"
+                "title": "Gross margin, fiscal year to date (%)",
+                "showDescription": true,
+                "description": "Green 20% or more (working target), amber 15-20%, red below 15%"
               }
             }
           },
           "position": {
             "x": 4,
-            "y": 5,
+            "y": 6,
             "width": 2,
             "height": 3
           }
@@ -378,6 +651,23 @@
                       "type": "max",
                       "places": 1
                     }
+                  },
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-1000000000000"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 1
+                        }
+                      }
+                    ]
                   }
                 }
               },
@@ -389,7 +679,7 @@
           },
           "position": {
             "x": 0,
-            "y": 8,
+            "y": 9,
             "width": 2,
             "height": 3
           }
@@ -418,18 +708,76 @@
               "encodings": {
                 "value": {
                   "fieldName": "max(days_of_cover)",
-                  "displayName": "Days of cover"
+                  "displayName": "Days of cover",
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "7"
+                          },
+                          "operator": "<"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "15"
+                          },
+                          "operator": "<"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "120"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-1"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      }
+                    ]
+                  }
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Days of cover"
+                "title": "Days of cover",
+                "showDescription": true,
+                "description": "Green 15-120 days, amber 7-15 or over 120, red under 7"
               }
             }
           },
           "position": {
             "x": 2,
-            "y": 8,
+            "y": 9,
             "width": 2,
             "height": 3
           }
@@ -458,18 +806,63 @@
               "encodings": {
                 "value": {
                   "fieldName": "max(stock_out_positions)",
-                  "displayName": "Stock-outs today"
+                  "displayName": "Stock-outs today",
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "2.5"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0.5"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-1"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      }
+                    ]
+                  }
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Stock-outs today"
+                "title": "Stock-outs today",
+                "showDescription": true,
+                "description": "Green none, amber 1-2, red 3 or more"
               }
             }
           },
           "position": {
             "x": 4,
-            "y": 8,
+            "y": 9,
             "width": 2,
             "height": 3
           }
@@ -477,6 +870,243 @@
         {
           "widget": {
             "name": "5da888fd",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "39434e8b",
+                  "fields": [
+                    {
+                      "name": "max(fy_forecast)",
+                      "expression": "MAX(`fy_forecast`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(fy_forecast)",
+                  "displayName": "Fiscal year forecast, April to March (LKR)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  },
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-1000000000000"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 5
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Fiscal year forecast, April to March (LKR)",
+                "showDescription": true,
+                "description": "Actual months so far + forecast to March"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 12,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "5e367b83",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "39434e8b",
+                  "fields": [
+                    {
+                      "name": "max(fy_change_pct)",
+                      "expression": "MAX(`fy_change_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(fy_change_pct)",
+                  "displayName": "Forecast vs last fiscal year (%)",
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-5"
+                          },
+                          "operator": "<"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0"
+                          },
+                          "operator": "<"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-1000000"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Forecast vs last fiscal year (%)",
+                "showDescription": true,
+                "description": "Green 0% or more, amber 0 to -5%, red below -5%"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 12,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "cf6da162",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "44ec0be9",
+                  "fields": [
+                    {
+                      "name": "max(returns_pct_fytd)",
+                      "expression": "MAX(`returns_pct_fytd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(returns_pct_fytd)",
+                  "displayName": "Returns rate, fiscal year to date (%)",
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "4"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "2"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-1"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Returns rate, fiscal year to date (%)",
+                "showDescription": true,
+                "description": "Green under 2%, amber 2-4%, red over 4%"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 12,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "ee8d601a",
             "queries": [
               {
                 "name": "main_query",
@@ -494,6 +1124,10 @@
                     {
                       "name": "finding",
                       "expression": "`finding`"
+                    },
+                    {
+                      "name": "severity",
+                      "expression": "`severity`"
                     }
                   ],
                   "disaggregated": true
@@ -536,7 +1170,34 @@
                     "allowHTML": false,
                     "highlightLinks": false,
                     "useMonospaceFont": false,
-                    "preserveWhitespace": false
+                    "preserveWhitespace": false,
+                    "cellFormat": {
+                      "default": {
+                        "foregroundColor": "#919191"
+                      },
+                      "rules": [
+                        {
+                          "if": {
+                            "column": "severity",
+                            "fn": "<",
+                            "literal": "1.5"
+                          },
+                          "value": {
+                            "foregroundColor": "#FF3621"
+                          }
+                        },
+                        {
+                          "if": {
+                            "column": "severity",
+                            "fn": "<",
+                            "literal": "2.5"
+                          },
+                          "value": {
+                            "foregroundColor": "#FFAB00"
+                          }
+                        }
+                      ]
+                    }
                   },
                   {
                     "fieldName": "area",
@@ -592,25 +1253,82 @@
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
                     "defaultColumnWidth": 700
+                  },
+                  {
+                    "fieldName": "severity",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100003,
+                    "title": "Level",
+                    "displayName": "severity",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0",
+                    "cellFormat": {
+                      "default": {
+                        "foregroundColor": "#919191"
+                      },
+                      "rules": [
+                        {
+                          "if": {
+                            "column": "severity",
+                            "fn": "<",
+                            "literal": "1.5"
+                          },
+                          "value": {
+                            "foregroundColor": "#FF3621"
+                          }
+                        },
+                        {
+                          "if": {
+                            "column": "severity",
+                            "fn": "<",
+                            "literal": "2.5"
+                          },
+                          "value": {
+                            "foregroundColor": "#FFAB00"
+                          }
+                        }
+                      ]
+                    }
                   }
                 ]
               },
               "frame": {
                 "showTitle": true,
-                "title": "What needs attention"
+                "title": "What needs attention (latest daily insights)",
+                "showDescription": true,
+                "description": "Act now in red, notable in amber, context in grey"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 11,
+            "y": 15,
             "width": 6,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "5e367b83",
+            "name": "7e82b645",
             "queries": [
               {
                 "name": "main_query",
@@ -655,27 +1373,636 @@
                 "color": {
                   "fieldName": "series",
                   "scale": {
-                    "type": "categorical"
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Actual",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 1
+                        }
+                      },
+                      {
+                        "value": "Forecast",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 5
+                        }
+                      },
+                      {
+                        "value": "Forecast low",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 9
+                        }
+                      },
+                      {
+                        "value": "Forecast high",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 9
+                        }
+                      }
+                    ]
                   },
                   "displayName": "Series"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Net revenue by month and forecast to March (LKR m)"
+                "title": "Net revenue by month and forecast to March (LKR m)",
+                "showDescription": true,
+                "description": "Blue actual, light blue forecast, grey the likely range"
               }
             }
           },
           "position": {
             "x": 0,
-            "y": 17,
+            "y": 21,
             "width": 3,
             "height": 6
           }
         },
         {
           "widget": {
-            "name": "cf6da162",
+            "name": "745b6902",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "0d8802cc",
+                  "fields": [
+                    {
+                      "name": "province",
+                      "expression": "`province`"
+                    },
+                    {
+                      "name": "sum(lkr_m)",
+                      "expression": "SUM(`lkr_m`)"
+                    },
+                    {
+                      "name": "trend",
+                      "expression": "`trend`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "province",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Province"
+                },
+                "y": {
+                  "fieldName": "sum(lkr_m)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "LKR m"
+                },
+                "color": {
+                  "fieldName": "trend",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Growing",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      },
+                      {
+                        "value": "Flat",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      },
+                      {
+                        "value": "Falling",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "value": "New",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 1
+                        }
+                      }
+                    ]
+                  },
+                  "displayName": "vs last year"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Net revenue by province, last complete month (LKR m)",
+                "showDescription": true,
+                "description": "Colour = change vs the same month last year (green growing, amber 0 to -5%, red falling)"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 21,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "5f017fab",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "23a5e673",
+                  "fields": [
+                    {
+                      "name": "product_group",
+                      "expression": "`product_group`"
+                    },
+                    {
+                      "name": "sum(lkr_m)",
+                      "expression": "SUM(`lkr_m`)"
+                    },
+                    {
+                      "name": "trend",
+                      "expression": "`trend`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "product_group",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Product group"
+                },
+                "y": {
+                  "fieldName": "sum(lkr_m)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "LKR m"
+                },
+                "color": {
+                  "fieldName": "trend",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Growing",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      },
+                      {
+                        "value": "Flat",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      },
+                      {
+                        "value": "Falling",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "value": "New",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 1
+                        }
+                      }
+                    ]
+                  },
+                  "displayName": "vs last year"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Net revenue by product group, fiscal year to date (LKR m)",
+                "showDescription": true,
+                "description": "Colour = change vs the same period last year"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 27,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "5a4b3876",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "258160fc",
+                  "fields": [
+                    {
+                      "name": "channel",
+                      "expression": "`channel`"
+                    },
+                    {
+                      "name": "sum(share_pct)",
+                      "expression": "SUM(`share_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "channel",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Channel"
+                },
+                "y": {
+                  "fieldName": "sum(share_pct)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Share %"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Channel share of net revenue, fiscal year to date (%)",
+                "showDescription": true,
+                "description": "Actual figures, no target"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 27,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "801c081e",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "9ad0c8bd",
+                  "fields": [
+                    {
+                      "name": "health",
+                      "expression": "`health`"
+                    },
+                    {
+                      "name": "sum(positions)",
+                      "expression": "SUM(`positions`)"
+                    },
+                    {
+                      "name": "health",
+                      "expression": "`health`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "health",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "State"
+                },
+                "y": {
+                  "fieldName": "sum(positions)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Positions"
+                },
+                "color": {
+                  "fieldName": "health",
+                  "scale": {
+                    "type": "categorical",
+                    "mappings": [
+                      {
+                        "value": "Stock-out",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "value": "Low cover",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 6
+                        }
+                      },
+                      {
+                        "value": "Healthy",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      },
+                      {
+                        "value": "Overstock",
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      }
+                    ]
+                  },
+                  "displayName": "State"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Stock health today (stock positions that sell)",
+                "showDescription": true,
+                "description": "Red stock-out, rose under 7 days of cover, green healthy, amber over 120 days (money tied up)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 33,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "2236cf08",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "1cf54cab",
+                  "fields": [
+                    {
+                      "name": "monthly(month)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `month`)"
+                    },
+                    {
+                      "name": "sum(lkr_m)",
+                      "expression": "SUM(`lkr_m`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(month)",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Month"
+                },
+                "y": {
+                  "fieldName": "sum(lkr_m)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "LKR m"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Stock value at each month end (LKR m)",
+                "showDescription": true,
+                "description": "Money held in stock, at standard cost"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 33,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "ee16b2cf",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "85c7f705",
+                  "fields": [
+                    {
+                      "name": "customer_name",
+                      "expression": "`customer_name`"
+                    },
+                    {
+                      "name": "lkr_m",
+                      "expression": "`lkr_m`"
+                    },
+                    {
+                      "name": "change_pct",
+                      "expression": "`change_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "customer_name",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": "Customer",
+                    "displayName": "customer_name",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "lkr_m",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100001,
+                    "title": "LKR m",
+                    "displayName": "lkr_m",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.00"
+                  },
+                  {
+                    "fieldName": "change_pct",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "title": "vs last year %",
+                    "displayName": "change_pct",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0",
+                    "cellFormat": {
+                      "default": {
+                        "foregroundColor": "#919191"
+                      },
+                      "rules": [
+                        {
+                          "if": {
+                            "column": "change_pct",
+                            "fn": "<",
+                            "literal": "-5"
+                          },
+                          "value": {
+                            "foregroundColor": "#FF3621"
+                          }
+                        },
+                        {
+                          "if": {
+                            "column": "change_pct",
+                            "fn": "<",
+                            "literal": "0"
+                          },
+                          "value": {
+                            "foregroundColor": "#FFAB00"
+                          }
+                        },
+                        {
+                          "if": {
+                            "column": "change_pct",
+                            "fn": ">",
+                            "literal": "-1000000"
+                          },
+                          "value": {
+                            "foregroundColor": "#00A972"
+                          }
+                        }
+                      ]
+                    }
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Top 5 customers, fiscal year to date",
+                "showDescription": true,
+                "description": "Change vs the same period last year in green, amber or red"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 39,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "ad318f26",
             "queries": [
               {
                 "name": "main_query",
@@ -799,7 +2126,7 @@
                     "highlightLinks": false,
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
-                    "numberFormat": "0,0.0"
+                    "numberFormat": "0,0"
                   },
                   {
                     "fieldName": "stock_out_days",
@@ -827,7 +2154,24 @@
                     "highlightLinks": false,
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
-                    "numberFormat": "0,0.0"
+                    "numberFormat": "0",
+                    "cellFormat": {
+                      "default": {
+                        "foregroundColor": "#00A972"
+                      },
+                      "rules": [
+                        {
+                          "if": {
+                            "column": "stock_out_days",
+                            "fn": ">",
+                            "literal": "0.5"
+                          },
+                          "value": {
+                            "foregroundColor": "#FF3621"
+                          }
+                        }
+                      ]
+                    }
                   },
                   {
                     "fieldName": "days_of_cover",
@@ -855,21 +2199,293 @@
                     "highlightLinks": false,
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
-                    "numberFormat": "0,0.0"
+                    "numberFormat": "0,0.0",
+                    "cellFormat": {
+                      "default": {
+                        "foregroundColor": "#00A972"
+                      },
+                      "rules": [
+                        {
+                          "if": {
+                            "column": "days_of_cover",
+                            "fn": "<",
+                            "literal": "7"
+                          },
+                          "value": {
+                            "foregroundColor": "#FF3621"
+                          }
+                        },
+                        {
+                          "if": {
+                            "column": "days_of_cover",
+                            "fn": "<",
+                            "literal": "15"
+                          },
+                          "value": {
+                            "foregroundColor": "#FFAB00"
+                          }
+                        },
+                        {
+                          "if": {
+                            "column": "days_of_cover",
+                            "fn": ">",
+                            "literal": "120"
+                          },
+                          "value": {
+                            "foregroundColor": "#FFAB00"
+                          }
+                        }
+                      ]
+                    }
                   }
                 ]
               },
               "frame": {
                 "showTitle": true,
-                "title": "Sales and depot stock by province, month to date"
+                "title": "Sales and depot stock by province, month to date",
+                "showDescription": true,
+                "description": "Red stock-out days or cover under 7 days; amber cover 7-15 or over 120 days"
               }
             }
           },
           "position": {
             "x": 3,
-            "y": 17,
+            "y": 39,
             "width": 3,
             "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "76fe5f5e",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Can we trust these numbers?\n",
+                "Every day the pipeline checks the source files, quarantines bad rows and reconciles the results with the source totals. Genie's answers are scored every week against known correct answers."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 45,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "2d3b0c24",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d03d5b25",
+                  "fields": [
+                    {
+                      "name": "max(checks_failed)",
+                      "expression": "MAX(`checks_failed`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(checks_failed)",
+                  "displayName": "Data checks failed (latest runs)",
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "0.5"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-1"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Data checks failed (latest runs)",
+                "showDescription": true,
+                "description": "Sales reconciliation + 3 stock checks. Green none, red any"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 47,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "f2b0c5ec",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d03d5b25",
+                  "fields": [
+                    {
+                      "name": "max(problems_caught)",
+                      "expression": "MAX(`problems_caught`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(problems_caught)",
+                  "displayName": "Problems caught in the source files",
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-1"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 1
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Problems caught in the source files",
+                "showDescription": true,
+                "description": "Bad rows fixed or quarantined before they reach the numbers"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 47,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "1216d439",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d03d5b25",
+                  "fields": [
+                    {
+                      "name": "max(genie_pct)",
+                      "expression": "MAX(`genie_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(genie_pct)",
+                  "displayName": "Genie accuracy, latest weekly check (%)",
+                  "style": {
+                    "rules": [
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "80"
+                          },
+                          "operator": "<"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 4
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "90"
+                          },
+                          "operator": "<"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 2
+                        }
+                      },
+                      {
+                        "condition": {
+                          "operand": {
+                            "type": "data-value",
+                            "value": "-1"
+                          },
+                          "operator": ">"
+                        },
+                        "color": {
+                          "themeColorType": "visualizationColors",
+                          "position": 3
+                        }
+                      }
+                    ]
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Genie accuracy, latest weekly check (%)",
+                "showDescription": true,
+                "description": "Sales agent. Green 90% or more, amber 80-90%, red below 80%"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 47,
+            "width": 2,
+            "height": 3
           }
         }
       ],

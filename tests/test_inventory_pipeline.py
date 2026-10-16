@@ -492,12 +492,14 @@ def test_every_dashboard_dataset_runs(world, spark, cfg):
     from sales_insights.insights import job
     from sales_insights.pipeline import reconcile as rc
     from sales_insights.semantic import dashboards as db
+    from sales_insights.semantic import genie_health as gh
     from sales_insights.semantic import metric_views as mvs
 
     sales_lake, stock_lake = world["sales_lake"], world["lake"]
     rc.run_reconcile(spark, cfg, lake=sales_lake)  # ops.reconciliation (sales)
     job.run(spark, cfg, lake=sales_lake)  # gold.insights + gold.forecast (sales)
     job.run_stock(spark, world["cfg"], lake=stock_lake, sales_lake=sales_lake)  # gold.insights (stock)
+    gh.record(spark, sales_lake, "test-eval", gh.Score(good=57, total=60), 90.0)  # ops.genie_accuracy (weekly check)
     tables = db.lake_names(sales_lake, stock_lake)
 
     results = {}
@@ -535,6 +537,10 @@ def test_every_dashboard_dataset_runs(world, spark, cfg):
         stock["stock_out_positions"] == daily.filter((F.col("snapshot_date") == last) & F.col("is_stock_out")).count()
     )
     assert "checks" in results[("sales", "trust")][1][0]["status"]
+    trust = results[("ceo", "trust_numbers")][1][0]
+    assert (trust["checks_failed"], trust["genie_pct"]) == (0, 95.0) and trust["problems_caught"] > 0
+    health = {r["health"]: r["positions"] for r in results[("ceo", "stock_health")][1]}
+    assert health.get("Stock-out", 0) == stock["stock_out_positions"] and health["Healthy"] > 0
 
 
 def test_a_lost_movement_fails_the_checks(world, spark):

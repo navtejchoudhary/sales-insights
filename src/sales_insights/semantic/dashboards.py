@@ -57,6 +57,8 @@ EXTRA_TABLES = {
     "stock_reconciliation": ("inventory", "ops", "reconciliation"),
     "stock_rollforward": ("inventory", "ops", "stock_rollforward"),
     "stock_cross_checks": ("inventory", "ops", "cross_checks"),
+    "stock_manifest_dirt": ("inventory", "ops", "manifest_dirt"),
+    "sales_genie_accuracy": ("sales", "ops", "genie_accuracy"),
 }
 
 NameFn = Callable[[str, str, str], str]  # (area, layer, table) -> SQL name
@@ -102,7 +104,7 @@ def datasets(spec: dict, folder: Path = DASHBOARDS) -> dict[str, dict]:
     return out
 
 
-def _shape(ds: dict, inner: str) -> str:
+def _shape(ds: dict, inner: str, tables: dict[str, str]) -> str:
     """Apply select / group_by / order_by / limit / then around the metric view answer."""
     sql = inner
     if any(k in ds for k in ("select", "group_by", "order_by", "limit")):
@@ -116,7 +118,8 @@ def _shape(ds: dict, inner: str) -> str:
             parts.append(f"LIMIT {int(ds['limit'])}")
         sql = "\n".join(parts)
     if ds.get("then"):
-        sql = ds["then"].strip().replace("{previous}", f"(\n{_indent(sql)}\n) AS previous")
+        then = Template(ds["then"]).substitute(tables).strip()  # may read other tables, e.g. ${sales_forecast}
+        sql = then.replace("{previous}", f"(\n{_indent(sql)}\n) AS previous")
     return sql
 
 
@@ -144,7 +147,7 @@ def databricks_sql(ds: dict, tables: dict[str, str]) -> str:
         inner.append(f"WHERE {ds['where']}")
     if fields:
         inner.append("GROUP BY ALL")
-    return _shape(ds, "\n".join(inner))
+    return _shape(ds, "\n".join(inner), tables)
 
 
 def local_sql(ds: dict, tables: dict[str, str]) -> str:
@@ -153,7 +156,8 @@ def local_sql(ds: dict, tables: dict[str, str]) -> str:
         return Template(ds["sql"]).substitute(tables).strip()
     mv = mvs.load(ds["metric_view"])
     _check_request(ds, mv)
-    return _shape(ds, mvs.compile_query(mv, tables, ds.get("fields", []), ds["measures"], ds.get("where")))
+    compiled = mvs.compile_query(mv, tables, ds.get("fields", []), ds["measures"], ds.get("where"))
+    return _shape(ds, compiled, tables)
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +194,32 @@ def _field(name: str, agg: str | None = None, temporal: str | None = None) -> di
     return {"name": name, "expression": f"`{name}`"}
 
 
+# Colours with a fixed meaning (docs/access.md "Colours"): status green / amber / red (+ rose for "serious"),
+# facts blue, forecast light blue, ranges grey. Charts and counters use the dashboard theme's palette by
+# position (Databricks default theme), tables and text take the same colours as hex.
+PALETTE = {  # name: (theme position, hex)
+    "blue": (1, "#077A9D"), "amber": (2, "#FFAB00"), "green": (3, "#00A972"), "red": (4, "#FF3621"),
+    "lightblue": (5, "#8BCAE7"), "rose": (6, "#AB4057"), "grey": (9, "#919191"),
+}  # fmt: skip
+OPERATORS = ("<", ">")  # the comparisons Databricks' exported dashboards use; rules apply first match first
+
+
+def _theme(color: str) -> dict:
+    return {"themeColorType": "visualizationColors", "position": PALETTE[color][0]}
+
+
+def _rules(rules: list[list]) -> list[tuple[str, str, str]]:
+    """[["<", -5, "red"], ...] -> checked (operator, literal, colour) triples."""
+    out = []
+    for op, value, color in rules:
+        if op not in OPERATORS or color not in PALETTE:
+            raise ValueError(
+                f"colour rule {op} {value} {color}: operator must be < or >, colour one of {list(PALETTE)}"
+            )
+        out.append((op, str(value), color))
+    return out
+
+
 def _query(dataset_id: str, fields: list[dict], disaggregated: bool) -> list[dict]:
     return [
         {"name": "main_query", "query": {"datasetName": dataset_id, "fields": fields, "disaggregated": disaggregated}}
@@ -218,6 +248,13 @@ def _column(c: dict, i: int) -> dict:
         col["numberFormat"] = c.get("format", "0,0.0")
     if c.get("wide"):
         col["defaultColumnWidth"] = 700
+    if c.get("color_by"):  # colour this column's text from a numeric column of the same row (first match wins)
+        by = c["color_by"]
+        col["cellFormat"] = {
+            "default": {"foregroundColor": PALETTE[by.get("default", "grey")][1]},
+            "rules": [{"if": {"column": by["column"], "fn": op, "literal": lit}, "value": {"foregroundColor": PALETTE[color][1]}}
+                      for op, lit, color in _rules(by["rules"])],
+        }  # fmt: skip
     return col
 
 
@@ -228,6 +265,10 @@ def _widget(kind: str, w: dict, ds_ids: dict[str, str], name: str) -> dict:
         if w.get("format") == "compact":
             value["format"] = {"type": "number-plain", "abbreviation": "compact",
                                "decimalPlaces": {"type": "max", "places": 1}}  # fmt: skip
+        if w.get("status"):  # traffic light on the number, most severe rule first (first match wins)
+            value["style"] = {"rules": [
+                {"condition": {"operand": {"type": "data-value", "value": lit}, "operator": op}, "color": _theme(color)}
+                for op, lit, color in _rules(w["status"])]}  # fmt: skip
         spec = {"version": 2, "widgetType": "counter", "encodings": {"value": value}}
         queries = _query(ds, [_field(w["value"], "max")], False)
     elif kind == "table":
@@ -248,7 +289,10 @@ def _widget(kind: str, w: dict, ds_ids: dict[str, str], name: str) -> dict:
         if w.get("color"):
             cf = _field(w["color"]["field"])
             fields.append(cf)
-            enc["color"] = {"fieldName": cf["name"], "scale": {"type": "categorical"},
+            scale = {"type": "categorical"}
+            if w["color"].get("colors"):  # fixed colour per value, e.g. Growing -> green
+                scale["mappings"] = [{"value": v, "color": _theme(c)} for v, c in w["color"]["colors"].items()]
+            enc["color"] = {"fieldName": cf["name"], "scale": scale,
                             "displayName": w["color"].get("title", w["color"]["field"])}  # fmt: skip
         spec = {"version": 3, "widgetType": kind, "encodings": enc}
         queries = _query(ds, fields, False)
