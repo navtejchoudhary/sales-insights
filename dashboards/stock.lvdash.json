@@ -1,6 +1,30 @@
 {
   "datasets": [
     {
+      "name": "90a6c9c8",
+      "displayName": "province_values",
+      "queryLines": [
+        "SELECT province FROM (\n",
+        "  SELECT 'All' AS province, 0 AS sort_order\n",
+        "  UNION ALL\n",
+        "  SELECT DISTINCT province, 1 AS sort_order FROM inventory_dev.gold.dim_location WHERE province IS NOT NULL\n",
+        ") AS v\n",
+        "ORDER BY sort_order, province"
+      ]
+    },
+    {
+      "name": "0d453175",
+      "displayName": "product_group_values",
+      "queryLines": [
+        "SELECT product_group FROM (\n",
+        "  SELECT 'All' AS product_group, 0 AS sort_order\n",
+        "  UNION ALL\n",
+        "  SELECT DISTINCT product_group_name, 1 AS sort_order FROM sales_dev.gold.dim_product WHERE product_group_name IS NOT NULL\n",
+        ") AS v\n",
+        "ORDER BY sort_order, product_group"
+      ]
+    },
+    {
       "name": "4da38200",
       "displayName": "stock_today",
       "queryLines": [
@@ -14,7 +38,40 @@
         "FROM (\n",
         "  SELECT MEASURE(`stock_value`) AS `stock_value`, MEASURE(`in_transit`) AS `in_transit`, MEASURE(`days_of_cover`) AS `days_of_cover`, MEASURE(`stock_out_positions`) AS `stock_out_positions`, MEASURE(`low_cover_positions`) AS `low_cover_positions`, MEASURE(`stock_out_rate_pct`) AS `stock_out_rate_pct`\n",
         "  FROM inventory_dev.gold.inventory_metrics\n",
+        "  WHERE (:province = 'All' OR province = :province) AND (:product_group = 'All' OR product_group = :product_group)\n",
         ") AS q"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -25,11 +82,43 @@
         "FROM (\n",
         "  SELECT `snapshot_date`, MEASURE(`stock_out_positions`) AS `stock_out_positions`, MEASURE(`low_cover_positions`) AS `low_cover_positions`\n",
         "  FROM inventory_dev.gold.inventory_metrics\n",
-        "  WHERE is_current_fiscal_year\n",
+        "  WHERE (is_current_fiscal_year) AND (:province = 'All' OR province = :province) AND (:product_group = 'All' OR product_group = :product_group)\n",
         "  GROUP BY ALL\n",
         ") AS previous\n",
         "LATERAL VIEW stack(2, 'Stock-outs', CAST(stock_out_positions AS DOUBLE),\n",
         "                      'Low cover (under 7 days)', CAST(low_cover_positions AS DOUBLE)) s AS series, positions"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -43,8 +132,41 @@
         "FROM (\n",
         "  SELECT `location`, `location_type`, MEASURE(`stock_value`) AS `stock_value`\n",
         "  FROM inventory_dev.gold.inventory_metrics\n",
+        "  WHERE (:province = 'All' OR province = :province) AND (:product_group = 'All' OR product_group = :product_group)\n",
         "  GROUP BY ALL\n",
         ") AS q"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -58,9 +180,41 @@
         "FROM (\n",
         "  SELECT `product_group`, MEASURE(`days_of_cover`) AS `days_of_cover`, MEASURE(`stock_out_positions`) AS `stock_out_positions`\n",
         "  FROM inventory_dev.gold.inventory_metrics\n",
-        "  WHERE location_type = 'Depot'\n",
+        "  WHERE (location_type = 'Depot') AND (:province = 'All' OR province = :province) AND (:product_group = 'All' OR product_group = :product_group)\n",
         "  GROUP BY ALL\n",
         ") AS q"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -73,9 +227,41 @@
         "FROM (\n",
         "  SELECT `location`, MEASURE(`stock_out_days`) AS `stock_out_days`\n",
         "  FROM inventory_dev.gold.inventory_metrics\n",
-        "  WHERE is_month_to_date AND location_type = 'Depot'\n",
+        "  WHERE (is_month_to_date AND location_type = 'Depot') AND (:province = 'All' OR province = :province) AND (:product_group = 'All' OR product_group = :product_group)\n",
         "  GROUP BY ALL\n",
         ") AS q"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -131,7 +317,8 @@
               "lines": [
                 "## Stock today\n",
                 "Latest stock date across all depots and stores. Days of cover = stock / average daily issues of the\n",
-                "last 28 days. Low cover = under 7 days; overstock = over 120 days."
+                "last 28 days. Low cover = under 7 days; overstock = over 120 days.\n",
+                "Filters (top left: Province, Product group) apply to every chart except What needs attention, which is company-wide."
               ]
             }
           },
@@ -592,7 +779,7 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "What needs attention (latest daily stock insights)"
+                "title": "What needs attention (latest daily stock insights, company-wide)"
               }
             }
           },
@@ -865,6 +1052,279 @@
         }
       ],
       "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "96d30d58",
+      "displayName": "Global filters",
+      "layout": [
+        {
+          "widget": {
+            "name": "96112fd0",
+            "queries": [
+              {
+                "name": "dashboards/stock/datasets/90a6c9c8_province",
+                "query": {
+                  "datasetName": "90a6c9c8",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "province",
+                      "expression": "`province`"
+                    },
+                    {
+                      "name": "province_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "parameter_dashboards/stock/datasets/4da38200_province",
+                "query": {
+                  "datasetName": "4da38200",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/stock/datasets/9fa8d3d0_province",
+                "query": {
+                  "datasetName": "9fa8d3d0",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/stock/datasets/fa168f6b_province",
+                "query": {
+                  "datasetName": "fa168f6b",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/stock/datasets/449e4e31_province",
+                "query": {
+                  "datasetName": "449e4e31",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/stock/datasets/0903d1c7_province",
+                "query": {
+                  "datasetName": "0903d1c7",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "province",
+                    "queryName": "dashboards/stock/datasets/90a6c9c8_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/stock/datasets/4da38200_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/stock/datasets/9fa8d3d0_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/stock/datasets/fa168f6b_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/stock/datasets/449e4e31_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/stock/datasets/0903d1c7_province"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Province",
+                "showDescription": true,
+                "description": "Province of the depot or store"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "75abc4ca",
+            "queries": [
+              {
+                "name": "dashboards/stock/datasets/0d453175_product_group",
+                "query": {
+                  "datasetName": "0d453175",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "product_group",
+                      "expression": "`product_group`"
+                    },
+                    {
+                      "name": "product_group_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "parameter_dashboards/stock/datasets/4da38200_product_group",
+                "query": {
+                  "datasetName": "4da38200",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/stock/datasets/9fa8d3d0_product_group",
+                "query": {
+                  "datasetName": "9fa8d3d0",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/stock/datasets/fa168f6b_product_group",
+                "query": {
+                  "datasetName": "fa168f6b",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/stock/datasets/449e4e31_product_group",
+                "query": {
+                  "datasetName": "449e4e31",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/stock/datasets/0903d1c7_product_group",
+                "query": {
+                  "datasetName": "0903d1c7",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "product_group",
+                    "queryName": "dashboards/stock/datasets/0d453175_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/stock/datasets/4da38200_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/stock/datasets/9fa8d3d0_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/stock/datasets/fa168f6b_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/stock/datasets/449e4e31_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/stock/datasets/0903d1c7_product_group"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Product group",
+                "showDescription": true,
+                "description": "e.g. WEEDICIDE, INSECTICIDE"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS"
     }
   ]
 }

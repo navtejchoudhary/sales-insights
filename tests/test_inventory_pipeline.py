@@ -546,17 +546,21 @@ def test_every_dashboard_dataset_runs(world, spark, cfg):
     health = {r["health"]: r["positions"] for r in results[("ceo", "stock_health")][1]}
     assert health.get("Stock-out", 0) == stock["stock_out_positions"] and health["Healthy"] > 0
 
-    # Filter test: "All" = the metric view's fiscal year to date; one province gives a smaller, matching total
-    test_spec = db.load("filter_test")
-    all_rev = results[("filter_test", "headline")][1][0]["net_revenue"]
-    fytd = mvs.query(spark, sales_lake, [], ["net_revenue"], where="is_fiscal_year_to_date").collect()[0]
-    assert round(all_rev, 2) == round(float(fytd["net_revenue"]), 2)
-    assert results[("filter_test", "province_values")][1][0]["province"] == "All"
-    western = {"province": "Western", "product_group": "All"}
-    ds = db.datasets(test_spec)
-    one = spark.sql(db.local_sql(ds["headline"], tables, western)).collect()[0]["net_revenue"]
-    by_prov = {r["province"]: r["lkr_m"] for r in spark.sql(db.local_sql(ds["by_province"], tables, western)).collect()}
-    assert 0 < one < all_rev and set(by_prov) == {"Western"} and abs(by_prov["Western"] - one / 1e6) <= 0.05
+    # Global filters: "All" keeps every row; one province gives smaller totals, and the stock health chart
+    # (plain SQL) counts the same stock-outs as the stock tiles (metric view) for that province
+    assert results[("ceo", "province_values")][1][0]["province"] == "All"
+    ceo = db.datasets(db.load("ceo"))
+    west = {"province": "Western", "product_group": "All"}
+    fytd_all = results[("ceo", "sales_fytd")][1][0]["revenue_fytd"]
+    fytd_west = spark.sql(db.local_sql(ceo["sales_fytd"], tables, west)).collect()[0]["revenue_fytd"]
+    assert 0 < fytd_west < fytd_all
+    stock_west = spark.sql(db.local_sql(ceo["stock_today"], tables, west)).collect()[0]
+    assert 0 < stock_west["stock_value"] < stock["stock_value"]
+    health_west = {
+        r["health"]: r["positions"] for r in spark.sql(db.local_sql(ceo["stock_health"], tables, west)).collect()
+    }
+    assert health_west.get("Stock-out", 0) == stock_west["stock_out_positions"]
+    assert results[("ceo", "fy_outlook")][1] == spark.sql(db.local_sql(ceo["fy_outlook"], tables, west)).collect()
 
 
 def test_a_lost_movement_fails_the_checks(world, spark):

@@ -3,11 +3,10 @@
     uv run python -m sales_insights.semantic.dashboards              # rewrite dashboards/*.lvdash.json (dev names)
     databricks bundle deploy -t dev                                  # creates / updates the 3 dashboards
 
-Three dashboards, one per audience (docs/access.md), plus a test of global filters:
-    sales.yaml        Sales (3 pages)          sales_team, management
-    stock.yaml        Stock (1 page)           stock_team, management
-    ceo.yaml          Company overview (1 page) management
-    filter_test.yaml  Filter test (1 page)     management
+Three dashboards, one per audience (docs/access.md):
+    sales.yaml   Sales (3 pages)          sales_team, management
+    stock.yaml   Stock (1 page)           stock_team, management
+    ceo.yaml     Company overview (1 page) management
 
 Why YAML -> JSON instead of clicking the dashboards together: the dashboard file format (.lvdash.json) is long
 and repetitive, but a dashboard is only datasets + widgets on a grid. The YAML keeps the parts a person reviews
@@ -24,11 +23,12 @@ Two kinds of dataset:
   sql          plain SQL for what is not a KPI: insights, forecast, data checks.
 `same_as: <dashboard>.<dataset>` reuses another dashboard's dataset.
 
-Global filters (`filters:` in the YAML) are PARAMETER filters: a dataset that writes `:province` in its SQL or
-`where` gets the parameter, and the filter on the "Global filters" pane sets it on every such dataset, so KPI
-totals recalculate too (a field filter only filters a query's finished rows). Each filter lists its choices
-from a `values` dataset whose first row is `All`; write the condition as (:province = 'All' OR province = :province).
-https://learn.microsoft.com/azure/databricks/dashboards/manage/filters/
+Global filters (`filters:` in the YAML) are PARAMETER filters: the value goes INTO each query, so KPI totals
+recalculate too (a field filter only filters a query's finished rows). Every metric_view dataset gets
+(:province = 'All' OR <field> = :province) added to its `where` for each filter whose `fields` names that
+metric view, unless the dataset says `company_wide: true` (forecast, findings, data checks). A `sql` dataset
+takes part by writing :province itself. Each filter lists its choices from a `values` dataset whose first
+row is `All`. https://learn.microsoft.com/azure/databricks/dashboards/manage/filters/
 
 Format reference: Databricks bundle examples (knowledge_base/dashboard_nyc_taxi) and the dashboards it
 exports; https://docs.databricks.com/aws/en/dev-tools/bundles/resources#dashboards
@@ -51,7 +51,7 @@ from sales_insights.common.config import REPO_ROOT, Config
 from sales_insights.semantic import metric_views as mvs
 
 DASHBOARDS = REPO_ROOT / "dashboards"
-NAMES = ["sales", "stock", "ceo", "filter_test"]
+NAMES = ["sales", "stock", "ceo"]
 GRID_WIDTH = 6
 METRIC_VIEWS = {"sales_metrics": "sales", "inventory_metrics": "inventory", "sales_and_stock": "inventory"}
 # Non-gold-model tables the datasets read: placeholder -> (area, layer, table)
@@ -102,14 +102,27 @@ def load(name: str, folder: Path = DASHBOARDS) -> dict:
 
 
 def datasets(spec: dict, folder: Path = DASHBOARDS) -> dict[str, dict]:
-    """The spec's datasets with `same_as` references resolved."""
+    """The spec's datasets with `same_as` references resolved and this spec's global filters added."""
     out = {}
     for key, ds in spec["datasets"].items():
         if "same_as" in ds:
             other, ref = ds["same_as"].split(".")
-            ds = load(other, folder)["datasets"][ref]
-        out[key] = ds
+            ds = {**load(other, folder)["datasets"][ref], **{k: v for k, v in ds.items() if k != "same_as"}}
+        out[key] = with_filters(ds, spec.get("filters", []))
     return out
+
+
+def with_filters(ds: dict, filters: list[dict]) -> dict:
+    """A metric_view dataset with one condition per global filter that covers its metric view, so the filter
+    value goes into the query (the default 'All' keeps every row)."""
+    if "metric_view" not in ds or ds.get("company_wide"):
+        return ds
+    conditions = [f"(:{f['param']} = 'All' OR {f['fields'][ds['metric_view']]} = :{f['param']})"
+                  for f in filters if ds["metric_view"] in f.get("fields", {})]  # fmt: skip
+    if not conditions:
+        return ds
+    where = " AND ".join(([f"({ds['where']})"] if ds.get("where") else []) + conditions)
+    return {**ds, "where": where}
 
 
 def _shape(ds: dict, inner: str, tables: dict[str, str]) -> str:

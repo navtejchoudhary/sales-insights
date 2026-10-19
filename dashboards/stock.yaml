@@ -5,7 +5,40 @@
 title: Stock
 audience: [stock_team, management]
 
+# Global filters (filter icon, top left): every metric-view dataset gets them unless `company_wide: true`.
+filters:
+  - param: province
+    title: Province
+    description: Province of the depot or store
+    values: province_values
+    fields: {inventory_metrics: province}
+  - param: product_group
+    title: Product group
+    description: e.g. WEEDICIDE, INSECTICIDE
+    values: product_group_values
+    fields: {inventory_metrics: product_group}
+
 datasets:
+  province_values:
+    # Choices of the province filter: 'All' first, then every value.
+    sql: |
+      SELECT province FROM (
+        SELECT 'All' AS province, 0 AS sort_order
+        UNION ALL
+        SELECT DISTINCT province, 1 AS sort_order FROM ${dim_location} WHERE province IS NOT NULL
+      ) AS v
+      ORDER BY sort_order, province
+
+  product_group_values:
+    # Choices of the product group filter: 'All' first, then every value.
+    sql: |
+      SELECT product_group FROM (
+        SELECT 'All' AS product_group, 0 AS sort_order
+        UNION ALL
+        SELECT DISTINCT product_group_name, 1 AS sort_order FROM ${dim_product} WHERE product_group_name IS NOT NULL
+      ) AS v
+      ORDER BY sort_order, product_group
+
   stock_today:
     metric_view: inventory_metrics
     fields: []
@@ -100,6 +133,7 @@ pages:
           ## Stock today
           Latest stock date across all depots and stores. Days of cover = stock / average daily issues of the
           last 28 days. Low cover = under 7 days; overstock = over 120 days.
+          Filters (top left: Province, Product group) apply to every chart except What needs attention, which is company-wide.
         size: [6, 2]
       - table: {dataset: stock_trust, title: Data status, columns: [{field: status, title: " "}]}
         size: [6, 3]
@@ -117,7 +151,7 @@ pages:
         size: [2, 3]
       - table:
           dataset: stock_findings
-          title: What needs attention (latest daily stock insights)
+          title: What needs attention (latest daily stock insights, company-wide)
           columns:
             - {field: priority, title: Priority}
             - {field: type, title: Type}
