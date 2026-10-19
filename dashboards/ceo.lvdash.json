@@ -1,6 +1,30 @@
 {
   "datasets": [
     {
+      "name": "8fec02a3",
+      "displayName": "province_values",
+      "queryLines": [
+        "SELECT province FROM (\n",
+        "  SELECT 'All' AS province, 0 AS sort_order\n",
+        "  UNION ALL\n",
+        "  SELECT DISTINCT province, 1 AS sort_order FROM sales_dev.gold.dim_region WHERE province IS NOT NULL\n",
+        ") AS v\n",
+        "ORDER BY sort_order, province"
+      ]
+    },
+    {
+      "name": "1d56185b",
+      "displayName": "product_group_values",
+      "queryLines": [
+        "SELECT product_group FROM (\n",
+        "  SELECT 'All' AS product_group, 0 AS sort_order\n",
+        "  UNION ALL\n",
+        "  SELECT DISTINCT product_group_name, 1 AS sort_order FROM sales_dev.gold.dim_product WHERE product_group_name IS NOT NULL\n",
+        ") AS v\n",
+        "ORDER BY sort_order, product_group"
+      ]
+    },
+    {
       "name": "44ec0be9",
       "displayName": "sales_fytd",
       "queryLines": [
@@ -12,9 +36,41 @@
         "FROM (\n",
         "  SELECT `is_fiscal_year_to_date`, MEASURE(`net_revenue`) AS `net_revenue`, MEASURE(`gross_margin_pct`) AS `gross_margin_pct`, MEASURE(`returns_rate_pct`) AS `returns_rate_pct`\n",
         "  FROM sales_dev.gold.sales_metrics\n",
-        "  WHERE is_fiscal_year_to_date OR is_same_period_last_fiscal_year\n",
+        "  WHERE (is_fiscal_year_to_date OR is_same_period_last_fiscal_year) AND (:province = 'All' OR province = :province) AND (:product_group = 'All' OR product_group = :product_group)\n",
         "  GROUP BY ALL\n",
         ") AS q"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -53,7 +109,40 @@
         "FROM (\n",
         "  SELECT MEASURE(`stock_value`) AS `stock_value`, MEASURE(`in_transit`) AS `in_transit`, MEASURE(`days_of_cover`) AS `days_of_cover`, MEASURE(`stock_out_positions`) AS `stock_out_positions`, MEASURE(`low_cover_positions`) AS `low_cover_positions`, MEASURE(`stock_out_rate_pct`) AS `stock_out_rate_pct`\n",
         "  FROM inventory_dev.gold.inventory_metrics\n",
+        "  WHERE (:province = 'All' OR province = :province) AND (:product_group = 'All' OR product_group = :product_group)\n",
         ") AS q"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -94,13 +183,45 @@
         "  FROM (\n",
         "    SELECT `province`, `is_last_complete_month`, MEASURE(`net_revenue`) AS `net_revenue`\n",
         "    FROM sales_dev.gold.sales_metrics\n",
-        "    WHERE is_last_complete_month OR is_last_complete_month_last_year\n",
+        "    WHERE (is_last_complete_month OR is_last_complete_month_last_year) AND (:province = 'All' OR province = :province) AND (:product_group = 'All' OR product_group = :product_group)\n",
         "    GROUP BY ALL\n",
         "  ) AS q\n",
         "  GROUP BY province\n",
         ") AS previous\n",
         "WHERE province IS NOT NULL\n",
         "ORDER BY lkr_m DESC"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -117,13 +238,45 @@
         "  FROM (\n",
         "    SELECT `product_group`, `is_fiscal_year_to_date`, MEASURE(`net_revenue`) AS `net_revenue`\n",
         "    FROM sales_dev.gold.sales_metrics\n",
-        "    WHERE is_fiscal_year_to_date OR is_same_period_last_fiscal_year\n",
+        "    WHERE (is_fiscal_year_to_date OR is_same_period_last_fiscal_year) AND (:province = 'All' OR province = :province) AND (:product_group = 'All' OR product_group = :product_group)\n",
         "    GROUP BY ALL\n",
         "  ) AS q\n",
         "  GROUP BY product_group\n",
         ") AS previous\n",
         "WHERE product_group IS NOT NULL\n",
         "ORDER BY lkr_m DESC"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -135,11 +288,43 @@
         "FROM (\n",
         "  SELECT `channel`, MEASURE(`net_revenue`) AS `net_revenue`\n",
         "  FROM sales_dev.gold.sales_metrics\n",
-        "  WHERE is_fiscal_year_to_date\n",
+        "  WHERE (is_fiscal_year_to_date) AND (:province = 'All' OR province = :province) AND (:product_group = 'All' OR product_group = :product_group)\n",
         "  GROUP BY ALL\n",
         ") AS previous\n",
         "WHERE channel IS NOT NULL\n",
         "ORDER BY share_pct DESC"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -150,13 +335,50 @@
         "p AS (\n",
         "  SELECT CASE WHEN s.is_stock_out THEN 'Stock-out' WHEN s.is_low_cover THEN 'Low cover'\n",
         "              WHEN s.days_of_cover > 120 THEN 'Overstock' ELSE 'Healthy' END AS health\n",
-        "  FROM inventory_dev.gold.fact_stock_daily s JOIN latest ON s.snapshot_date = latest.d\n",
+        "  FROM inventory_dev.gold.fact_stock_daily s\n",
+        "  JOIN latest ON s.snapshot_date = latest.d\n",
+        "  LEFT JOIN inventory_dev.gold.dim_location l ON s.location_id = l.location_id\n",
+        "  LEFT JOIN sales_dev.gold.dim_product d ON s.product_id = d.product_id\n",
         "  WHERE s.avg_daily_issued_quantity_28d > 0\n",
+        "    AND (:province = 'All' OR l.province = :province)\n",
+        "    AND (:product_group = 'All' OR d.product_group_name = :product_group)\n",
         ")\n",
         "SELECT health, CAST(COUNT(*) AS DOUBLE) AS positions\n",
         "FROM p\n",
         "GROUP BY health\n",
         "ORDER BY CASE health WHEN 'Stock-out' THEN 1 WHEN 'Low cover' THEN 2 WHEN 'Healthy' THEN 3 ELSE 4 END"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -169,9 +391,41 @@
         "FROM (\n",
         "  SELECT `month`, MEASURE(`stock_value`) AS `stock_value`\n",
         "  FROM inventory_dev.gold.inventory_metrics\n",
-        "  WHERE month >= add_months(trunc(current_date(), 'MM'), -11)\n",
+        "  WHERE (month >= add_months(trunc(current_date(), 'MM'), -11)) AND (:province = 'All' OR province = :province) AND (:product_group = 'All' OR product_group = :product_group)\n",
         "  GROUP BY ALL\n",
         ") AS q"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -185,12 +439,44 @@
         "FROM (\n",
         "  SELECT `customer_name`, `is_fiscal_year_to_date`, MEASURE(`net_revenue`) AS `net_revenue`\n",
         "  FROM sales_dev.gold.sales_metrics\n",
-        "  WHERE is_fiscal_year_to_date OR is_same_period_last_fiscal_year\n",
+        "  WHERE (is_fiscal_year_to_date OR is_same_period_last_fiscal_year) AND (:province = 'All' OR province = :province) AND (:product_group = 'All' OR product_group = :product_group)\n",
         "  GROUP BY ALL\n",
         ") AS q\n",
         "GROUP BY customer_name\n",
         "ORDER BY lkr_m DESC NULLS LAST\n",
         "LIMIT 5"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -206,10 +492,42 @@
         "FROM (\n",
         "  SELECT `province`, MEASURE(`net_revenue`) AS `net_revenue`, MEASURE(`units_sold`) AS `units_sold`, MEASURE(`stock_out_days`) AS `stock_out_days`, MEASURE(`depot_days_of_cover`) AS `depot_days_of_cover`\n",
         "  FROM inventory_dev.gold.sales_and_stock\n",
-        "  WHERE is_month_to_date AND province IS NOT NULL\n",
+        "  WHERE (is_month_to_date AND province IS NOT NULL) AND (:province = 'All' OR province = :province) AND (:product_group = 'All' OR product_group = :product_group)\n",
         "  GROUP BY ALL\n",
         ") AS q\n",
         "ORDER BY lkr_m DESC"
+      ],
+      "parameters": [
+        {
+          "displayName": "province",
+          "keyword": "province",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
       ]
     },
     {
@@ -306,6 +624,7 @@
               "lines": [
                 "## Company overview: sales and stock\n",
                 "Fiscal year to date against the same period last year; stock on the latest day. Ask the Sales & Stock agent (Genie) for anything not on this page.\n",
+                "Filters (top left: Province, Product group) apply to every tile and chart except the forecast, the findings and the data checks, which are company-wide.\n",
                 "\n",
                 "**Colour key:** <span style=\"color:#00A972\">● On track</span> &nbsp; <span style=\"color:#FFAB00\">● Watch</span> &nbsp; <span style=\"color:#FF3621\">● Act now</span> &nbsp; <span style=\"color:#077A9D\">● Actual figure (no target)</span> &nbsp; <span style=\"color:#8BCAE7\">● Forecast</span> &nbsp; <span style=\"color:#919191\">● Likely range / context</span>"
               ]
@@ -896,7 +1215,7 @@
               "encodings": {
                 "value": {
                   "fieldName": "max(fy_forecast)",
-                  "displayName": "Fiscal year forecast, April to March (LKR)",
+                  "displayName": "Fiscal year forecast, April to March, company total (LKR)",
                   "format": {
                     "type": "number-plain",
                     "abbreviation": "compact",
@@ -926,7 +1245,7 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "Fiscal year forecast, April to March (LKR)",
+                "title": "Fiscal year forecast, April to March, company total (LKR)",
                 "showDescription": true,
                 "description": "Actual months so far + forecast to March"
               }
@@ -963,7 +1282,7 @@
               "encodings": {
                 "value": {
                   "fieldName": "max(fy_change_pct)",
-                  "displayName": "Forecast vs last fiscal year (%)",
+                  "displayName": "Forecast vs last fiscal year, company total (%)",
                   "style": {
                     "rules": [
                       {
@@ -1011,7 +1330,7 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "Forecast vs last fiscal year (%)",
+                "title": "Forecast vs last fiscal year, company total (%)",
                 "showDescription": true,
                 "description": "Green 0% or more, amber 0 to -5%, red below -5%"
               }
@@ -1318,7 +1637,7 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "What needs attention (latest daily insights)",
+                "title": "What needs attention (latest daily insights, company-wide)",
                 "showDescription": true,
                 "description": "Act now in red, notable in amber, context in grey"
               }
@@ -1415,7 +1734,7 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "Net revenue by month and forecast to March (LKR m)",
+                "title": "Net revenue by month and forecast to March, company total (LKR m)",
                 "showDescription": true,
                 "description": "Blue actual, light blue forecast, grey the likely range"
               }
@@ -2495,6 +2814,415 @@
         }
       ],
       "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "34ecb080",
+      "displayName": "Global filters",
+      "layout": [
+        {
+          "widget": {
+            "name": "ac6df123",
+            "queries": [
+              {
+                "name": "dashboards/ceo/datasets/8fec02a3_province",
+                "query": {
+                  "datasetName": "8fec02a3",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "province",
+                      "expression": "`province`"
+                    },
+                    {
+                      "name": "province_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/44ec0be9_province",
+                "query": {
+                  "datasetName": "44ec0be9",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/6ef3f1ac_province",
+                "query": {
+                  "datasetName": "6ef3f1ac",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/0d8802cc_province",
+                "query": {
+                  "datasetName": "0d8802cc",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/23a5e673_province",
+                "query": {
+                  "datasetName": "23a5e673",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/258160fc_province",
+                "query": {
+                  "datasetName": "258160fc",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/9ad0c8bd_province",
+                "query": {
+                  "datasetName": "9ad0c8bd",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/1cf54cab_province",
+                "query": {
+                  "datasetName": "1cf54cab",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/85c7f705_province",
+                "query": {
+                  "datasetName": "85c7f705",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/a3283fde_province",
+                "query": {
+                  "datasetName": "a3283fde",
+                  "parameters": [
+                    {
+                      "name": "province",
+                      "keyword": "province"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "province",
+                    "queryName": "dashboards/ceo/datasets/8fec02a3_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/ceo/datasets/44ec0be9_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/ceo/datasets/6ef3f1ac_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/ceo/datasets/0d8802cc_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/ceo/datasets/23a5e673_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/ceo/datasets/258160fc_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/ceo/datasets/9ad0c8bd_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/ceo/datasets/1cf54cab_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/ceo/datasets/85c7f705_province"
+                  },
+                  {
+                    "parameterName": "province",
+                    "queryName": "parameter_dashboards/ceo/datasets/a3283fde_province"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Province",
+                "showDescription": true,
+                "description": "Customers' province for sales; depots' and stores' province for stock"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "f531ac1a",
+            "queries": [
+              {
+                "name": "dashboards/ceo/datasets/1d56185b_product_group",
+                "query": {
+                  "datasetName": "1d56185b",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "product_group",
+                      "expression": "`product_group`"
+                    },
+                    {
+                      "name": "product_group_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/44ec0be9_product_group",
+                "query": {
+                  "datasetName": "44ec0be9",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/6ef3f1ac_product_group",
+                "query": {
+                  "datasetName": "6ef3f1ac",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/0d8802cc_product_group",
+                "query": {
+                  "datasetName": "0d8802cc",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/23a5e673_product_group",
+                "query": {
+                  "datasetName": "23a5e673",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/258160fc_product_group",
+                "query": {
+                  "datasetName": "258160fc",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/9ad0c8bd_product_group",
+                "query": {
+                  "datasetName": "9ad0c8bd",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/1cf54cab_product_group",
+                "query": {
+                  "datasetName": "1cf54cab",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/85c7f705_product_group",
+                "query": {
+                  "datasetName": "85c7f705",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/ceo/datasets/a3283fde_product_group",
+                "query": {
+                  "datasetName": "a3283fde",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "product_group",
+                    "queryName": "dashboards/ceo/datasets/1d56185b_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/ceo/datasets/44ec0be9_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/ceo/datasets/6ef3f1ac_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/ceo/datasets/0d8802cc_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/ceo/datasets/23a5e673_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/ceo/datasets/258160fc_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/ceo/datasets/9ad0c8bd_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/ceo/datasets/1cf54cab_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/ceo/datasets/85c7f705_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/ceo/datasets/a3283fde_product_group"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Product group",
+                "showDescription": true,
+                "description": "e.g. WEEDICIDE, INSECTICIDE"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS"
     }
   ]
 }

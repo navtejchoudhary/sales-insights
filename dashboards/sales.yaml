@@ -11,7 +11,55 @@
 title: Sales
 audience: [sales_team, management]
 
+# Global filters (filter icon, top left): every metric-view dataset gets them unless `company_wide: true`.
+filters:
+  - param: province
+    title: Province
+    description: Province of the customer
+    values: province_values
+    fields: {sales_metrics: province}
+  - param: product_group
+    title: Product group
+    description: e.g. WEEDICIDE, INSECTICIDE
+    values: product_group_values
+    fields: {sales_metrics: product_group}
+  - param: channel
+    title: Channel
+    description: General Trade, Export Sales or Modern Trade
+    values: channel_values
+    fields: {sales_metrics: channel}
+
 datasets:
+  province_values:
+    # Choices of the province filter: 'All' first, then every value.
+    sql: |
+      SELECT province FROM (
+        SELECT 'All' AS province, 0 AS sort_order
+        UNION ALL
+        SELECT DISTINCT province, 1 AS sort_order FROM ${dim_region} WHERE province IS NOT NULL
+      ) AS v
+      ORDER BY sort_order, province
+
+  product_group_values:
+    # Choices of the product group filter: 'All' first, then every value.
+    sql: |
+      SELECT product_group FROM (
+        SELECT 'All' AS product_group, 0 AS sort_order
+        UNION ALL
+        SELECT DISTINCT product_group_name, 1 AS sort_order FROM ${dim_product} WHERE product_group_name IS NOT NULL
+      ) AS v
+      ORDER BY sort_order, product_group
+
+  channel_values:
+    # Choices of the channel filter: 'All' first, then every value.
+    sql: |
+      SELECT channel FROM (
+        SELECT 'All' AS channel, 0 AS sort_order
+        UNION ALL
+        SELECT DISTINCT distribution_channel_name, 1 AS sort_order FROM ${dim_channel} WHERE distribution_channel_name IS NOT NULL
+      ) AS v
+      ORDER BY sort_order, channel
+
   headline_mtd:
     metric_view: sales_metrics
     fields: [is_month_to_date]
@@ -236,6 +284,7 @@ pages:
           ## Sales: how are we doing?
           Month to date against the same days last year (never a part month against a whole month).
           Every number comes from the sales metric view, the same definitions Genie and the alerts use.
+          Filters (top left: Province, Product group, Channel) apply to every chart except the forecast and What changed, which are company-wide.
         size: [6, 2]
       - table: {dataset: trust, title: Data status, columns: [{field: status, title: " "}]}
         size: [6, 3]
@@ -257,7 +306,7 @@ pages:
         size: [3, 6]
       - table:
           dataset: what_changed
-          title: What changed (latest daily insights)
+          title: What changed (latest daily insights, company-wide)
           columns:
             - {field: priority, title: Priority}
             - {field: type, title: Type}
@@ -265,7 +314,7 @@ pages:
         size: [3, 6]
       - line:
           dataset: revenue_trend
-          title: Net revenue by month and forecast to March (LKR m)
+          title: Net revenue by month and forecast to March, company total (LKR m)
           description: Forecast = same month last year x fiscal-year-to-date growth; low/high = the likely range.
           x: {field: month, title: Month, temporal: month}
           y: {field: lkr_m, title: LKR m}

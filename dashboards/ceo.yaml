@@ -12,7 +12,40 @@
 title: Company overview
 audience: [management]
 
+# Global filters (filter icon, top left): every metric-view dataset gets them unless `company_wide: true`.
+filters:
+  - param: province
+    title: Province
+    description: Customers' province for sales; depots' and stores' province for stock
+    values: province_values
+    fields: {sales_metrics: province, inventory_metrics: province, sales_and_stock: province}
+  - param: product_group
+    title: Product group
+    description: e.g. WEEDICIDE, INSECTICIDE
+    values: product_group_values
+    fields: {sales_metrics: product_group, inventory_metrics: product_group, sales_and_stock: product_group}
+
 datasets:
+  province_values:
+    # Choices of the province filter: 'All' first, then every value.
+    sql: |
+      SELECT province FROM (
+        SELECT 'All' AS province, 0 AS sort_order
+        UNION ALL
+        SELECT DISTINCT province, 1 AS sort_order FROM ${dim_region} WHERE province IS NOT NULL
+      ) AS v
+      ORDER BY sort_order, province
+
+  product_group_values:
+    # Choices of the product group filter: 'All' first, then every value.
+    sql: |
+      SELECT product_group FROM (
+        SELECT 'All' AS product_group, 0 AS sort_order
+        UNION ALL
+        SELECT DISTINCT product_group_name, 1 AS sort_order FROM ${dim_product} WHERE product_group_name IS NOT NULL
+      ) AS v
+      ORDER BY sort_order, product_group
+
   sales_fytd:
     metric_view: sales_metrics
     fields: [is_fiscal_year_to_date]
@@ -28,7 +61,8 @@ datasets:
 
   fy_outlook:
     # Where the fiscal year lands: actual months so far + the forecast from the current month to March,
-    # against the whole previous fiscal year.
+    # against the whole previous fiscal year. Company-wide: the forecast exists only for the company total.
+    company_wide: true
     metric_view: sales_metrics
     fields: [month, is_current_fiscal_year]
     measures: [net_revenue]
@@ -109,8 +143,13 @@ datasets:
       p AS (
         SELECT CASE WHEN s.is_stock_out THEN 'Stock-out' WHEN s.is_low_cover THEN 'Low cover'
                     WHEN s.days_of_cover > 120 THEN 'Overstock' ELSE 'Healthy' END AS health
-        FROM ${fact_stock_daily} s JOIN latest ON s.snapshot_date = latest.d
+        FROM ${fact_stock_daily} s
+        JOIN latest ON s.snapshot_date = latest.d
+        LEFT JOIN ${dim_location} l ON s.location_id = l.location_id
+        LEFT JOIN ${dim_product} d ON s.product_id = d.product_id
         WHERE s.avg_daily_issued_quantity_28d > 0
+          AND (:province = 'All' OR l.province = :province)
+          AND (:product_group = 'All' OR d.product_group_name = :product_group)
       )
       SELECT health, CAST(COUNT(*) AS DOUBLE) AS positions
       FROM p
@@ -236,6 +275,7 @@ pages:
       - text: |
           ## Company overview: sales and stock
           Fiscal year to date against the same period last year; stock on the latest day. Ask the Sales & Stock agent (Genie) for anything not on this page.
+          Filters (top left: Province, Product group) apply to every tile and chart except the forecast, the findings and the data checks, which are company-wide.
 
           **Colour key:** <span style="color:#00A972">● On track</span> &nbsp; <span style="color:#FFAB00">● Watch</span> &nbsp; <span style="color:#FF3621">● Act now</span> &nbsp; <span style="color:#077A9D">● Actual figure (no target)</span> &nbsp; <span style="color:#8BCAE7">● Forecast</span> &nbsp; <span style="color:#919191">● Likely range / context</span>
         size: [6, 3]
@@ -288,7 +328,7 @@ pages:
       - counter:
           dataset: fy_outlook
           value: fy_forecast
-          title: Fiscal year forecast, April to March (LKR)
+          title: Fiscal year forecast, April to March, company total (LKR)
           description: Actual months so far + forecast to March
           format: compact
           status: [[">", -1000000000000, lightblue]]
@@ -296,7 +336,7 @@ pages:
       - counter:
           dataset: fy_outlook
           value: fy_change_pct
-          title: Forecast vs last fiscal year (%)
+          title: Forecast vs last fiscal year, company total (%)
           description: Green 0% or more, amber 0 to -5%, red below -5%
           status: [["<", -5, red], ["<", 0, amber], [">", -1000000, green]]
         size: [2, 3]
@@ -310,7 +350,7 @@ pages:
       # --- what needs attention
       - table:
           dataset: top_findings
-          title: What needs attention (latest daily insights)
+          title: What needs attention (latest daily insights, company-wide)
           description: Act now in red, notable in amber, context in grey
           columns:
             - {field: priority, title: Priority, color_by: {column: severity, rules: [["<", 1.5, red], ["<", 2.5, amber]]}}
@@ -321,7 +361,7 @@ pages:
       # --- revenue
       - line:
           dataset: revenue_trend
-          title: Net revenue by month and forecast to March (LKR m)
+          title: Net revenue by month and forecast to March, company total (LKR m)
           description: Blue actual, light blue forecast, grey the likely range
           x: {field: month, title: Month, temporal: month}
           y: {field: lkr_m, title: LKR m}

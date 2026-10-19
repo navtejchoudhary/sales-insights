@@ -29,6 +29,12 @@ Every KPI comes from a metric view (`sales_metrics`, `inventory_metrics`, `sales
 definitions Genie and the alerts use; plain SQL only reads the insights, the forecast and the data checks.
 Each dashboard has a "Data status" line: data date and how many checks against the source passed.
 
+**Global filters** (filter icon, top left): Province and Product group on all three dashboards, Channel on
+Sales. They are parameter filters, so every KPI tile and chart recalculates, not only the charts' rows. On
+Stock (and the stock tiles of the Company overview) Province is the depot's or store's province; on sales it
+is the customer's. The forecast, the daily findings and the data checks stay company-wide and say so in
+their titles. ([Dashboard filters](https://learn.microsoft.com/azure/databricks/dashboards/manage/filters/))
+
 The dashboards are code: `dashboards/<name>.yaml` (datasets + widgets) ->
 `uv run python -m sales_insights.semantic.dashboards` -> `dashboards/<name>.lvdash.json` -> deployed by the
 Asset Bundle (`bundle/resources/dashboards.yml`). Tests run every dataset on real tables and check that each

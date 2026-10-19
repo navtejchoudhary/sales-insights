@@ -99,10 +99,11 @@ def test_kpis_come_from_the_metric_views():
 
 
 def test_metric_view_datasets_use_measure_and_real_names():
-    sql = db.databricks_sql(db.load("stock")["datasets"]["depot_cover_by_group"], _tables())
+    sql = db.databricks_sql(db.datasets(db.load("stock"))["depot_cover_by_group"], _tables())
     assert "MEASURE(`days_of_cover`) AS `days_of_cover`" in sql
     assert "FROM inventory_dev.gold.inventory_metrics" in sql
-    assert "WHERE location_type = 'Depot'" in sql and "GROUP BY ALL" in sql
+    assert "WHERE (location_type = 'Depot') AND (:province = 'All' OR province = :province)" in sql
+    assert "GROUP BY ALL" in sql
     assert "GROUP BY" not in db.databricks_sql(db.load("stock")["datasets"]["stock_today"], _tables())
 
 
@@ -134,40 +135,56 @@ def test_colours_keep_one_meaning():
                 assert meaning.get(value, color) == color, (name, value, color)
 
 
-def test_global_filters_set_a_parameter_on_every_dataset_that_uses_it():
-    """Filter test: each global filter lists its choices (first 'All') and sets its parameter on every dataset
-    whose SQL uses it, so the KPI tiles recalculate too; dashboards without filters get no filter pane."""
-    spec, board = db.load("filter_test"), json.loads((ROOT / "dashboards" / "filter_test.lvdash.json").read_text())
+@pytest.mark.parametrize("name", db.NAMES)
+def test_global_filters_reach_every_dataset_except_the_company_wide_ones(name):
+    """Each global filter lists its choices ('All' first, the default) and sets its parameter on every dataset
+    whose query uses it: all metric-view datasets of a covered metric view, except `company_wide` ones."""
+    spec = db.load(name)
+    board = json.loads((ROOT / "dashboards" / f"{name}.lvdash.json").read_text())
     by_id = {d["name"]: d for d in board["datasets"]}
     (pane,) = [p for p in board["pages"] if p["pageType"] == "PAGE_TYPE_GLOBAL_FILTERS"]
-    assert [i["widget"]["spec"]["frame"]["title"] for i in pane["layout"]] == ["Province", "Product group"]
+    assert [i["widget"]["spec"]["frame"]["title"] for i in pane["layout"]] == [f["title"] for f in spec["filters"]]
+    data = db.datasets(spec)
     for item, f in zip(pane["layout"], spec["filters"], strict=True):
+        for mv, field in f["fields"].items():
+            assert field in mvs.load(mv).fields, (name, mv, field)
+        assert "'All' AS" in data[f["values"]]["sql"], f["values"]
         widget = item["widget"]
         assert widget["spec"]["widgetType"] == "filter-single-select"
         choices, *targets = widget["queries"]
         assert by_id[choices["query"]["datasetName"]]["displayName"] == f["values"]
         set_on = {by_id[q["query"]["datasetName"]]["displayName"] for q in targets}
-        uses = {d["displayName"] for d in board["datasets"] if f":{f['param']}" in "".join(d["queryLines"])}
-        assert set_on == uses == {"headline", "by_month", "by_province", "by_product_group", "top_products"}
+        should = {k for k, ds in data.items()
+                  if ds.get("metric_view") in f["fields"] and not ds.get("company_wide")}  # fmt: skip
+        should |= {k for k, ds in data.items() if f":{f['param']}" in ds.get("sql", "")}
+        assert set_on == should, (name, f["param"], set_on ^ should)
         for d in board["datasets"]:
             keywords = [p["keyword"] for p in d.get("parameters", [])]
-            assert (f["param"] in keywords) == (d["displayName"] in uses), d["displayName"]
-        assert [e.get("parameterName") for e in widget["spec"]["encodings"]["fields"][1:]] == [f["param"]] * len(uses)
-    for name in ("sales", "stock", "ceo"):
-        other = json.loads((ROOT / "dashboards" / f"{name}.lvdash.json").read_text())
-        assert {p["pageType"] for p in other["pages"]} == {"PAGE_TYPE_CANVAS"}
-        assert not any("parameters" in d for d in other["datasets"])
+            assert (f["param"] in keywords) == (d["displayName"] in should), (name, d["displayName"])
+    # the forecast, the findings and the data checks stay company-wide (no parameter at all)
+    company = {"revenue_trend", "what_changed", "trust", "data_checks", "dirt_caught", "fy_outlook",
+               "top_findings", "trust_numbers", "stock_findings", "stock_trust"}  # fmt: skip
+    for d in board["datasets"]:
+        if d["displayName"] in company:
+            assert "parameters" not in d, (name, d["displayName"])
 
 
-def test_local_sql_binds_the_filter_values():
+def test_filters_are_added_to_the_where_of_metric_view_datasets():
     tables = {t: f"t_{t}" for t in [*mvs.GOLD_TABLES, *mvs.AREA_GOLD_TABLES["inventory"]]}
     tables |= {m: f"t_{m}" for m in db.METRIC_VIEWS}
-    ds = db.load("filter_test")["datasets"]["by_province"]
-    sql = db.local_sql(ds, tables, {"province": "Western", "product_group": "All"})
-    assert ":province" not in sql and ":product_group" not in sql
-    assert "('Western' = 'All' OR (customer_dim.province) = 'Western')" in sql
+    ds = db.datasets(db.load("sales"))["province_month"]
+    assert ds["where"] == (
+        "(is_last_complete_month OR is_last_complete_month_last_year)"
+        " AND (:province = 'All' OR province = :province)"
+        " AND (:product_group = 'All' OR product_group = :product_group)"
+        " AND (:channel = 'All' OR channel = :channel)"
+    )
+    sql = db.local_sql(ds, tables, {"province": "Western", "product_group": "All", "channel": "All"})
+    assert ":province" not in sql and "('Western' = 'All' OR (customer_dim.province) = 'Western')" in sql
+    assert "('All' = 'All' OR (channel_dim.distribution_channel_name) = 'All')" in sql
+    assert ":province" not in db.datasets(db.load("ceo"))["fy_outlook"]["where"]  # company-wide
     assert db.bind("x = :p AND y = :pp", {"p": "O'Neil"}) == "x = 'O''Neil' AND y = :pp"
-    assert db.filter_defaults(db.load("filter_test")) == {"province": "All", "product_group": "All"}
+    assert db.filter_defaults(db.load("stock")) == {"province": "All", "product_group": "All"}
 
 
 def test_no_workspace_details_in_the_dashboard_files():
