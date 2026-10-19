@@ -40,3 +40,13 @@ resources:
       permissions:
         - group_name: management
           level: CAN_RUN
+
+    # Test of global filters (Province, Product group) before they go on the three dashboards above.
+    filter_test_dashboard:
+      display_name: Filter test
+      file_path: ../../dashboards/filter_test.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      embed_credentials: false
+      permissions:
+        - group_name: management
+          level: CAN_RUN

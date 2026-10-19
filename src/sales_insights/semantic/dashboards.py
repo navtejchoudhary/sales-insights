@@ -3,10 +3,11 @@
     uv run python -m sales_insights.semantic.dashboards              # rewrite dashboards/*.lvdash.json (dev names)
     databricks bundle deploy -t dev                                  # creates / updates the 3 dashboards
 
-Three dashboards, one per audience (docs/access.md):
-    sales.yaml   Sales (3 pages)          sales_team, management
-    stock.yaml   Stock (1 page)           stock_team, management
-    ceo.yaml     Company overview (1 page) management
+Three dashboards, one per audience (docs/access.md), plus a test of global filters:
+    sales.yaml        Sales (3 pages)          sales_team, management
+    stock.yaml        Stock (1 page)           stock_team, management
+    ceo.yaml          Company overview (1 page) management
+    filter_test.yaml  Filter test (1 page)     management
 
 Why YAML -> JSON instead of clicking the dashboards together: the dashboard file format (.lvdash.json) is long
 and repetitive, but a dashboard is only datasets + widgets on a grid. The YAML keeps the parts a person reviews
@@ -23,6 +24,12 @@ Two kinds of dataset:
   sql          plain SQL for what is not a KPI: insights, forecast, data checks.
 `same_as: <dashboard>.<dataset>` reuses another dashboard's dataset.
 
+Global filters (`filters:` in the YAML) are PARAMETER filters: a dataset that writes `:province` in its SQL or
+`where` gets the parameter, and the filter on the "Global filters" pane sets it on every such dataset, so KPI
+totals recalculate too (a field filter only filters a query's finished rows). Each filter lists its choices
+from a `values` dataset whose first row is `All`; write the condition as (:province = 'All' OR province = :province).
+https://learn.microsoft.com/azure/databricks/dashboards/manage/filters/
+
 Format reference: Databricks bundle examples (knowledge_base/dashboard_nyc_taxi) and the dashboards it
 exports; https://docs.databricks.com/aws/en/dev-tools/bundles/resources#dashboards
 """
@@ -32,6 +39,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -43,7 +51,7 @@ from sales_insights.common.config import REPO_ROOT, Config
 from sales_insights.semantic import metric_views as mvs
 
 DASHBOARDS = REPO_ROOT / "dashboards"
-NAMES = ["sales", "stock", "ceo"]
+NAMES = ["sales", "stock", "ceo", "filter_test"]
 GRID_WIDTH = 6
 METRIC_VIEWS = {"sales_metrics": "sales", "inventory_metrics": "inventory", "sales_and_stock": "inventory"}
 # Non-gold-model tables the datasets read: placeholder -> (area, layer, table)
@@ -150,14 +158,34 @@ def databricks_sql(ds: dict, tables: dict[str, str]) -> str:
     return _shape(ds, "\n".join(inner), tables)
 
 
-def local_sql(ds: dict, tables: dict[str, str]) -> str:
-    """The same dataset as plain Spark SQL: the metric view request compiled by metric_views.compile_query."""
+def filter_defaults(spec: dict) -> dict[str, str]:
+    """Parameter -> default value of the spec's global filters ({"province": "All", ...})."""
+    return {f["param"]: f.get("default", "All") for f in spec.get("filters", [])}
+
+
+def parameters(sql: str, spec: dict) -> list[str]:
+    """The spec's filter parameters a query uses (:province -> province), in the spec's order."""
+    return [p for p in filter_defaults(spec) if re.search(rf":{p}\b", sql)]
+
+
+def bind(text: str, values: dict[str, str]) -> str:
+    """Parameters replaced by quoted values, as the dashboard does at run time (locally: for the tests)."""
+    for p, v in values.items():
+        text = re.sub(rf":{p}\b", "'" + str(v).replace("'", "''") + "'", text)
+    return text
+
+
+def local_sql(ds: dict, tables: dict[str, str], params: dict[str, str] | None = None) -> str:
+    """The same dataset as plain Spark SQL: the metric view request compiled by metric_views.compile_query.
+    `params` gives the filter values (parameter -> value); every :parameter must have one."""
+    params = params or {}
     if "sql" in ds:
-        return Template(ds["sql"]).substitute(tables).strip()
+        return bind(Template(ds["sql"]).substitute(tables).strip(), params)
     mv = mvs.load(ds["metric_view"])
     _check_request(ds, mv)
-    compiled = mvs.compile_query(mv, tables, ds.get("fields", []), ds["measures"], ds.get("where"))
-    return _shape(ds, compiled, tables)
+    where = bind(ds["where"], params) if ds.get("where") else None
+    compiled = mvs.compile_query(mv, tables, ds.get("fields", []), ds["measures"], where)
+    return bind(_shape(ds, compiled, tables), params)
 
 
 # ---------------------------------------------------------------------------
@@ -326,22 +354,48 @@ def widget_kind(w: dict) -> str:
     return kind
 
 
+def _parameter(f: dict) -> dict:
+    """A dataset parameter set by a single-select filter, as in Databricks' exported dashboards."""
+    default = {"dataType": "STRING", "values": [{"value": f.get("default", "All")}]}
+    return {"displayName": f["param"], "keyword": f["param"], "dataType": "STRING",
+            "defaultSelection": {"values": default}}  # fmt: skip
+
+
+def _filter_widget(name: str, f: dict, ds_ids: dict[str, str], users: list[str]) -> dict:
+    """One global filter: its choices come from the `values` dataset, its value goes to every dataset that
+    uses the parameter (same query and encoding shapes as Databricks' exported global filters)."""
+    field, param = f.get("field", f["param"]), f["param"]
+    choices = ds_ids[f["values"]]
+    queries = [{"name": f"dashboards/{name}/datasets/{choices}_{field}",
+                "query": {"datasetName": choices, "disaggregated": False, "fields": [
+                    {"name": field, "expression": f"`{field}`"},
+                    {"name": f"{field}_associativity", "expression": "COUNT_IF(`associative_filter_predicate_group`)"}]}}]  # fmt: skip
+    queries += [{"name": f"parameter_dashboards/{name}/datasets/{ds_ids[key]}_{param}",
+                 "query": {"datasetName": ds_ids[key], "parameters": [{"name": param, "keyword": param}],
+                           "disaggregated": False}} for key in users]  # fmt: skip
+    fields = [{"fieldName": field, "queryName": queries[0]["name"]}]
+    fields += [{"parameterName": param, "queryName": q["name"]} for q in queries[1:]]
+    frame = {"showTitle": True, "title": f["title"]}
+    if f.get("description"):
+        frame |= {"showDescription": True, "description": f["description"]}
+    spec = {"version": 2, "widgetType": "filter-single-select", "encodings": {"fields": fields}, "frame": frame}
+    return {"name": _id(name, "filter", param), "queries": queries, "spec": spec}
+
+
 def lvdash(name: str, tables: dict[str, str], folder: Path = DASHBOARDS) -> dict:
     """The dashboard file the workspace imports."""
     spec = load(name, folder)
     data = datasets(spec, folder)
     ds_ids = {key: _id(name, "dataset", key) for key in data}
-    out = {
-        "datasets": [
-            {
-                "name": ds_ids[key],
-                "displayName": key,
-                "queryLines": databricks_sql(ds, tables).splitlines(keepends=True),
-            }
-            for key, ds in data.items()
-        ],
-        "pages": [],
-    }
+    filters = {f["param"]: f for f in spec.get("filters", [])}
+    sqls = {key: databricks_sql(ds, tables) for key, ds in data.items()}
+    uses = {key: parameters(sql, spec) for key, sql in sqls.items()}
+    out = {"datasets": [], "pages": []}
+    for key in data:
+        dataset = {"name": ds_ids[key], "displayName": key, "queryLines": sqls[key].splitlines(keepends=True)}
+        if uses[key]:
+            dataset["parameters"] = [_parameter(filters[p]) for p in uses[key]]
+        out["datasets"].append(dataset)
     for p, page in enumerate(spec["pages"]):
         grid, layout = _Grid(), []
         for i, w in enumerate(page["widgets"]):
@@ -354,6 +408,12 @@ def lvdash(name: str, tables: dict[str, str], folder: Path = DASHBOARDS) -> dict
             layout.append({"widget": widget, "position": grid.place(width, height)})
         out["pages"].append({"name": _id(name, "page", str(p)), "displayName": page["title"], "layout": layout,
                              "pageType": "PAGE_TYPE_CANVAS"})  # fmt: skip
+    if filters:
+        layout = [{"widget": _filter_widget(name, f, ds_ids, [k for k in data if p in uses[k]]),
+                   "position": {"x": 0, "y": 2 * i, "width": 1, "height": 2}}
+                  for i, (p, f) in enumerate(filters.items())]  # fmt: skip
+        out["pages"].append({"name": _id(name, "page", "filters"), "displayName": "Global filters",
+                             "layout": layout, "pageType": "PAGE_TYPE_GLOBAL_FILTERS"})  # fmt: skip
     return out
 
 
