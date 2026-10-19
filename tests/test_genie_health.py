@@ -69,3 +69,11 @@ def test_evaluate_gives_up_after_the_time_limit():
 
     with pytest.raises(TimeoutError):
         gh.evaluate(gh.GenieEvals(Stuck(["GOOD"]), "space"), poll_seconds=30, max_wait_seconds=60, sleep=lambda s: None)
+
+
+def test_failures_export_counts_good_answers():
+    from sales_insights.semantic import genie_failures as gf
+
+    out = [{"detail": {"assessment": a}} for a in ("GOOD", "BAD", "NEEDS_REVIEW", "GOOD")]
+    assert gf.summary(out) == (2, 4)
+    assert gf.as_dict({"a": 1}) == {"a": 1}

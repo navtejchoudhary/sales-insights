@@ -1,5 +1,7 @@
 # Day 15 runbook: from nothing to a running Databricks pipeline
 
+> History (15 Oct 2026), still valid to build a new workspace from nothing. Day-to-day work: `docs/playbooks/deploy_and_operate.md`.
+
 Goal for Thu 15 Oct: the same pipeline that runs on the Mac runs every morning on Azure Databricks, with the
 metric view and Genie on top. Expected effort: half a day. Do the steps in order; each says what you should see.
 Record go / no-go results in `docs/day15_checklist.md`.
