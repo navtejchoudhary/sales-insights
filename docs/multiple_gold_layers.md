@@ -1,5 +1,7 @@
 # Multiple Gold Layers: Plan
 
+> Built 13-16 Oct 2026 (stock area). Kept for the design reasoning and the finance sketch (section 5). Current state: `AGENTS.md`; recipe: `docs/playbooks/add_a_business_area.md`.
+
 **Project:** Sales Insights MVP on Azure Databricks · **Owner:** Navtej · **Built for:** Anil
 **Written:** Tue 13 Oct 2026 · **Updated:** Thu 15 Oct (finance dropped, inventory on Databricks before the dashboards, no fixed dates) · **Status:** APPROVED 13 Oct (defaults). Built: PR A area support (#24), PR B inventory generator (#25), PR C inventory pipeline (#26), PR D inventory metric views + Stock and Sales & Stock Genie agents (local)
 **Demo:** 29–30 Oct 2026 · **Azure credit ends:** 5 Nov 2026

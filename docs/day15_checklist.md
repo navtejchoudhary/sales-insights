@@ -1,5 +1,7 @@
 # Day 15 go/no-go checklist (Thu 15 Oct)
 
+> History: results of 15 Oct 2026. Current state: `AGENTS.md`.
+
 Step-by-step instructions: `docs/day15_runbook.md`. This file records the results.
 
 Run in the morning, before any build work. Record go / no-go per row and tell Anil at the 16 Oct review.

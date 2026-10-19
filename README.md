@@ -1,81 +1,81 @@
-# Sales Insights MVP
+# Sales Insights MVP on Azure Databricks
 
 [![CI](https://github.com/navtejchoudhary/sales-insights/actions/workflows/ci.yml/badge.svg)](https://github.com/navtejchoudhary/sales-insights/actions/workflows/ci.yml)
 
-A QuickSight-style insights MVP on Azure Databricks: plain-English questions (Genie), a governed KPI layer (metric views), an AI/BI dashboard, automatic weekly insights and a generated PowerPoint deck.
+A Databricks equivalent of **Amazon QuickSight + Amazon Q**: dashboards, answers to plain-English questions
+(Genie), and a system that tells you what changed without being asked. Built end to end on **dummy data**
+shaped like a company's SAP order-to-cash and stock extracts (a Sri Lankan crop-protection business, LKR),
+with stories and data problems planted on purpose, so every answer can be checked.
 
-Plan: *Databricks Insights MVP — Execution Plan* (30 Sep 2026). Demo: 29–30 Oct 2026.
+**AI agents and new developers: read [`AGENTS.md`](AGENTS.md) first**, then [`docs/README.md`](docs/README.md).
 
-## How the data flows
+## What it does
+
+| Capability | How |
+|---|---|
+| Fresh, checked data every morning | Daily jobs load new files through bronze, silver and gold; numbers are reconciled with the source's control totals before anyone sees them |
+| One definition per KPI | Unity Catalog metric views; dashboards, Genie and alerts all read them |
+| Dashboards | Sales, Stock and Company overview (AI/BI), with global filters for province, product group and channel |
+| Questions in plain English | 3 Genie agents (Sales, Stock, Sales & Stock), each scored weekly on known answers (90%+ target) |
+| Tells you what changed | Daily findings (movers, revenue drops, stock-outs, unusual days), a seasonal forecast, email alerts |
+| Weekly report | A PowerPoint deck with native charts, built automatically |
+| Access by team | Groups `sales_team`, `stock_team`, `management`; read-only, business tables only |
+
+Example: on 23 Oct 2026 sales of the top weedicide stop in Western province. The Company overview turns
+red, the stock-out alert emails, and asking Genie "Why did sales of MC6001LT stop in Western province?"
+answers: the Western depots are empty, the hub still holds stock, the last transfer was a month earlier,
+and customers switched to the 4-litre pack.
+
+## Architecture
 
 ```
-generator -> staging/ -> drip -> landing/ -> bronze -> silver -> gold -> reconciliation
-                                                                  -> metric views -> dashboard / Genie
-                                                                  -> insights job -> deck job
+generator -> staging/ -> drip -> landing/ -> bronze -> silver -> gold -> checks
+   -> metric views -> dashboards, Genie agents, alerts
+   -> insights job (findings, forecast) -> weekly deck
 ```
+Two business areas (sales, stock), one catalog and pipeline each, on PySpark + Delta Lake. The same code
+runs on a Mac (path-based Delta) and on Databricks (Unity Catalog); jobs, dashboards and alerts are
+deployed with a Databricks Asset Bundle. Design decisions and their reasons: [`docs/decisions.md`](docs/decisions.md).
 
-- **Stage A (1–14 Oct):** everything runs on a Mac with PySpark + Delta Lake.
-- **Stage B (15–28 Oct):** the same code runs on the Azure Databricks trial workspace.
+## Status (19 Oct 2026)
+
+Running on an Azure Databricks trial workspace with data up to 29 Oct 2026. 344 automated tests.
+Genie benchmark scores: Sales 93-97%, Stock 90-97%, Sales & Stock 97-100%. Not built: the Agent Bricks
+Supervisor (not available on the trial workspace), real data, a production target
+(see "Path to production" in [`AGENTS.md`](AGENTS.md)).
 
 ## Quick start (Mac)
 
-New to the project? Follow `docs/setup_mac.md` first. Then:
+Set up once with [`docs/setup_mac.md`](docs/setup_mac.md) (Python 3.12 via uv, Java 17). Then:
 
 ```bash
-uv sync                 # install the exact package versions from uv.lock
-uv run pytest           # all tests should pass (about 8 minutes: Spark tests)
-uv run pytest -m "not spark"   # quick run while working (seconds): skips every test that starts Spark
-uv run sales-pipeline --date 2026-10-06   # same as python -m sales_insights.pipeline.run_pipeline
+uv sync                                    # exact package versions from uv.lock
+uv run pytest -m "not spark"               # quick tests (seconds)
+uv run pytest                              # all tests incl. Spark (about 10 minutes)
+uv run python -m sales_insights.pipeline.run_pipeline --date 2026-10-06                   # one day, every step
+uv run python -m sales_insights.pipeline.run_pipeline --from 2026-10-06 --to 2026-10-29   # day by day
 ```
-
-## Run everything
-
-```bash
-uv run python -m sales_insights.pipeline.run_pipeline --date 2026-10-06                     # one day, every step
-uv run python -m sales_insights.pipeline.run_pipeline --from 2026-10-06 --to 2026-10-29     # rehearsal, day by day
-```
-One line per step, stops at the first failure, report in `output/`. On Databricks the same code runs as
-jobs defined in `databricks.yml` + `bundle/` (first deployment: `docs/day15_runbook.md`).
-
-## Generate data (step by step)
-
-```bash
-uv run python -m sales_insights.generator.masters    # master data -> staging/masters/ (see docs/master_data.md)
-uv run python -m sales_insights.generator.history    # 18-month invoices -> staging/history/ (see docs/invoice_data.md)
-uv run python -m sales_insights.generator.simulate --from 2026-10-01 --to 2026-10-29   # daily drops -> staging/business_date=.../
-uv run python -m sales_insights.drip.drip --initial                                  # deliver masters + history once -> landing/
-uv run python -m sales_insights.drip.drip --date 2026-10-01                           # deliver one day -> landing/
-uv run python -m sales_insights.pipeline.bronze                                        # load new landing files -> bronze (see docs/pipeline.md)
-uv run python -m sales_insights.pipeline.silver                                        # rebuild clean silver tables from bronze
-uv run python -m sales_insights.pipeline.gold                                          # rebuild the gold star schema from silver
-uv run python -m sales_insights.pipeline.reconcile                                     # prove gold matches the manifests (exit 1 on failure)
-uv run python -m sales_insights.semantic.kpis                                          # KPI views + check they match the metric view (docs/kpi_definitions.md)
-uv run python -m sales_insights.semantic.answer_key                                    # Genie answer key + planted-story checks (genie/README.md)
-uv run python -m sales_insights.insights.job                                           # insights -> gold.insights + weekly deck in output/ (docs/insights.md)
-```
+One line per step, stops at the first failed check, report in `output/`. Data generation step by step:
+[`docs/pipeline.md`](docs/pipeline.md). On Databricks: [`docs/playbooks/deploy_and_operate.md`](docs/playbooks/deploy_and_operate.md).
 
 ## Folder map
 
 | Folder | What lives there |
 |---|---|
-| `config/` | `config.yaml` with `local` and `dev` profiles (paths, catalog, schema names) |
-| `docs/` | Story sheet, KPI definitions, decisions log, Day 15 checklist, setup guide |
-| `src/sales_insights/common/` | Config loader and the one `get_spark()` everyone uses |
-| `src/sales_insights/generator/` | Dummy data: masters, 18-month history, daily files, dirt, manifest |
-| `src/sales_insights/drip/` | Copies one day from `staging/` to `landing/`, manifest last |
-| `src/sales_insights/pipeline/` | Bronze, silver, gold, reconciliation |
-| `src/sales_insights/insights/` | Period variance, top movers (Phase 2) |
-| `src/sales_insights/deck/` | python-pptx deck generator (Phase 3) |
-| `sql/` | KPI views and metric view YAML drafts |
-| `genie/` | Genie instructions, column descriptions, answer key |
-| `bundle/` | Databricks Asset Bundle (from 15 Oct) |
-| `tests/` | Unit tests (`uv run pytest`) |
+| `config/` | `config.yaml`: profiles `local` and `dev`, catalogs, paths, business areas |
+| `src/sales_insights/` | `generator/`, `drip/`, `pipeline/`, `semantic/`, `insights/`, `deck/`, `common/` |
+| `sql/` | Metric views (`metric_views/`), KPI SQL twins (`kpis/`), setup and grants (`setup/`) |
+| `dashboards/` | Dashboard YAML sources and the generated `.lvdash.json` files |
+| `genie/` | Genie agents: instructions and benchmark questions with their true SQL |
+| `bundle/`, `databricks.yml` | Asset Bundle: jobs, dashboards, alerts |
+| `workspace_export/` | Genie agents and dashboards exported from the workspace |
+| `docs/` | Design docs, decisions log, playbooks ([index](docs/README.md)) |
+| `tests/` | Unit and Spark tests |
 
-`staging/`, `landing/` and `lake/` are created at runtime and never committed.
+`staging/`, `landing/`, `lake/` and `output/` are created at runtime and never committed.
 
 ## Working rules
 
-- Feature branch per task; every merge reviewed by a senior developer. Never commit to `main` directly.
-- Pipeline code: PySpark + Delta only. Generator: plain Python. See `CLAUDE.md`.
-- Paths and table names come only from `config/config.yaml`.
-- Every dirt type the generator injects has a unit test.
+Feature branch per change, tests green before merging, never commit to `main` directly. Pipeline code is
+PySpark + Delta only; names and paths come only from `config/config.yaml`. No real company data, tokens or
+workspace URLs in the repo (it is public). Full rules: [`AGENTS.md`](AGENTS.md).

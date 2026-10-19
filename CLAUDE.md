@@ -1,92 +1,40 @@
-# Sales Insights MVP on Databricks — project guide for Claude Code
+@AGENTS.md
 
-Source of truth: "Databricks Insights MVP — Execution Plan" (30 Sep 2026). If this file and the plan disagree, ask the human.
+# Claude Code: how to work in this repo
 
-## What we are building
-A QuickSight-style insights MVP on Azure Databricks:
-- Phase 1 (full): gold sales model, Unity Catalog metric views, AI/BI dashboard, Genie space
-- Phase 2 (lite): scheduled insights job — period variance, top movers, `ai_forecast`, `ai_detect_anomalies`, `ai_query` narrative
-- Phase 3 (thin): native Agent Bricks SupervisorAgent over Genie + insights table, plus a weekly python-pptx deck JOB (no custom chat app)
+`AGENTS.md` (imported above) holds the project, the rules and the lessons learned. This file adds only how
+Claude works with the human. History: the original execution plan (30 Sep 2026) is superseded by
+`AGENTS.md` + `docs/decisions.md`; the project went past it (stock area, 3 agents, CEO page, filters).
 
-Timeline:
-- Stage A, 1–14 Oct: build and test everything LOCALLY on Mac (no Databricks)
-- Stage B, 15–28 Oct: Azure Databricks trial workspace (created 15 Oct, not before)
-- Stage C, 29–30 Oct: demo
+## Working with the human (Navtej)
 
-## Data: dummy, story-driven, deliberately dirty
-- NO real data in the MVP. No S3, Delta Sharing or S/4HANA.
-- The generator is modelled on a reference SAP O2C billing extract (Sri Lanka, LKR). Keep its column names and code values (10-digit customer IDs, district region codes, sales offices, divisions, material types). The reference file lives in `reference/` and is git-ignored: NEVER commit it or copy rows from it (the repo is public).
-- Generator (plain Python: NumPy, pandas) writes CSV/JSON like an outside source system. Use the fixed name lists in `generator/masters.py`, NOT Faker (output must be identical across library versions).
-- Story settings live ONLY in `src/sales_insights/generator/stories.py`.
-- Masters once: products, customers, regions/cities, channels, sales reps.
-- History: 18 months of invoice lines ending YESTERDAY, in the reference extract's 74 columns + `reference_invoice_number` (links ZARE returns and S1 cancellations to the invoice they reverse). See `docs/invoice_data.md` for document types and sign rules.
-- Daily drop: `staging/business_date=YYYY-MM-DD/` with
-  - `orders_YYYYMMDD.csv` — new order lines
-  - `changes_YYYYMMDD.csv` — cancellations, returns, price corrections to older orders
-  - `manifest_YYYYMMDD.json` — WRITTEN LAST: row counts, control totals (orders, gross, net revenue), list of dirt injected
-- Fixed random seed per date AND per invoice (see engine.py docstring): any day can be rebuilt alone and is byte-identical. Never introduce a shared random stream across days.
-- `simulation_start` (config) is fixed at 2026-10-01; generators default to it. Never change it mid-project.
-- `drip --date` copies `staging/<date>/` to `landing/<date>/`, manifest last.
-- Planted stories and dirt rates live in `docs/story_sheet.md`. Every dirt injection is logged in the manifest.
-- Answer key: `genie/benchmarks.yaml` — 30 questions with ground-truth SQL and a check per planted story; `python -m sales_insights.semantic.answer_key` computes `genie/answer_key.csv` from gold (story checks must PASS). Each question has 2 `paraphrases` (scored too). Genie agent config: `genie/space.yaml`; trusted queries with parameters: `genie/trusted_queries.yaml`; `python -m sales_insights.semantic.genie_setup --profile dev` writes the paste-ready setup sheet; setup: `genie/README.md`
+- Before a non-trivial change, give a 3-5 bullet plan and wait for approval. Small changes: just do them.
+- One feature branch per task; never commit to `main`. Suggest a commit message after each task.
+- Explain in plain words, with references, and say so when you disagree; no yes-man answers.
+- If a request conflicts with `AGENTS.md` or `docs/decisions.md`, say so and ask.
+- After a change that alters a design choice, add one row to `docs/decisions.md` (date, decision, why, owner).
+- Ask before adding or upgrading packages.
 
-## Architecture
-landing → bronze → silver → gold → reconciliation → metric views → dashboard / Genie / alerts → insights job → SupervisorAgent + deck job
-- bronze: append as-is, all columns as STRING, plus `_source_file`, `_business_date`, `_load_ts`, `_run_id`, `_rescued_data`; exactly-once via `ops.processed_files` (path + SHA-256); new columns added (mergeSchema). See `docs/pipeline.md`
-- silver: FULL REBUILD each run (no MERGE; see decisions). Newest load of each file → dedupe on `invoice_number` + `invoice_item` → validate (bad rows to `silver.quarantine` with reasons) → `try_cast` types → enrich from masters (10-digit customer IDs, canonical city from `cities.csv`, blank codes filled) → `is_cancelled`, `arrival_delay_days`. Masters: latest version per key by `last_updated_timestamp`. Manifests parsed into `ops.manifest_totals` / `ops.manifest_dirt`; quarantine must equal the manifests' invalid rows. See `docs/pipeline.md`
-- gold: FULL REBUILD. Star schema `fact_sales` (invoice-line grain) + `dim_customer`, `dim_product`, `dim_region` (district → province), `dim_date` (whole fiscal years, cultivation season, `is_<period>` flags relative to the latest data date from `gold.relative_periods`), `dim_channel`. Every table/column description lives ONLY in `pipeline/gold_model.py` (`with_comments` refuses undocumented columns); regenerate `docs/gold_model.md` after changing it
-- reconciliation: two levels. Bronze checks every file's row count + checksum against its manifest; `reconcile.py` checks gold per INVOICE DATE against the sum of all deliveries' totals for that date (`ops.manifest_totals`, net changes, already excluding injected dirt), so a correction arriving in a later delivery still reconciles; lines/invoices/revenue within 0.1%; results to `ops.reconciliation` + `ops.dq_results`; CLI exits 1 on FAIL
-- semantic layer: every KPI defined ONCE in `sql/metric_views/sales_metrics.yaml` (metric view YAML 1.1); `sql/kpis/*.sql` is the readable twin; `semantic/kpis.py` proves both agree (locally the metric view is compiled to plain SQL by `semantic/metric_views.py`). Change a formula in BOTH places. See `docs/kpi_definitions.md`. Inventory: `inventory_metrics.yaml` + `sales_and_stock.yaml` (stock = window measures, last day of the period), twins in `sql/kpis/inventory/`; Genie agents `genie/inventory/` (Stock) and `genie/sales_and_stock/`
-- insights: `insights/job.py` = like-for-like periods (`periods.py`, never a part month vs a whole month) + rules in plain Python (`analysis.py`: headline, movers, revenue drop, stock-outs, unusual days) + seasonal forecast (`forecast.py`: same month last year x fiscal-year-to-date growth -> `gold.forecast`) over small Spark aggregates (`data.py`) -> `gold.insights`; Databricks SQL alerts (`bundle/resources/alerts.yml`) email on revenue drop / stock-out findings; narrative = template sentences, optionally reworded by `ai_query` on Databricks with a number check (`narrative.py`); weekly deck `deck/deck.py` (python-pptx, native charts) -> `output/`. See `docs/insights.md`
-- inventory area: drip/bronze reused; `pipeline/inventory_silver.py`, `inventory_gold.py` (model `inventory_model.py`), `inventory_checks.py` (source totals, roll-forward, cross-check with sales); `fact_sales_stock_daily` puts sales next to depot stock; reads the sales gold read-only
-- business areas: one pipeline and catalog per area (`config.yaml` areas:, `cfg.for_area()`, `run_pipeline --area`); sales is the default and must stay unchanged; plan in `docs/multiple_gold_layers.md`
-- orchestration: `pipeline/run_pipeline.py` runs drip → bronze → silver → gold → reconcile → kpis → answer_key → insights per day, stopping at the first failed check (`--downstream last` for fast catch-up). Databricks: `databricks.yml` (repo root) + `bundle/resources/jobs.yml` (daily job 06:30 Asia/Colombo, backfill, publish_semantic) running `bundle/run.py` on serverless; first deployment `docs/day15_runbook.md`; inventory: `inventory_backfill`, `inventory_daily_pipeline` (07:00, after sales), `inventory_publish_semantic` (runbook section 11, setup `sql/setup/inventory_dev.sql`)
-- `ops.processed_files` (bronze's file log) works on both Mac and Databricks volumes; Auto Loader is optional
+## Where Claude may run and what it may do
 
-## PORTABILITY RULES (most important)
-1. ALL pipeline code (bronze, silver, gold, reconciliation, KPI SQL) uses PySpark + Delta (`delta-spark`). Never pandas or DuckDB for pipeline logic. Exception: the generator/simulator only (plain Python).
-2. Keep IO apart from logic: transform functions take DataFrames and return DataFrames. Paths and catalog names come ONLY from `config/config.yaml` with profiles `local` and `dev`.
-3. Same schema names everywhere: `bronze`, `silver`, `gold`, `ops` locally; `sales_dev.bronze` etc. on Databricks.
-4. Databricks-only features (Auto Loader, volumes, triggers, metric views, Genie, AI functions) go in thin wrappers, never mixed into transform logic.
-7. Read and write tables ONLY through `common/lake.py` (`Lake`): path-based Delta locally, Unity Catalog names on Databricks. Never hardcode a table path or name.
-5. Library versions are pinned in `pyproject.toml`. Do not upgrade without asking.
-6. SQL must be Spark SQL / Databricks SQL compatible.
+- **On Navtej's Mac** (Claude Code in the repo): branch, commit, run tests, `bundle deploy` only when asked.
+- **In a cloud session without push rights**, deliver changes as patches: commit on a local branch,
+  `git format-patch -1 -o <share folder>`, send the file, then delete the local branch. Navtej applies it:
+  ```
+  git checkout main && git pull && git checkout -b <branch>
+  git am ~/Downloads/<patch> && git status --short && uv run pytest
+  git push -u origin <branch> && gh pr create --fill && sleep 20 && gh pr checks --watch
+  gh pr merge --squash --admin --delete-branch && git checkout main && git pull
+  databricks bundle deploy -t dev --profile sales-dev        # when jobs, dashboards or alerts changed
+  ```
+- Add files to a commit explicitly (`git add <paths>`), never `git add -A`: local runs create files
+  (databases, outputs) that must not be committed. Check `git status --short` before committing.
+- Never push, never print or store tokens, never put the workspace URL in a file. Screenshots shared
+  publicly must have the browser address bar cropped.
 
-## Local environment
-- Python 3.12 via `uv`; Java 17; PySpark 4.0.x + delta-spark 4.0.x
-- Run: `uv run python ...` · Add packages: `uv add ...` (ask first) · Tests: `uv run pytest` (quick: `uv run pytest -m "not spark"`) · Lint: `uv run ruff check . && uv run ruff format .`
-- NEVER install `databricks-connect` in this environment — it conflicts with PySpark. It gets its own separate environment on 15 Oct.
+## Before you say "done"
 
-## Coding conventions
-- snake_case; keys end `_id`; dates end `_date`; timestamps end `_ts`; money ends `_amount`
-- Money DECIMAL(18,2), never float. Quantities DECIMAL(18,3).
-- Every gold table and column gets a plain-English comment (Genie depends on them).
-- Fiscal year April–March, labelled by its start year (April 2026 = FY2026 period 1), as in the reference extract. Currency LKR. Timezone Asia/Colombo.
-- Every dirt type needs a passing unit test. Tests use small in-test fixtures, not full generated history.
-
-## Folder layout
-```
-config/config.yaml        local + dev profiles (paths, catalog, schema names); areas: (sales default, inventory)
-docs/                     story_sheet.md, kpi_definitions.md, decisions.md, day15_checklist.md, setup_mac.md
-src/sales_insights/common/     config.py (load_config), spark.py (get_spark) — ALWAYS use these
-src/sales_insights/generator/  stories.py (settings), masters.py, engine.py (shared per-day sales + per-invoice fates), history.py, simulate.py (daily drops), dirt.py, inventory.py (inventory area: locations, stock movements, daily stock; reads sales, never changes them)
-src/sales_insights/drip/       drip.py: staging -> landing copy (manifest last; missing day, Monday redelivery)
-src/sales_insights/pipeline/   bronze.py, silver.py, gold.py, reconcile.py, run_pipeline.py
-src/sales_insights/semantic/    metric_views.py (load/compile/publish metric view), kpis.py (KPI views + agreement check), answer_key.py (Genie benchmarks), dashboards.py (dashboard files), export_workspace.py (Genie + dashboard export)
-src/sales_insights/insights/   periods.py, analysis.py, data.py, narrative.py, job.py (Phase 2)
-src/sales_insights/deck/       deck.py: python-pptx weekly deck from DeckData (Phase 3)
-sql/kpis/                 KPI SQL views (sales); sql/kpis/inventory/ (stock, sales & stock)
-sql/metric_views/         metric view YAML: sales_metrics, inventory_metrics, sales_and_stock
-sql/setup/                inventory_dev.sql (catalog), permissions.sql (3 groups, read-only grants; docs/access.md)
-dashboards/               <name>.yaml (datasets + widgets) -> <name>.lvdash.json (generated: semantic/dashboards.py; deployed by bundle/resources/dashboards.yml)
-genie/                    space.yaml (agent config), benchmarks.yaml (questions + SQL), answer_key.csv (generated), README.md (setup); same files in genie/inventory/ and genie/sales_and_stock/
-databricks.yml            Asset Bundle (dev target); bundle/resources/jobs.yml jobs; bundle/run.py job entry point
-tests/
-staging/ landing/ lake/   LOCAL ONLY, git-ignored
-```
-
-## Rules for working with the human
-- Before a non-trivial change, give a 3–5 bullet plan and wait for approval.
-- Small, reviewable changes on a feature branch; never commit to `main` directly. Suggest a commit message after each task.
-- Never hardcode secrets, tokens or workspace URLs.
-- If a request conflicts with this file or the execution plan, say so and ask.
+- `uv run pytest -m "not spark"` and `uv run ruff check .` pass; for pipeline, metric view or dashboard
+  changes the full `uv run pytest` must pass too (CI does not run the Spark tests).
+- Regenerated what is generated (`semantic.dashboards`, `pipeline.gold_model`, `semantic.answer_key`).
+- Docs that describe the change are updated (`AGENTS.md` status table, the relevant playbook).
