@@ -28,7 +28,7 @@ DROP_KEYS = {"space_id", "warehouse_id", "dashboard_id", "parent_path", "path", 
              "update_time", "lifecycle_state"}  # fmt: skip
 WORKSPACE_URL = re.compile(r"https://[\w.-]+\.(azuredatabricks\.net|cloud\.databricks\.com|databricks\.azure\.cn)\S*")
 EMAIL = re.compile(r"[\w.+-]+@[\w-]+\.[\w.-]+")
-DASHBOARD_NAMES = {"Sales": "sales", "Stock": "stock", "Company overview": "ceo"}
+DASHBOARD_NAMES = {"Sales": "sales", "Stock": "stock", "Company overview": "ceo", "Filter test": "filter_test"}
 
 
 def scrub(value):

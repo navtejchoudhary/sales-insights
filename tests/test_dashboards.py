@@ -64,6 +64,7 @@ def test_every_widget_shows_a_column_of_its_dataset(name):
         sql = db.databricks_sql(data[body["dataset"]], _tables())
         for field in _shown_fields(kind, body):
             assert re.search(rf"\b{re.escape(field)}\b", sql), (name, body["dataset"], field)
+    used |= {f["values"] for f in spec.get("filters", [])}  # a global filter's list of choices
     assert used == set(data), f"{name}: datasets no widget uses: {set(data) - used}"
 
 
@@ -131,6 +132,42 @@ def test_colours_keep_one_meaning():
             colors = (w[kind].get("color") or {}).get("colors", {}) if kind in ("bar", "line") else {}
             for value, color in colors.items():
                 assert meaning.get(value, color) == color, (name, value, color)
+
+
+def test_global_filters_set_a_parameter_on_every_dataset_that_uses_it():
+    """Filter test: each global filter lists its choices (first 'All') and sets its parameter on every dataset
+    whose SQL uses it, so the KPI tiles recalculate too; dashboards without filters get no filter pane."""
+    spec, board = db.load("filter_test"), json.loads((ROOT / "dashboards" / "filter_test.lvdash.json").read_text())
+    by_id = {d["name"]: d for d in board["datasets"]}
+    (pane,) = [p for p in board["pages"] if p["pageType"] == "PAGE_TYPE_GLOBAL_FILTERS"]
+    assert [i["widget"]["spec"]["frame"]["title"] for i in pane["layout"]] == ["Province", "Product group"]
+    for item, f in zip(pane["layout"], spec["filters"], strict=True):
+        widget = item["widget"]
+        assert widget["spec"]["widgetType"] == "filter-single-select"
+        choices, *targets = widget["queries"]
+        assert by_id[choices["query"]["datasetName"]]["displayName"] == f["values"]
+        set_on = {by_id[q["query"]["datasetName"]]["displayName"] for q in targets}
+        uses = {d["displayName"] for d in board["datasets"] if f":{f['param']}" in "".join(d["queryLines"])}
+        assert set_on == uses == {"headline", "by_month", "by_province", "by_product_group", "top_products"}
+        for d in board["datasets"]:
+            keywords = [p["keyword"] for p in d.get("parameters", [])]
+            assert (f["param"] in keywords) == (d["displayName"] in uses), d["displayName"]
+        assert [e.get("parameterName") for e in widget["spec"]["encodings"]["fields"][1:]] == [f["param"]] * len(uses)
+    for name in ("sales", "stock", "ceo"):
+        other = json.loads((ROOT / "dashboards" / f"{name}.lvdash.json").read_text())
+        assert {p["pageType"] for p in other["pages"]} == {"PAGE_TYPE_CANVAS"}
+        assert not any("parameters" in d for d in other["datasets"])
+
+
+def test_local_sql_binds_the_filter_values():
+    tables = {t: f"t_{t}" for t in [*mvs.GOLD_TABLES, *mvs.AREA_GOLD_TABLES["inventory"]]}
+    tables |= {m: f"t_{m}" for m in db.METRIC_VIEWS}
+    ds = db.load("filter_test")["datasets"]["by_province"]
+    sql = db.local_sql(ds, tables, {"province": "Western", "product_group": "All"})
+    assert ":province" not in sql and ":product_group" not in sql
+    assert "('Western' = 'All' OR (customer_dim.province) = 'Western')" in sql
+    assert db.bind("x = :p AND y = :pp", {"p": "O'Neil"}) == "x = 'O''Neil' AND y = :pp"
+    assert db.filter_defaults(db.load("filter_test")) == {"province": "All", "product_group": "All"}
 
 
 def test_no_workspace_details_in_the_dashboard_files():

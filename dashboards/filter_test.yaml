@@ -1,0 +1,145 @@
+# Filter test dashboard (AI/BI): tries GLOBAL FILTERS before they go on the real dashboards.
+# Source of dashboards/filter_test.lvdash.json (bundle/resources/dashboards.yml). After editing this file:
+#   uv run python -m sales_insights.semantic.dashboards        # rewrites dashboards/*.lvdash.json
+#
+# Two global filters (Province, Product group). They are PARAMETER filters: every dataset below writes
+# (:province = 'All' OR province = :province), so the KPI tiles recalculate too, not only the charts.
+# Each filter's choices come from a `values` dataset whose first row is 'All' (the default).
+# Fiscal year to date throughout, so the numbers can be checked against the Sales dashboard with "All".
+
+title: Filter test
+audience: [management]
+
+filters:
+  - param: province
+    title: Province
+    description: Province of the customer
+    values: province_values
+  - param: product_group
+    title: Product group
+    description: e.g. WEEDICIDE, INSECTICIDE
+    values: product_group_values
+
+datasets:
+  province_values:
+    sql: |
+      SELECT province FROM (
+        SELECT 'All' AS province, 0 AS sort_order
+        UNION ALL
+        SELECT DISTINCT province, 1 AS sort_order FROM ${dim_region} WHERE province IS NOT NULL
+      ) AS v
+      ORDER BY sort_order, province
+
+  product_group_values:
+    sql: |
+      SELECT product_group FROM (
+        SELECT 'All' AS product_group, 0 AS sort_order
+        UNION ALL
+        SELECT DISTINCT product_group_name, 1 AS sort_order FROM ${dim_product} WHERE product_group_name IS NOT NULL
+      ) AS v
+      ORDER BY sort_order, product_group
+
+  headline:
+    metric_view: sales_metrics
+    measures: [net_revenue, active_customers, invoice_count]
+    where: >-
+      is_fiscal_year_to_date AND (:province = 'All' OR province = :province)
+      AND (:product_group = 'All' OR product_group = :product_group)
+    select:
+      - CAST(net_revenue AS DOUBLE) AS net_revenue
+      - CAST(active_customers AS DOUBLE) AS active_customers
+      - CAST(invoice_count AS DOUBLE) AS invoice_count
+
+  by_month:
+    metric_view: sales_metrics
+    fields: [month]
+    measures: [net_revenue]
+    where: >-
+      is_current_fiscal_year AND (:province = 'All' OR province = :province)
+      AND (:product_group = 'All' OR product_group = :product_group)
+    select: [month, "ROUND(CAST(net_revenue AS DOUBLE) / 1e6, 1) AS lkr_m"]
+    order_by: month
+
+  by_province:
+    metric_view: sales_metrics
+    fields: [province]
+    measures: [net_revenue]
+    where: >-
+      is_fiscal_year_to_date AND (:province = 'All' OR province = :province)
+      AND (:product_group = 'All' OR product_group = :product_group)
+    select: [province, "ROUND(CAST(net_revenue AS DOUBLE) / 1e6, 1) AS lkr_m"]
+    order_by: lkr_m DESC
+
+  by_product_group:
+    metric_view: sales_metrics
+    fields: [product_group]
+    measures: [net_revenue]
+    where: >-
+      is_fiscal_year_to_date AND (:province = 'All' OR province = :province)
+      AND (:product_group = 'All' OR product_group = :product_group)
+    select: [product_group, "ROUND(CAST(net_revenue AS DOUBLE) / 1e6, 1) AS lkr_m"]
+    order_by: lkr_m DESC
+
+  top_products:
+    metric_view: sales_metrics
+    fields: [product]
+    measures: [net_revenue, units]
+    where: >-
+      is_fiscal_year_to_date AND (:province = 'All' OR province = :province)
+      AND (:product_group = 'All' OR product_group = :product_group)
+    select:
+      - product
+      - ROUND(CAST(net_revenue AS DOUBLE) / 1e6, 2) AS lkr_m
+      - CAST(units AS DOUBLE) AS units
+    order_by: lkr_m DESC
+    limit: 10
+
+pages:
+  - title: Filter test
+    widgets:
+      - text: |
+          ## Filter test: global filters
+          Pick a **Province** or **Product group** in the filter pane (filter icon, top left). Every tile and chart below recalculates, including the totals. Fiscal year to date unless a chart says otherwise.
+        size: [6, 2]
+      - counter:
+          dataset: headline
+          value: net_revenue
+          title: Net revenue, fiscal year to date (LKR)
+          format: compact
+        size: [2, 3]
+      - counter:
+          dataset: headline
+          value: active_customers
+          title: Active customers, fiscal year to date
+        size: [2, 3]
+      - counter:
+          dataset: headline
+          value: invoice_count
+          title: Paid invoices, fiscal year to date
+        size: [2, 3]
+      - bar:
+          dataset: by_month
+          title: Net revenue by month, this fiscal year (LKR m)
+          x: {field: month, title: Month, temporal: month}
+          y: {field: lkr_m, title: LKR m}
+        size: [6, 5]
+      - bar:
+          dataset: by_province
+          title: Net revenue by province, fiscal year to date (LKR m)
+          x: {field: province, title: Province}
+          y: {field: lkr_m, title: LKR m}
+        size: [3, 5]
+      - bar:
+          dataset: by_product_group
+          title: Net revenue by product group, fiscal year to date (LKR m)
+          x: {field: product_group, title: Product group}
+          y: {field: lkr_m, title: LKR m}
+        size: [3, 5]
+      - table:
+          dataset: top_products
+          title: Top 10 products, fiscal year to date
+          columns:
+            - {field: product, title: Product}
+            - {field: lkr_m, title: Net revenue LKR m, type: number, format: "0,0.00"}
+            - {field: units, title: Units, type: number, format: "0,0"}
+        size: [6, 6]

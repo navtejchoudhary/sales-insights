@@ -507,7 +507,7 @@ def test_every_dashboard_dataset_runs(world, spark, cfg):
     for name in db.NAMES:
         spec = db.load(name)
         for key, ds in db.datasets(spec).items():
-            df = spark.sql(db.local_sql(ds, tables))
+            df = spark.sql(db.local_sql(ds, tables, db.filter_defaults(spec)))  # filters at "All"
             results[(name, key)] = (df.columns, df.collect())
         for page in spec["pages"]:
             for w in page["widgets"]:
@@ -545,6 +545,18 @@ def test_every_dashboard_dataset_runs(world, spark, cfg):
     )  # the weakest agent (33/36), not the best and trust["problems_caught"] > 0
     health = {r["health"]: r["positions"] for r in results[("ceo", "stock_health")][1]}
     assert health.get("Stock-out", 0) == stock["stock_out_positions"] and health["Healthy"] > 0
+
+    # Filter test: "All" = the metric view's fiscal year to date; one province gives a smaller, matching total
+    test_spec = db.load("filter_test")
+    all_rev = results[("filter_test", "headline")][1][0]["net_revenue"]
+    fytd = mvs.query(spark, sales_lake, [], ["net_revenue"], where="is_fiscal_year_to_date").collect()[0]
+    assert round(all_rev, 2) == round(float(fytd["net_revenue"]), 2)
+    assert results[("filter_test", "province_values")][1][0]["province"] == "All"
+    western = {"province": "Western", "product_group": "All"}
+    ds = db.datasets(test_spec)
+    one = spark.sql(db.local_sql(ds["headline"], tables, western)).collect()[0]["net_revenue"]
+    by_prov = {r["province"]: r["lkr_m"] for r in spark.sql(db.local_sql(ds["by_province"], tables, western)).collect()}
+    assert 0 < one < all_rev and set(by_prov) == {"Western"} and abs(by_prov["Western"] - one / 1e6) <= 0.05
 
 
 def test_a_lost_movement_fails_the_checks(world, spark):
