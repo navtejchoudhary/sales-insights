@@ -1,0 +1,994 @@
+{
+ "title": "Crop Protection Sales and Inventory",
+ "description": "# Sri Lankan Crop Protection Sales and Stock\n\nAsk questions that link sales and stock: did a product stop selling because a depot ran out, how much cover the depots have against what customers buy, where returns pile up. Data from 1 April 2025, updated daily.\n\nCapabilities:\n\n- Sales next to depot stock by day, month or fiscal year, for each province, depot, sales office and product\n\n- Why sales of a product stopped: depot stock, stock-outs, the hub's stock and the last transfer to the depot\n\n- Days of cover and stock-out days against what customers buy\n\n- Which product customers bought instead when one ran out\n\n- Returns building up in the returns store, and slow sellers held in plant stores\n\nLimitations:\n\n- For sales-only questions (customers, channels, margins, invoices) use the Sales agent; for stock-only questions use the Stock agent\n\n- Shows history up to the latest day both sales and stock have arrived; the revenue forecast is on the dashboards, not here",
+ "space": {
+  "version": 2,
+  "config": {
+   "sample_questions": [
+    {
+     "id": "01f1c948c9041e5b8c781cd86045e8f5",
+     "question": [
+      "What tables are there and how are they connected? Give me a short summary."
+     ]
+    },
+    {
+     "id": "01f1c948ca5c16168704a73dd598e880",
+     "question": [
+      "What is the distribution (min, max, avg, median) of depot stock in the sales_and_stock metric view?"
+     ]
+    },
+    {
+     "id": "01f1c948cb711782b0ea172a35b17996",
+     "question": [
+      "What is the monthly total net revenue in LKR from sales across all provinces?"
+     ]
+    }
+   ]
+  },
+  "data_sources": {
+   "tables": [
+    {
+     "identifier": "inventory_dev.gold.dim_location",
+     "column_configs": [
+      {
+       "column_name": "company_code",
+       "exclude": true
+      },
+      {
+       "column_name": "district_code",
+       "exclude": true
+      },
+      {
+       "column_name": "location_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "location_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "location_type",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "plant_code",
+       "exclude": true
+      },
+      {
+       "column_name": "province",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "sales_office_code",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "storage_location_code",
+       "exclude": true
+      },
+      {
+       "column_name": "supplying_location_id",
+       "enable_format_assistance": true
+      }
+     ]
+    },
+    {
+     "identifier": "inventory_dev.gold.fact_sales_stock_daily",
+     "column_configs": [
+      {
+       "column_name": "activity_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "avg_daily_issued_quantity_28d",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "in_transit_quantity",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "invoiced_quantity",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_stock_out",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "issued_quantity",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "location_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "net_revenue_amount",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "product_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "sales_office_code",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "sales_quantity",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "stock_quantity",
+       "enable_format_assistance": true
+      }
+     ]
+    },
+    {
+     "identifier": "inventory_dev.gold.fact_stock_daily",
+     "column_configs": [
+      {
+       "column_name": "avg_daily_issued_quantity_28d",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "days_of_cover",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "in_transit_quantity",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_low_cover",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_stock_out",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "issued_quantity",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "location_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "product_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "snapshot_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "stock_quantity",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "stock_value_amount",
+       "enable_format_assistance": true
+      }
+     ]
+    },
+    {
+     "identifier": "inventory_dev.gold.fact_stock_movements",
+     "column_configs": [
+      {
+       "column_name": "counterpart_location_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "delivered_date",
+       "exclude": true
+      },
+      {
+       "column_name": "issued_quantity",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "location_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "material_document",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "material_document_item",
+       "exclude": true
+      },
+      {
+       "column_name": "movement_type",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "movement_type_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "posting_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "product_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "quantity",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "received_quantity",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "reference_invoice_item",
+       "exclude": true
+      },
+      {
+       "column_name": "reference_invoice_number",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "sales_office_code",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      }
+     ]
+    },
+    {
+     "identifier": "inventory_dev.gold.sales_and_stock",
+     "column_configs": [
+      {
+       "column_name": "activity_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "avg_daily_issued_28d"
+      },
+      {
+       "column_name": "depot",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "depot_days_of_cover"
+      },
+      {
+       "column_name": "depot_in_transit"
+      },
+      {
+       "column_name": "depot_stock"
+      },
+      {
+       "column_name": "fiscal_year",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "is_last_7_days",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_last_complete_month",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_month_to_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "issued_quantity"
+      },
+      {
+       "column_name": "month",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "net_revenue"
+      },
+      {
+       "column_name": "product",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "product_group",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "product_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "province",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "sales_office_code",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "stock_out_days"
+      },
+      {
+       "column_name": "stock_out_positions"
+      },
+      {
+       "column_name": "units_invoiced"
+      },
+      {
+       "column_name": "units_sold"
+      },
+      {
+       "column_name": "week",
+       "enable_format_assistance": true
+      }
+     ]
+    },
+    {
+     "identifier": "sales_dev.gold.dim_product",
+     "column_configs": [
+      {
+       "column_name": "base_unit",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "company_code",
+       "exclude": true
+      },
+      {
+       "column_name": "division_code",
+       "exclude": true
+      },
+      {
+       "column_name": "division_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "launch_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "list_price_amount",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "plant_code",
+       "exclude": true
+      },
+      {
+       "column_name": "product_description",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "product_group_code",
+       "exclude": true
+      },
+      {
+       "column_name": "product_group_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "product_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "product_type_code",
+       "exclude": true
+      },
+      {
+       "column_name": "product_type_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "standard_cost_amount",
+       "enable_format_assistance": true
+      }
+     ]
+    }
+   ]
+  },
+  "instructions": {
+   "text_instructions": [
+    {
+     "id": "01f1c948197a1148adbb883d277af114",
+     "content": [
+      "- Money is LKR excluding VAT; quantities are in each product's base unit. Round money to 2 decimals and percentages to 1; leave days of cover and per-day averages unrounded.\n",
+      "- fact_sales_stock_daily: one row per day, sales office and product, with the office's sales next to the closing stock of the depot that serves it. Province and depot come from dim_location via location_id (the depot's province is its customers' province).\n",
+      "- Sales columns (net_revenue_amount, invoiced_quantity, sales_quantity, issued_quantity) add up over days. Stock columns (stock_quantity, in_transit_quantity) are levels: for a period use its last day, never a sum (MEASURE(depot_stock) does this).\n",
+      "- Revenue = SUM(net_revenue_amount). Units sold = invoiced_quantity (the same goods the depot issues); sales_quantity is net of returns and can be negative.\n",
+      "- Not depots: the hub 2010-0090, plant stores and the returns store 2010-0032; use fact_stock_daily for their stock and fact_stock_movements for movements: 313 = out of the hub, 315 = the same goods arriving (count one), 653 = customer return into the returns store, 602 = cancelled delivery back to the hub. Units moved = quantity (signed); received_quantity is only purchases (101).\n",
+      "- Products not kept at depots (services, raw materials) have empty depot stock: not a stock-out. A stock-out is is_stock_out = true.\n",
+      "- \"Current\"/\"now\" = the latest activity_date in fact_sales_stock_daily.\n",
+      "- To explain a drop in sales, check depot stock and is_stock_out, the hub's stock, the last 315 transfer to the depot, and what customers bought instead.\n",
+      "- Fiscal year April-March, named by its start year (FY2026 = Apr 2026-Mar 2027). Months: the month field of sales_and_stock or CAST(DATE_TRUNC('MONTH', activity_date) AS DATE), never a timestamp.\n",
+      "- A product group (e.g. weedicides) is product_group / product_group_name = 'WEEDICIDE', never a match on the product name.\n",
+      "- \"Kandy store\"/\"Kandy main store\" = 4020-0010; \"Kandy depot\" = 2010-8003. When listing products, include product_id and product_description.\n",
+      "- Answer in the shape asked: \"how much / how many\" = one total row; break down by province, depot, sales office, product, day or month only when the question says so; \"which ... most\" = full ranking unless a number is given.\n",
+      "- Before/after comparisons: ONE row, one column per period (avg_daily_units_before, avg_daily_units_since). \"From/since <date>\" includes it, up to the latest activity_date; \"the N days before\" ends the day before. Average per day = total of all locations / days in the period.\n",
+      "- Always state the date of the stock you used."
+     ]
+    }
+   ],
+   "example_question_sqls": [
+    {
+     "id": "01f1c94887a11241b67be1801fe3da25",
+     "question": [
+      "Show daily MC6001LT units invoiced and depot stock in Western from 18 to 26 October 2026."
+     ],
+     "sql": [
+      "SELECT f.activity_date, SUM(f.invoiced_quantity) AS units_invoiced, SUM(f.stock_quantity) AS depot_stock\n",
+      "FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id\n",
+      "WHERE f.product_id = 'MC6001LT' AND l.province = 'Western'\n",
+      "  AND f.activity_date BETWEEN DATE'2026-10-18' AND DATE'2026-10-26'\n",
+      "GROUP BY f.activity_date\n",
+      "ORDER BY f.activity_date"
+     ]
+    },
+    {
+     "id": "01f1c9489497139780473baa8eaef04b",
+     "question": [
+      "For each province, what was net revenue in September 2026 and depot stock at the end of the month?"
+     ],
+     "sql": [
+      "SELECT l.province,\n",
+      "       ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue,\n",
+      "       SUM(CASE WHEN f.activity_date = DATE'2026-09-30' THEN f.stock_quantity END) AS depot_stock_30_sep\n",
+      "FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id\n",
+      "WHERE f.activity_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'\n",
+      "GROUP BY l.province\n",
+      "ORDER BY net_revenue DESC"
+     ]
+    },
+    {
+     "id": "01f1c948b3491aad945cd88806259f0b",
+     "question": [
+      "How much MC6001LT stock did the Western depots have in October 2026?"
+     ],
+     "sql": [
+      "WITH last_day AS (\n",
+      "  SELECT MAX(activity_date) AS stock_date\n",
+      "  FROM inventory_dev.gold.fact_sales_stock_daily\n",
+      "  WHERE activity_date BETWEEN DATE'2026-10-01' AND DATE'2026-10-31'\n",
+      ")\n",
+      "SELECT SUM(f.stock_quantity) AS depot_stock\n",
+      "FROM inventory_dev.gold.fact_sales_stock_daily f\n",
+      "JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id\n",
+      "JOIN last_day ld ON f.activity_date = ld.stock_date\n",
+      "WHERE f.product_id = 'MC6001LT' AND l.province = 'Western'"
+     ]
+    }
+   ]
+  },
+  "benchmarks": {
+   "questions": [
+    {
+     "id": "ed7f09a7fa4c4492abab6d9a68cf891f",
+     "question": [
+      "HGL400ML units returned by customers from 1 Jul to 30 Sep 2026, versus the increase in returns store stock between 30 Jun and 30 Sep 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT (SELECT SUM(quantity) FROM inventory_dev.gold.fact_stock_movements WHERE product_id = 'HGL400ML' AND movement_type = '653' AND location_id = '2010-0032' AND posting_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30') AS units_returned, (SELECT SUM(CASE WHEN snapshot_date = DATE'2026-09-30' THEN stock_quantity ELSE -stock_quantity END) FROM inventory_dev.gold.fact_stock_daily WHERE product_id = 'HGL400ML' AND location_id = '2010-0032' AND snapshot_date IN (DATE'2026-06-30', DATE'2026-09-30')) AS returns_store_growth"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "d754310792f547409cc206256d598fe8",
+     "question": [
+      "Which products sold in Western in September 2026 were not stocked at any depot?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT f.product_id, p.product_description FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id WHERE l.province = 'Western' AND f.activity_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' GROUP BY f.product_id, p.product_description HAVING COUNT(f.stock_quantity) = 0 AND SUM(f.sales_quantity) <> 0 ORDER BY f.product_id"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "d5178075858b4b90ae3e103b363e3de1",
+     "question": [
+      "Goods issues versus units sold for each depot in Sep 2026."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT l.location_name AS depot, SUM(f.issued_quantity) AS issued_quantity, SUM(f.invoiced_quantity) AS units_invoiced FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.activity_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' AND f.stock_quantity IS NOT NULL GROUP BY l.location_name ORDER BY depot"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "d36731713c0f44598c18dd2c177b882e",
+     "question": [
+      "In total for July to September 2026, HGL INSECTICIDE 400ML units returned versus the growth of its returns store stock?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT (SELECT SUM(quantity) FROM inventory_dev.gold.fact_stock_movements WHERE product_id = 'HGL400ML' AND movement_type = '653' AND location_id = '2010-0032' AND posting_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30') AS units_returned, (SELECT SUM(CASE WHEN snapshot_date = DATE'2026-09-30' THEN stock_quantity ELSE -stock_quantity END) FROM inventory_dev.gold.fact_stock_daily WHERE product_id = 'HGL400ML' AND location_id = '2010-0032' AND snapshot_date IN (DATE'2026-06-30', DATE'2026-09-30')) AS returns_store_growth"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "cbbb4500d9dd44808c2dd566bf5cdccd",
+     "question": [
+      "How many MC6001LT units did Western invoice from 23 October 2026 onwards, and how much MC6001LT stock did the Western depots hold on 22 October 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT (SELECT COALESCE(SUM(f.invoiced_quantity), 0) FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6001LT' AND l.province = 'Western' AND f.activity_date >= DATE'2026-10-23') AS units_invoiced_since_23_oct, (SELECT SUM(f.stock_quantity) FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6001LT' AND l.province = 'Western' AND f.activity_date = DATE'2026-10-22') AS western_depot_stock_22_oct"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "c9d7c0f3ab81469584b3ae7c7b6a1661",
+     "question": [
+      "Before the stock-out, what was the average daily number of MC600 WEEDICIDE 1LTR units sold in Western (23 Sep to 22 Oct 2026)?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT SUM(f.invoiced_quantity) / 30 AS avg_daily_units FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6001LT' AND l.province = 'Western' AND f.activity_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "c851635591164223a565da590dbb8f4a",
+     "question": [
+      "For FY2026, weedicide sales per month next to the depot stock at each month end."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "WITH weed AS ( SELECT d.month_start_date AS month, f.* FROM inventory_dev.gold.fact_sales_stock_daily f JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id JOIN sales_dev.gold.dim_date d ON f.activity_date = d.date WHERE p.product_group_name = 'WEEDICIDE' AND d.fiscal_year = 2026 ), month_ends AS (SELECT month, MAX(activity_date) AS month_end FROM weed GROUP BY month) SELECT w.month, ROUND(SUM(w.net_revenue_amount), 2) AS net_revenue, SUM(CASE WHEN w.activity_date = e.month_end THEN w.stock_quantity END) AS month_end_depot_stock FROM weed w JOIN month_ends e ON w.month = e.month GROUP BY w.month ORDER BY w.month"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "c19e15b36c594230a4c036d46d7a4a65",
+     "question": [
+      "How fresh is the sales and stock data?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT MAX(activity_date) AS data_until FROM inventory_dev.gold.fact_sales_stock_daily"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "be239925f9294ba29c5ed9585f199585",
+     "question": [
+      "How did average daily units of MC6004LT sold in Western change from 23 October 2026 (when MC6001LT ran out), compared with the 30 days before?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT SUM(CASE WHEN f.activity_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22' THEN f.invoiced_quantity END) / 30 AS avg_daily_units_before, SUM(CASE WHEN f.activity_date >= DATE'2026-10-23' THEN f.invoiced_quantity END) / NULLIF(COUNT(DISTINCT CASE WHEN f.activity_date >= DATE'2026-10-23' THEN f.activity_date END), 0) AS avg_daily_units_since FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6004LT' AND l.province = 'Western'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "ba6dce20f2dd4f99826f8a36864f3d82",
+     "question": [
+      "Total sales for September 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales WHERE invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "ab526191b43d496094b39491cd81d8c7",
+     "question": [
+      "What is the latest date for which we have both sales and stock data?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT MAX(activity_date) AS data_until FROM inventory_dev.gold.fact_sales_stock_daily"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "ab1a0794d65e450f93f9b78b4aeafec4",
+     "question": [
+      "How much did we sell in Sep 2026 in total?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales WHERE invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "a848bed97149485b85ebd58ebd8d4c05",
+     "question": [
+      "In FY2026, which sales offices' depots were out of stock most often, and how much did they sell?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT f.sales_office_code, COUNT_IF(f.is_stock_out) AS stock_out_days, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM inventory_dev.gold.fact_sales_stock_daily f JOIN sales_dev.gold.dim_date d ON f.activity_date = d.date WHERE d.fiscal_year = 2026 GROUP BY f.sales_office_code ORDER BY stock_out_days DESC, net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "9f3da197e5604afeab1a1f7a70eb9992",
+     "question": [
+      "MC6001LT depot days of cover by province at the end of September 2026."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT l.province, SUM(f.stock_quantity) / NULLIF(SUM(f.avg_daily_issued_quantity_28d), 0) AS days_of_cover FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6001LT' AND f.activity_date = DATE'2026-09-30' GROUP BY l.province ORDER BY days_of_cover"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "9e39221757d44395a3bd6566de8a8aff",
+     "question": [
+      "What was total net revenue in September 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales WHERE invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "9dacbda7de5241dc922cab4f686b228e",
+     "question": [
+      "In Sep 2026, which products sold in Western had no depot stock row (products not kept at depots)?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT f.product_id, p.product_description FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id WHERE l.province = 'Western' AND f.activity_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' GROUP BY f.product_id, p.product_description HAVING COUNT(f.stock_quantity) = 0 AND SUM(f.sales_quantity) <> 0 ORDER BY f.product_id"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "97064c39f68b4945ab277a40f52f4f42",
+     "question": [
+      "SYSTEM SV SPARE KIT C sales in Jul-Sep 2026 versus its Kandy main store stock at the end of September?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT (SELECT SUM(sold_quantity) FROM sales_dev.gold.fact_sales WHERE product_id = 'S-10000576' AND invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30') AS units_sold, (SELECT SUM(stock_quantity) FROM inventory_dev.gold.fact_stock_daily WHERE product_id = 'S-10000576' AND location_id = '4020-0010' AND snapshot_date = DATE'2026-09-30') AS stock_30_sep"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "90a960f1aaab443f8e7784bc2b8a96cf",
+     "question": [
+      "MC6004LT units sold per day in Western since 23 Oct 2026 versus the 30 days before?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT SUM(CASE WHEN f.activity_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22' THEN f.invoiced_quantity END) / 30 AS avg_daily_units_before, SUM(CASE WHEN f.activity_date >= DATE'2026-10-23' THEN f.invoiced_quantity END) / NULLIF(COUNT(DISTINCT CASE WHEN f.activity_date >= DATE'2026-10-23' THEN f.activity_date END), 0) AS avg_daily_units_since FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6004LT' AND l.province = 'Western'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "848182108743442bb3cec72cde2749d9",
+     "question": [
+      "MC600 WEEDICIDE 1LTR units invoiced in Western since 23 Oct 2026, and the Western depots' stock of it on 22 Oct 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT (SELECT COALESCE(SUM(f.invoiced_quantity), 0) FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6001LT' AND l.province = 'Western' AND f.activity_date >= DATE'2026-10-23') AS units_invoiced_since_23_oct, (SELECT SUM(f.stock_quantity) FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6001LT' AND l.province = 'Western' AND f.activity_date = DATE'2026-10-22') AS western_depot_stock_22_oct"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "7c64a78f5507496f8247be9a9e05f2de",
+     "question": [
+      "For each depot, how much was issued to customers in September 2026, and how many units did its sales office sell?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT l.location_name AS depot, SUM(f.issued_quantity) AS issued_quantity, SUM(f.invoiced_quantity) AS units_invoiced FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.activity_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' AND f.stock_quantity IS NOT NULL GROUP BY l.location_name ORDER BY depot"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "7b9c2eba4f66430183fd4d7a6dad217c",
+     "question": [
+      "List products sold in Western in September 2026 that the depots do not stock."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT f.product_id, p.product_description FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id WHERE l.province = 'Western' AND f.activity_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' GROUP BY f.product_id, p.product_description HAVING COUNT(f.stock_quantity) = 0 AND SUM(f.sales_quantity) <> 0 ORDER BY f.product_id"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "773506c055b0447eb93627c4f05527dc",
+     "question": [
+      "S-10000576 units sold July to September 2026 versus its stock at the Kandy main store on 30 September 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT (SELECT SUM(sold_quantity) FROM sales_dev.gold.fact_sales WHERE product_id = 'S-10000576' AND invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30') AS units_sold, (SELECT SUM(stock_quantity) FROM inventory_dev.gold.fact_stock_daily WHERE product_id = 'S-10000576' AND location_id = '4020-0010' AND snapshot_date = DATE'2026-09-30') AS stock_30_sep"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "6cb3e07bfe6a439dba25d10816091e60",
+     "question": [
+      "How many days of depot cover did MC6001LT have in each province on 30 September 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT l.province, SUM(f.stock_quantity) / NULLIF(SUM(f.avg_daily_issued_quantity_28d), 0) AS days_of_cover FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6001LT' AND f.activity_date = DATE'2026-09-30' GROUP BY l.province ORDER BY days_of_cover"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "6a623b71e35a4f159e7c4fe9d6e3ea67",
+     "question": [
+      "On 30 Sep 2026, how long would the depots' MC600 WEEDICIDE 1LTR last in each region?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT l.province, SUM(f.stock_quantity) / NULLIF(SUM(f.avg_daily_issued_quantity_28d), 0) AS days_of_cover FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6001LT' AND f.activity_date = DATE'2026-09-30' GROUP BY l.province ORDER BY days_of_cover"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "618ed06078cd430c9df8545a70f45c34",
+     "question": [
+      "Depot stock-out days and net revenue by sales office for fiscal year 2026."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT f.sales_office_code, COUNT_IF(f.is_stock_out) AS stock_out_days, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM inventory_dev.gold.fact_sales_stock_daily f JOIN sales_dev.gold.dim_date d ON f.activity_date = d.date WHERE d.fiscal_year = 2026 GROUP BY f.sales_office_code ORDER BY stock_out_days DESC, net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "5adcf387c79a49fab6b47d7573340697",
+     "question": [
+      "Show monthly net revenue and month-end depot stock of weedicides for fiscal year 2026."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "WITH weed AS ( SELECT d.month_start_date AS month, f.* FROM inventory_dev.gold.fact_sales_stock_daily f JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id JOIN sales_dev.gold.dim_date d ON f.activity_date = d.date WHERE p.product_group_name = 'WEEDICIDE' AND d.fiscal_year = 2026 ), month_ends AS (SELECT month, MAX(activity_date) AS month_end FROM weed GROUP BY month) SELECT w.month, ROUND(SUM(w.net_revenue_amount), 2) AS net_revenue, SUM(CASE WHEN w.activity_date = e.month_end THEN w.stock_quantity END) AS month_end_depot_stock FROM weed w JOIN month_ends e ON w.month = e.month GROUP BY w.month ORDER BY w.month"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "55b2d2deff2748bdb39f2a7e8bdecfc0",
+     "question": [
+      "Up to which day do the sales and stock numbers both go?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT MAX(activity_date) AS data_until FROM inventory_dev.gold.fact_sales_stock_daily"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "544289644b094ef49919625f8af31739",
+     "question": [
+      "Did Western customers buy more of the 4-litre MC600 WEEDICIDE pack per day from 23 Oct 2026, when the 1-litre pack ran out, than in the 30 days before?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT SUM(CASE WHEN f.activity_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22' THEN f.invoiced_quantity END) / 30 AS avg_daily_units_before, SUM(CASE WHEN f.activity_date >= DATE'2026-10-23' THEN f.invoiced_quantity END) / NULLIF(COUNT(DISTINCT CASE WHEN f.activity_date >= DATE'2026-10-23' THEN f.activity_date END), 0) AS avg_daily_units_since FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6004LT' AND l.province = 'Western'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "3c105d2f0686440e8403ba6d52d634c2",
+     "question": [
+      "Since 23 October 2026, how many cases of MC6001LT did Western invoice, and what was the Western depots' MC6001LT stock on 22 October?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT (SELECT COALESCE(SUM(f.invoiced_quantity), 0) FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6001LT' AND l.province = 'Western' AND f.activity_date >= DATE'2026-10-23') AS units_invoiced_since_23_oct, (SELECT SUM(f.stock_quantity) FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6001LT' AND l.province = 'Western' AND f.activity_date = DATE'2026-10-22') AS western_depot_stock_22_oct"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "371a71101e0f451aa14151018a4a7c46",
+     "question": [
+      "How many HGL400ML units were returned from July to September 2026, and how much did the returns store stock of HGL400ML grow?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT (SELECT SUM(quantity) FROM inventory_dev.gold.fact_stock_movements WHERE product_id = 'HGL400ML' AND movement_type = '653' AND location_id = '2010-0032' AND posting_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30') AS units_returned, (SELECT SUM(CASE WHEN snapshot_date = DATE'2026-09-30' THEN stock_quantity ELSE -stock_quantity END) FROM inventory_dev.gold.fact_stock_daily WHERE product_id = 'HGL400ML' AND location_id = '2010-0032' AND snapshot_date IN (DATE'2026-06-30', DATE'2026-09-30')) AS returns_store_growth"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "29dde8e4963b44568603669764279af2",
+     "question": [
+      "Month by month in fiscal year 2026, how did weedicide revenue and depot stock move?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "WITH weed AS ( SELECT d.month_start_date AS month, f.* FROM inventory_dev.gold.fact_sales_stock_daily f JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id JOIN sales_dev.gold.dim_date d ON f.activity_date = d.date WHERE p.product_group_name = 'WEEDICIDE' AND d.fiscal_year = 2026 ), month_ends AS (SELECT month, MAX(activity_date) AS month_end FROM weed GROUP BY month) SELECT w.month, ROUND(SUM(w.net_revenue_amount), 2) AS net_revenue, SUM(CASE WHEN w.activity_date = e.month_end THEN w.stock_quantity END) AS month_end_depot_stock FROM weed w JOIN month_ends e ON w.month = e.month GROUP BY w.month ORDER BY w.month"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "1f6c4fa712bc4622a6ec7a0f152fab26",
+     "question": [
+      "How many units of S-10000576 did we sell from July to September 2026, and how much stock was left at the Kandy Production Facility main store on 30 September?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT (SELECT SUM(sold_quantity) FROM sales_dev.gold.fact_sales WHERE product_id = 'S-10000576' AND invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30') AS units_sold, (SELECT SUM(stock_quantity) FROM inventory_dev.gold.fact_stock_daily WHERE product_id = 'S-10000576' AND location_id = '4020-0010' AND snapshot_date = DATE'2026-09-30') AS stock_30_sep"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "150ca34b0f024b47bacab57937816450",
+     "question": [
+      "For each depot, issued quantity and units sold in September 2026, side by side."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT l.location_name AS depot, SUM(f.issued_quantity) AS issued_quantity, SUM(f.invoiced_quantity) AS units_invoiced FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.activity_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' AND f.stock_quantity IS NOT NULL GROUP BY l.location_name ORDER BY depot"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "0f17579c523d40c2b5517d5f0cb059d8",
+     "question": [
+      "Which sales offices had the most depot stock-out days in fiscal year 2026, and what was their net revenue?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT f.sales_office_code, COUNT_IF(f.is_stock_out) AS stock_out_days, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM inventory_dev.gold.fact_sales_stock_daily f JOIN sales_dev.gold.dim_date d ON f.activity_date = d.date WHERE d.fiscal_year = 2026 GROUP BY f.sales_office_code ORDER BY stock_out_days DESC, net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "0e7934578cf246a8ba60d45a2ac7177a",
+     "question": [
+      "Average daily units of MC6001LT sold in the Western province from 23 September to 22 October 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT SUM(f.invoiced_quantity) / 30 AS avg_daily_units FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6001LT' AND l.province = 'Western' AND f.activity_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "0e094e77ac48487ab92be7eedb9bd020",
+     "question": [
+      "How many cases of MC6001LT did Western sell per day in the 30 days before 23 October 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT SUM(f.invoiced_quantity) / 30 AS avg_daily_units FROM inventory_dev.gold.fact_sales_stock_daily f JOIN inventory_dev.gold.dim_location l ON f.location_id = l.location_id WHERE f.product_id = 'MC6001LT' AND l.province = 'Western' AND f.activity_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22'"
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ }
+}

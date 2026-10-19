@@ -1,0 +1,2161 @@
+{
+ "title": "Sri Lankan Crop Protection Sales Analytics",
+ "description": "This Agent helps analyze Sri Lankan crop-protection sales performance across time, customers, products, channels, and regions using invoice-level revenue, volume, and margin data. Data from 1 April 2025, updated daily.\n\n\\* Capabilities: Answer questions on net revenue, invoiced revenue, returns, cancellations, units, invoices, active customers, average invoice value, gross margin, margin %, and VAT; track trends by day, week, month, fiscal period, fiscal quarter, fiscal year, and cultivation season; compare month-to-date, last 7 days, last complete month, and fiscal year-to-date against the right prior periods; break down results by province, district, city, customer, customer group, sales office, channel, product, product group, product type, division, document type, and sales rep where available; identify performance by customer segment, product category, and territory, including return rates and profitability.\n\n\\* Limitations: Focused on sales and margin reporting for the Sri Lankan crop-protection business only; does not cover forecasting, budgeting, inventory, receivables, pipeline, or market share; sales rep analysis is only available from 22 Oct 2026 onward; \"year\" defaults to fiscal year (April–March) unless calendar year is explicitly requested; amounts are in LKR excluding VAT for core sales measures.",
+ "space": {
+  "version": 2,
+  "config": {
+   "sample_questions": [
+    {
+     "id": "01f1c3118c8919e29d332a7bdebb6b10",
+     "question": [
+      "Show net revenue by cultivation season for fiscal year 2025."
+     ]
+    },
+    {
+     "id": "01f1c3118c8a1f29a00febcafdb2a039",
+     "question": [
+      "How did weedicide prices and units change after the April 2026 price rise?"
+     ]
+    },
+    {
+     "id": "01f1c3118c8b1b28bc9a5c3efe2c63be",
+     "question": [
+      "Which products have the highest returns rate since July 2026?"
+     ]
+    },
+    {
+     "id": "01f1c3118c8c173b932415ea64bb52c7",
+     "question": [
+      "Which province has the lowest revenue per active customer this fiscal year?"
+     ]
+    },
+    {
+     "id": "01f1c3118c8d1188a4a53b594668df2f",
+     "question": [
+      "What was net revenue last month, and how does it compare with the same month last year?"
+     ]
+    }
+   ]
+  },
+  "data_sources": {
+   "tables": [
+    {
+     "identifier": "sales_dev.gold.dim_channel",
+     "column_configs": [
+      {
+       "column_name": "distribution_channel_code",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "distribution_channel_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      }
+     ]
+    },
+    {
+     "identifier": "sales_dev.gold.dim_customer",
+     "column_configs": [
+      {
+       "column_name": "city",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "city_is_canonical",
+       "exclude": true
+      },
+      {
+       "column_name": "created_date",
+       "exclude": true
+      },
+      {
+       "column_name": "customer_full_name",
+       "exclude": true
+      },
+      {
+       "column_name": "customer_group_code",
+       "exclude": true
+      },
+      {
+       "column_name": "customer_group_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "customer_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "customer_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "distribution_channel_code",
+       "exclude": true
+      },
+      {
+       "column_name": "district_code",
+       "exclude": true
+      },
+      {
+       "column_name": "district_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "payer_customer_id",
+       "exclude": true
+      },
+      {
+       "column_name": "province",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "sales_office_code",
+       "exclude": true
+      },
+      {
+       "column_name": "sales_office_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      }
+     ]
+    },
+    {
+     "identifier": "sales_dev.gold.dim_date",
+     "column_configs": [
+      {
+       "column_name": "cultivation_season",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "day_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "day_of_week",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "fiscal_period",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "fiscal_quarter",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "fiscal_year",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "fiscal_year_label",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "is_current_fiscal_year",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_fiscal_year_to_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_last_7_days",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_last_complete_month",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_last_complete_month_last_year",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_latest_day",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_month_before_last_complete_month",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_month_to_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_previous_7_days",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_previous_fiscal_year",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_same_days_last_month",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_same_days_last_year",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_same_period_last_fiscal_year",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_weekend",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "month",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "month_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "month_start_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "quarter",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "week_start_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "year",
+       "enable_format_assistance": true
+      }
+     ]
+    },
+    {
+     "identifier": "sales_dev.gold.dim_product",
+     "column_configs": [
+      {
+       "column_name": "base_unit",
+       "exclude": true
+      },
+      {
+       "column_name": "company_code",
+       "exclude": true
+      },
+      {
+       "column_name": "division_code",
+       "exclude": true
+      },
+      {
+       "column_name": "division_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "launch_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "list_price_amount",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "plant_code",
+       "exclude": true
+      },
+      {
+       "column_name": "product_description",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "product_group_code",
+       "exclude": true
+      },
+      {
+       "column_name": "product_group_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "product_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "product_type_code",
+       "exclude": true
+      },
+      {
+       "column_name": "product_type_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "standard_cost_amount",
+       "enable_format_assistance": true
+      }
+     ]
+    },
+    {
+     "identifier": "sales_dev.gold.fact_sales",
+     "column_configs": [
+      {
+       "column_name": "arrival_delay_days",
+       "exclude": true
+      },
+      {
+       "column_name": "cancellations_amount",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "cancelled_by_invoice_number",
+       "exclude": true
+      },
+      {
+       "column_name": "company_code",
+       "exclude": true
+      },
+      {
+       "column_name": "cost_amount",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "customer_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "distribution_channel_code",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "district_code",
+       "exclude": true
+      },
+      {
+       "column_name": "document_type",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "fiscal_period",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "fiscal_year",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "gross_revenue_amount",
+       "exclude": true
+      },
+      {
+       "column_name": "invoice_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "invoice_item",
+       "exclude": true
+      },
+      {
+       "column_name": "invoice_number"
+      },
+      {
+       "column_name": "invoice_type",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "invoiced_revenue_amount",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_cancelled",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_free_of_charge",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "loaded_business_date",
+       "exclude": true
+      },
+      {
+       "column_name": "margin_amount",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "net_revenue_amount",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "plant_code",
+       "exclude": true
+      },
+      {
+       "column_name": "price_corrections_amount",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "product_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "quantity",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "reference_invoice_number",
+       "exclude": true
+      },
+      {
+       "column_name": "returned_quantity",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "returns_amount",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "sales_office_code",
+       "exclude": true
+      },
+      {
+       "column_name": "sales_rep_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "sold_quantity",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "source_kind",
+       "exclude": true
+      },
+      {
+       "column_name": "tax_amount",
+       "exclude": true
+      }
+     ]
+    },
+    {
+     "identifier": "sales_dev.gold.sales_metrics",
+     "column_configs": [
+      {
+       "column_name": "active_customers"
+      },
+      {
+       "column_name": "average_invoice_value"
+      },
+      {
+       "column_name": "calendar_year",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "cancellation_count"
+      },
+      {
+       "column_name": "cancellations_value"
+      },
+      {
+       "column_name": "channel",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "city",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "cost"
+      },
+      {
+       "column_name": "cultivation_season",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "customer_group",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "customer_name",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "district",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "division",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "document_type",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "fiscal_period",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "fiscal_quarter",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "fiscal_year",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "gross_margin"
+      },
+      {
+       "column_name": "gross_margin_pct"
+      },
+      {
+       "column_name": "invoice_count"
+      },
+      {
+       "column_name": "invoice_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "invoiced_revenue"
+      },
+      {
+       "column_name": "is_current_fiscal_year",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_fiscal_year_to_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_last_7_days",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_last_complete_month",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_last_complete_month_last_year",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_latest_day",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_month_before_last_complete_month",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_month_to_date",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_previous_7_days",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_previous_fiscal_year",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_same_days_last_month",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_same_days_last_year",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "is_same_period_last_fiscal_year",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "month",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "net_revenue"
+      },
+      {
+       "column_name": "price_corrections_value"
+      },
+      {
+       "column_name": "product",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "product_group",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "product_type",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "province",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "returns_rate_pct"
+      },
+      {
+       "column_name": "returns_value"
+      },
+      {
+       "column_name": "sales_office",
+       "enable_format_assistance": true,
+       "enable_entity_matching": true
+      },
+      {
+       "column_name": "sales_rep_id",
+       "enable_format_assistance": true
+      },
+      {
+       "column_name": "tax"
+      },
+      {
+       "column_name": "units"
+      },
+      {
+       "column_name": "week",
+       "enable_format_assistance": true
+      }
+     ]
+    }
+   ]
+  },
+  "instructions": {
+   "text_instructions": [
+    {
+     "id": "01f1c2e497471314978adff722c87ae5",
+     "content": [
+      "- Money is Sri Lankan rupees (LKR) excluding VAT. Round money to 2 decimal places and percentages to 1 decimal place.\n",
+      "- \"Revenue\" or \"sales\" means net revenue: MEASURE(net_revenue) in sales_metrics, or SUM(net_revenue_amount) in fact_sales. It is already net of returns, cancellations and price corrections, so never remove those rows when totalling revenue.\n",
+      "- \"Invoices\" or \"orders\" means distinct paid invoices: invoice_type = 'ZAOR' and not is_cancelled.\n",
+      "- \"Average invoice value\" = all net revenue / paid invoices (MEASURE(average_invoice_value)); never limit the revenue to ZAOR rows.\n",
+      "- MEASURE() cannot be filtered per column: for side-by-side values (Maha vs Yala, this year vs last) use fact_sales with SUM(CASE WHEN ...).\n",
+      "- \"Cancellations\" means cancellation documents (invoice_type = 'S1'): count = COUNT(DISTINCT invoice_number), value = -SUM(cancellations_amount). Never count the original invoices flagged is_cancelled.\n",
+      "- \"Crop chemicals\" means the product groups WEEDICIDE, INSECTICIDE and FUNGICIDE.\n",
+      "- The fiscal year runs April to March and is named by its start year: \"FY2025\" or \"fiscal year 2025\" = 1 April 2025 to 31 March 2026. A named year is fixed: filter fiscal_year = 2025 (fiscal_year = 'FY2025' in sales_metrics). \"This year\" means the current fiscal year.\n",
+      "- Never work out relative dates yourself: filter on the period flags in dim_date (the same fields exist in sales_metrics). Last month = is_last_complete_month; this month = is_month_to_date, compared with is_same_days_last_month or is_same_days_last_year (never with a whole month); last 7 days = is_last_7_days; year to date = is_fiscal_year_to_date vs is_same_period_last_fiscal_year; this year = is_current_fiscal_year; last year = is_previous_fiscal_year. Use the flags only for relative words (this, last, so far). When averaging or ranking whole months, leave out the current incomplete month (is_month_to_date). Group by month with month_start_date (a date), never DATE_TRUNC.\n",
+      "- \"Region\" or \"area\" means province (9 provinces, 25 districts). When comparing provinces or customer groups of different size, also show revenue per active customer.\n",
+      "- For \"which ... highest / lowest / most\" questions show the full ranking, best first, not only the top row.\n",
+      "- When comparing two periods or seasons for a total, return one row with a column for each and the % change; when broken down by a dimension, return one row per item.\n",
+      "- Always state the period you used in the answer."
+     ]
+    }
+   ],
+   "example_question_sqls": [
+    {
+     "id": "01f1c2eaea45129fbdfb21bf4502cf33",
+     "question": [
+      "What were net revenue, units, invoices, active customers, margin % and returns rate for a period?"
+     ],
+     "sql": [
+      "WITH period AS (\n",
+      "  SELECT date FROM sales_dev.gold.dim_date\n",
+      "  WHERE CASE :period\n",
+      "          WHEN 'last_complete_month' THEN is_last_complete_month\n",
+      "          WHEN 'month_to_date' THEN is_month_to_date\n",
+      "          WHEN 'last_7_days' THEN is_last_7_days\n",
+      "          WHEN 'fiscal_year_to_date' THEN is_fiscal_year_to_date\n",
+      "          WHEN 'current_fiscal_year' THEN is_current_fiscal_year\n",
+      "          WHEN 'previous_fiscal_year' THEN is_previous_fiscal_year\n",
+      "          ELSE FALSE END\n",
+      "),\n",
+      "bounds AS (\n",
+      "  SELECT MIN(p.date) AS period_start, LEAST(MAX(p.date), MAX(l.latest)) AS data_until\n",
+      "  FROM period p CROSS JOIN (SELECT MAX(invoice_date) AS latest FROM sales_dev.gold.fact_sales) l\n",
+      "),\n",
+      "totals AS (\n",
+      "  SELECT\n",
+      "    ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue,\n",
+      "    ROUND(SUM(f.quantity), 0) AS units,\n",
+      "    COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.invoice_number END) AS invoices,\n",
+      "    COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END) AS active_customers,\n",
+      "    ROUND(SUM(f.margin_amount) / NULLIF(SUM(f.net_revenue_amount), 0) * 100, 1) AS gross_margin_pct,\n",
+      "    ROUND(-SUM(f.returns_amount) / NULLIF(SUM(f.invoiced_revenue_amount), 0) * 100, 1) AS returns_rate_pct\n",
+      "  FROM sales_dev.gold.fact_sales f JOIN period p ON f.invoice_date = p.date\n",
+      ")\n",
+      "SELECT b.period_start, b.data_until, t.* FROM bounds b CROSS JOIN totals t "
+     ],
+     "parameters": [
+      {
+       "name": "period",
+       "type_hint": "STRING",
+       "description": [
+        "One of: last_complete_month (\"last month\"), month_to_date (\"this month\"), last_7_days (\"last week\"), fiscal_year_to_date (\"year to date\"), current_fiscal_year (\"this year\"), previous_fiscal_year (\"last year\")."
+       ],
+       "default_value": {
+        "values": [
+         "last_complete_month"
+        ]
+       }
+      }
+     ],
+     "usage_guidance": [
+      "Use for headline KPI questions about one period: \"how did we do last month\", \"KPIs this year\", \"summary of last week\". Pick the period value from the parameter description. For comparisons between two periods use the compare_period query instead."
+     ]
+    },
+    {
+     "id": "01f1c2eb6df7115788888f92afe3ba80",
+     "question": [
+      "How does a period compare with the period before, or with the same period last year (like-for-like)?"
+     ],
+     "sql": [
+      "WITH flags AS (\n",
+      "  SELECT date,\n",
+      "    CASE :period\n",
+      "      WHEN 'month_to_date' THEN is_month_to_date\n",
+      "      WHEN 'last_complete_month' THEN is_last_complete_month\n",
+      "      WHEN 'last_7_days' THEN is_last_7_days\n",
+      "      WHEN 'fiscal_year_to_date' THEN is_fiscal_year_to_date\n",
+      "      ELSE FALSE END AS is_current,\n",
+      "    CASE\n",
+      "      WHEN :period = 'month_to_date' AND :compare_to = 'last_year' THEN is_same_days_last_year\n",
+      "      WHEN :period = 'month_to_date' THEN is_same_days_last_month\n",
+      "      WHEN :period = 'last_complete_month' AND :compare_to = 'last_year' THEN is_last_complete_month_last_year\n",
+      "      WHEN :period = 'last_complete_month' THEN is_month_before_last_complete_month\n",
+      "      WHEN :period = 'last_7_days' THEN is_previous_7_days\n",
+      "      WHEN :period = 'fiscal_year_to_date' THEN is_same_period_last_fiscal_year\n",
+      "      ELSE FALSE END AS is_previous\n",
+      "  FROM sales_dev.gold.dim_date\n",
+      "),\n",
+      "bounds AS (\n",
+      "  SELECT MIN(CASE WHEN is_current THEN date END) AS current_start, MAX(CASE WHEN is_current THEN date END) AS current_end,\n",
+      "         MIN(CASE WHEN is_previous THEN date END) AS previous_start, MAX(CASE WHEN is_previous THEN date END) AS previous_end\n",
+      "  FROM flags\n",
+      "),\n",
+      "totals AS (\n",
+      "  SELECT\n",
+      "    SUM(CASE WHEN fl.is_current THEN f.net_revenue_amount END) AS cur_revenue,\n",
+      "    SUM(CASE WHEN fl.is_previous THEN f.net_revenue_amount END) AS prev_revenue,\n",
+      "    SUM(CASE WHEN fl.is_current THEN f.quantity END) AS cur_units,\n",
+      "    SUM(CASE WHEN fl.is_previous THEN f.quantity END) AS prev_units,\n",
+      "    COUNT(DISTINCT CASE WHEN fl.is_current AND f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.invoice_number END) AS cur_invoices,\n",
+      "    COUNT(DISTINCT CASE WHEN fl.is_previous AND f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.invoice_number END) AS prev_invoices\n",
+      "  FROM sales_dev.gold.fact_sales f JOIN flags fl ON f.invoice_date = fl.date\n",
+      "  WHERE fl.is_current OR fl.is_previous\n",
+      ")\n",
+      "SELECT b.current_start, b.current_end, b.previous_start, b.previous_end,\n",
+      "       ROUND(t.cur_revenue, 2) AS net_revenue, ROUND(t.prev_revenue, 2) AS previous_net_revenue,\n",
+      "       ROUND((t.cur_revenue / NULLIF(t.prev_revenue, 0) - 1) * 100, 1) AS net_revenue_change_pct,\n",
+      "       ROUND(t.cur_units, 0) AS units, ROUND(t.prev_units, 0) AS previous_units,\n",
+      "       ROUND((t.cur_units / NULLIF(t.prev_units, 0) - 1) * 100, 1) AS units_change_pct,\n",
+      "       t.cur_invoices AS invoices, t.prev_invoices AS previous_invoices\n",
+      "FROM bounds b CROSS JOIN totals t"
+     ],
+     "parameters": [
+      {
+       "name": "period",
+       "type_hint": "STRING",
+       "description": [
+        "One of: month_to_date (\"this month so far\"), last_complete_month (\"last month\"), last_7_days (\"last week\"), fiscal_year_to_date (\"year to date\")."
+       ],
+       "default_value": {
+        "values": [
+         "month_to_date"
+        ]
+       }
+      },
+      {
+       "name": "compare_to",
+       "type_hint": "STRING",
+       "description": [
+        "previous_period (the same days of the month before, the month before, the 7 days before) or last_year (the same days or month one year earlier). Year to date is always compared with the same stretch of last fiscal year, last 7 days always with the 7 days before."
+       ],
+       "default_value": {
+        "values": [
+         "last_year"
+        ]
+       }
+      }
+     ],
+     "usage_guidance": [
+      "Use for any comparison or growth question: \"this month vs last year\", \"last month vs the month before\", \"is revenue up or down\", \"growth year to date\", \"last week vs the week before\". Always compares like with like, never a part month with a whole month."
+     ]
+    },
+    {
+     "id": "01f1c2ebf85b1995b2ba3662dd981de2",
+     "question": [
+      "What are the top N provinces, districts, customers, customer groups, products, product groups or channels by net revenue in a fiscal year?"
+     ],
+     "sql": [
+      "WITH t AS (\n",
+      "  SELECT\n",
+      "    CASE :dimension\n",
+      "      WHEN 'province' THEN c.province\n",
+      "      WHEN 'district' THEN c.district_name\n",
+      "      WHEN 'city' THEN c.city\n",
+      "      WHEN 'customer' THEN c.customer_name\n",
+      "      WHEN 'customer_group' THEN c.customer_group_name\n",
+      "      WHEN 'sales_office' THEN c.sales_office_name\n",
+      "      WHEN 'product' THEN p.product_description\n",
+      "      WHEN 'product_group' THEN p.product_group_name\n",
+      "      WHEN 'channel' THEN ch.distribution_channel_name\n",
+      "    END AS item,\n",
+      "    SUM(f.net_revenue_amount) AS net_revenue\n",
+      "  FROM sales_dev.gold.fact_sales f\n",
+      "  JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date\n",
+      "  LEFT JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id\n",
+      "  LEFT JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id\n",
+      "  LEFT JOIN sales_dev.gold.dim_channel ch ON f.distribution_channel_code = ch.distribution_channel_code\n",
+      "  WHERE d.fiscal_year = :fiscal_year\n",
+      "  GROUP BY 1\n",
+      "),\n",
+      "ranked AS (\n",
+      "  SELECT item, net_revenue,\n",
+      "         ROW_NUMBER() OVER (ORDER BY net_revenue DESC) AS rank,\n",
+      "         net_revenue / NULLIF(SUM(net_revenue) OVER (), 0) * 100 AS share_pct\n",
+      "  FROM t\n",
+      ")\n",
+      "SELECT rank, item, ROUND(net_revenue, 2) AS net_revenue, ROUND(share_pct, 1) AS share_of_total_pct\n",
+      "FROM ranked WHERE rank <= :top_n ORDER BY rank"
+     ],
+     "parameters": [
+      {
+       "name": "dimension",
+       "type_hint": "STRING",
+       "description": [
+        "One of: province, district, city, customer, customer_group, sales_office, product, product_group, channel."
+       ],
+       "default_value": {
+        "values": [
+         "province"
+        ]
+       }
+      },
+      {
+       "name": "fiscal_year",
+       "type_hint": "STRING",
+       "description": [
+        "Fiscal year by its start year, e.g. 2025 = April 2025 to March 2026."
+       ],
+       "default_value": {
+        "values": [
+         "2025"
+        ]
+       }
+      },
+      {
+       "name": "top_n",
+       "type_hint": "STRING",
+       "description": [
+        "How many to show, e.g. 5 or 10. Use a large number (100) to rank all of them."
+       ],
+       "default_value": {
+        "values": [
+         "5"
+        ]
+       }
+      }
+     ],
+     "usage_guidance": [
+      "Use for ranking questions: \"top 5 products\", \"best provinces\", \"biggest customers\", \"which channel sells most\", \"rank all districts\". For \"this year\" use the current fiscal year (2026), for \"last year\" 2025. For lowest/worst use top_n 100 and read from the bottom."
+     ]
+    },
+    {
+     "id": "01f1c2f506b912569ef8eb9eb521c2c2",
+     "question": [
+      "Which province, customer group or channel earns the most (or least) per active customer in a fiscal year?"
+     ],
+     "sql": [
+      "SELECT\n",
+      "  CASE :group_by\n",
+      "    WHEN 'province' THEN c.province\n",
+      "    WHEN 'customer_group' THEN c.customer_group_name\n",
+      "    WHEN 'channel' THEN ch.distribution_channel_name\n",
+      "  END AS grp,\n",
+      "  ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue,\n",
+      "  COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END) AS active_customers,\n",
+      "  ROUND(SUM(f.net_revenue_amount)\n",
+      "      / NULLIF(COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END), 0), 2)\n",
+      "    AS revenue_per_active_customer\n",
+      "FROM sales_dev.gold.fact_sales f\n",
+      "JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date\n",
+      "LEFT JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id\n",
+      "LEFT JOIN sales_dev.gold.dim_channel ch ON f.distribution_channel_code = ch.distribution_channel_code\n",
+      "WHERE d.fiscal_year = :fiscal_year\n",
+      "GROUP BY 1\n",
+      "ORDER BY revenue_per_active_customer DESC"
+     ],
+     "parameters": [
+      {
+       "name": "group_by",
+       "type_hint": "STRING",
+       "description": [
+        "One of: province, customer_group, channel."
+       ],
+       "default_value": {
+        "values": [
+         "province"
+        ]
+       }
+      },
+      {
+       "name": "fiscal_year",
+       "type_hint": "STRING",
+       "description": [
+        "Fiscal year by its start year, e.g. 2025 = April 2025 to March 2026."
+       ],
+       "default_value": {
+        "values": [
+         "2025"
+        ]
+       }
+      }
+     ],
+     "usage_guidance": [
+      "Use when comparing provinces, customer groups or channels of different size, or for \"per customer\", \"average per customer\", \"most/least productive region\" questions. Raw totals favour big groups; revenue per active customer is the fair comparison. The list is sorted best first, so the lowest is the last row."
+     ]
+    },
+    {
+     "id": "01f1c2f5411d1dbbb194f01b1a859cb8",
+     "question": [
+      "Which products have the highest returns rate since a date?"
+     ],
+     "sql": [
+      "WITH r AS (\n",
+      "  SELECT p.product_description AS product, p.product_group_name AS product_group,\n",
+      "         -SUM(f.returns_amount) AS returns_value, SUM(f.invoiced_revenue_amount) AS invoiced_revenue\n",
+      "  FROM sales_dev.gold.fact_sales f LEFT JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id\n",
+      "  WHERE f.invoice_date >= :since_date\n",
+      "  GROUP BY p.product_description, p.product_group_name\n",
+      "  HAVING SUM(f.invoiced_revenue_amount) > 0\n",
+      "),\n",
+      "ranked AS (\n",
+      "  SELECT *, returns_value / invoiced_revenue * 100 AS returns_rate,\n",
+      "         ROW_NUMBER() OVER (ORDER BY returns_value / invoiced_revenue DESC) AS rank\n",
+      "  FROM r\n",
+      ")\n",
+      "SELECT rank, product, product_group, ROUND(returns_rate, 2) AS returns_rate_pct,\n",
+      "       ROUND(returns_value, 2) AS returns_value, ROUND(invoiced_revenue, 2) AS invoiced_revenue\n",
+      "FROM ranked WHERE rank <= :top_n ORDER BY rank"
+     ],
+     "parameters": [
+      {
+       "name": "since_date",
+       "type_hint": "STRING",
+       "description": [
+        "First day to include, e.g. 2026-07-01."
+       ],
+       "default_value": {
+        "values": [
+         "2026-07-01"
+        ]
+       }
+      },
+      {
+       "name": "top_n",
+       "type_hint": "STRING",
+       "description": [
+        "How many products to show, e.g. 5."
+       ],
+       "default_value": {
+        "values": [
+         "5"
+        ]
+       }
+      }
+     ],
+     "usage_guidance": [
+      "Use for returns questions: \"which products are returned most\", \"highest returns rate\", \"quality problems\", \"products with returns since July\". Returns rate = value returned / invoiced revenue. If no date is given, use the start of the current fiscal year."
+     ]
+    },
+    {
+     "id": "01f1c2f5cc561270b414735511f61843",
+     "question": [
+      "ow did monthly net revenue, units and price per case develop for the whole business, a product, a product group or a province?"
+     ],
+     "sql": [
+      "SELECT d.month_start_date AS month,\n",
+      "       ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue,\n",
+      "       ROUND(SUM(f.quantity), 0) AS units,\n",
+      "       ROUND(SUM(f.invoiced_revenue_amount) / NULLIF(SUM(f.sold_quantity), 0), 2) AS price_per_case\n",
+      "FROM sales_dev.gold.fact_sales f\n",
+      "JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date\n",
+      "LEFT JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id\n",
+      "LEFT JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id\n",
+      "WHERE d.fiscal_year = :fiscal_year\n",
+      "  AND CASE :filter_by\n",
+      "        WHEN 'all' THEN TRUE\n",
+      "        WHEN 'product' THEN UPPER(p.product_description) LIKE CONCAT('%', UPPER(:filter_value), '%')\n",
+      "        WHEN 'product_group' THEN UPPER(p.product_group_name) LIKE CONCAT('%', UPPER(:filter_value), '%')\n",
+      "        WHEN 'province' THEN UPPER(c.province) LIKE CONCAT('%', UPPER(:filter_value), '%')\n",
+      "        ELSE FALSE END\n",
+      "GROUP BY d.month_start_date\n",
+      "ORDER BY month"
+     ],
+     "parameters": [
+      {
+       "name": "fiscal_year",
+       "type_hint": "STRING",
+       "description": [
+        "Fiscal year by its start year, e.g. 2026 = April 2026 to March 2027."
+       ],
+       "default_value": {
+        "values": [
+         "2026"
+        ]
+       }
+      },
+      {
+       "name": "filter_by",
+       "type_hint": "STRING",
+       "description": [
+        "One of: all (whole business), product, product_group, province."
+       ],
+       "default_value": {
+        "values": [
+         "product"
+        ]
+       }
+      },
+      {
+       "name": "filter_value",
+       "type_hint": "STRING",
+       "description": [
+        "Name to match, any case, part of the name is enough, e.g. HEX FUNGICIDE, WEEDICIDE, Western. Ignored when filter_by is all."
+       ],
+       "default_value": {
+        "values": [
+         "HEX FUNGICIDE 1LTR"
+        ]
+       }
+      }
+     ],
+     "usage_guidance": [
+      "Use for trend and \"over time\" questions: \"monthly sales this year\", \"how is HEX FUNGICIDE ramping up\", \"weedicide price per case by month\", \"Western province trend\". For the whole business use filter_by all and any filter_value (for example all)."
+     ]
+    },
+    {
+     "id": "01f1c2f62bc619259b44f75dec43bedc",
+     "question": [
+      "What were sales last month?"
+     ],
+     "sql": [
+      "SELECT MIN(d.date) AS period_start, MAX(d.date) AS period_end,\n",
+      "       ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue\n",
+      "FROM sales_dev.gold.fact_sales f\n",
+      "JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date\n",
+      "WHERE d.is_last_complete_month"
+     ]
+    },
+    {
+     "id": "01f1c2f63fbd1331a86c0e2e7fd90dd3",
+     "question": [
+      "How are sales this month compared with the same days last month?"
+     ],
+     "sql": [
+      "SELECT MIN(CASE WHEN d.is_month_to_date THEN d.date END) AS mtd_start,\n",
+      "       MAX(CASE WHEN d.is_month_to_date THEN d.date END) AS mtd_end,\n",
+      "       ROUND(SUM(CASE WHEN d.is_month_to_date THEN f.net_revenue_amount END), 2) AS month_to_date,\n",
+      "       ROUND(SUM(CASE WHEN d.is_same_days_last_month THEN f.net_revenue_amount END), 2) AS same_days_last_month,\n",
+      "       ROUND((SUM(CASE WHEN d.is_month_to_date THEN f.net_revenue_amount END)\n",
+      "            / NULLIF(SUM(CASE WHEN d.is_same_days_last_month THEN f.net_revenue_amount END), 0) - 1) * 100, 1) AS change_pct\n",
+      "FROM sales_dev.gold.fact_sales f\n",
+      "JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date\n",
+      "WHERE d.is_month_to_date OR d.is_same_days_last_month"
+     ]
+    },
+    {
+     "id": "01f1c2f64fb41286b04ec06dfa2d325d",
+     "question": [
+      "Which province has the lowest net revenue per active customer in fiscal year 2025?"
+     ],
+     "sql": [
+      "SELECT c.province,\n",
+      "       ROUND(SUM(f.net_revenue_amount)\n",
+      "           / NULLIF(COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END), 0), 2)\n",
+      "         AS revenue_per_active_customer\n",
+      "FROM sales_dev.gold.fact_sales f\n",
+      "JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date\n",
+      "JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id\n",
+      "WHERE d.fiscal_year = 2025\n",
+      "GROUP BY c.province ORDER BY revenue_per_active_customer ASC"
+     ]
+    },
+    {
+     "id": "01f1c2f660e31906bbbce83c870e3bcd",
+     "question": [
+      "Which product had the highest returns rate since 1 July 2026?"
+     ],
+     "sql": [
+      "SELECT f.product_id, p.product_description AS product,\n",
+      "       ROUND(-SUM(f.returns_amount) / SUM(f.invoiced_revenue_amount) * 100, 2) AS returns_rate_pct\n",
+      "FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id\n",
+      "WHERE f.invoice_date >= DATE'2026-07-01'\n",
+      "GROUP BY f.product_id, p.product_description\n",
+      "HAVING SUM(f.invoiced_revenue_amount) > 0\n",
+      "ORDER BY returns_rate_pct DESC LIMIT 5"
+     ]
+    },
+    {
+     "id": "01f1c2f6745e151fb08bcbca0fa03ce0",
+     "question": [
+      "By how much did the price per case of weedicide products change after 1 April 2026?"
+     ],
+     "sql": [
+      "WITH per_product AS (\n",
+      "  SELECT f.product_id,\n",
+      "         SUM(CASE WHEN f.invoice_date <  DATE'2026-04-01' THEN f.net_revenue_amount END)\n",
+      "       / NULLIF(SUM(CASE WHEN f.invoice_date <  DATE'2026-04-01' THEN f.quantity END), 0) AS price_before,\n",
+      "         SUM(CASE WHEN f.invoice_date >= DATE'2026-04-01' THEN f.net_revenue_amount END)\n",
+      "       / NULLIF(SUM(CASE WHEN f.invoice_date >= DATE'2026-04-01' THEN f.quantity END), 0) AS price_after\n",
+      "  FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id\n",
+      "  WHERE p.product_group_name = 'WEEDICIDE' AND f.invoice_type = 'ZAOR'\n",
+      "  GROUP BY f.product_id\n",
+      ")\n",
+      "SELECT ROUND(AVG((price_after / NULLIF(price_before, 0) - 1) * 100), 1) AS avg_price_change_pct,\n",
+      "       COUNT(*) AS products\n",
+      "FROM per_product WHERE price_before IS NOT NULL AND price_after IS NOT NULL"
+     ]
+    }
+   ]
+  },
+  "benchmarks": {
+   "questions": [
+    {
+     "id": "f58c91b96a984cdcb40c414e3404df0e",
+     "question": [
+      "Average revenue by calendar month: which months peak?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "WITH m AS ( SELECT d.month_start_date, d.month, SUM(f.net_revenue_amount) AS revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE NOT d.is_month_to_date GROUP BY d.month_start_date, d.month ) SELECT month, ROUND(AVG(revenue), 2) AS avg_monthly_revenue FROM m GROUP BY month ORDER BY avg_monthly_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "f25f2eae68594e27863b42b0addb5e6b",
+     "question": [
+      "Month-over-month sales growth for September 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN net_revenue_amount END), 2) AS sep_2026, ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-08-01' AND DATE'2026-08-31' THEN net_revenue_amount END), 2) AS aug_2026, ROUND((SUM(CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN net_revenue_amount END) / NULLIF(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-08-01' AND DATE'2026-08-31' THEN net_revenue_amount END), 0) - 1) * 100, 1) AS growth_pct FROM sales_dev.gold.fact_sales"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "ec0745838169421cbb3433db65805ee4",
+     "question": [
+      "Returns rate of HGL INSECTICIDE 400ML before and after 1 July 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(-SUM(CASE WHEN invoice_date < DATE'2026-07-01' THEN returns_amount END) / NULLIF(SUM(CASE WHEN invoice_date < DATE'2026-07-01' THEN invoiced_revenue_amount END), 0) * 100, 1) AS before_pct, ROUND(-SUM(CASE WHEN invoice_date >= DATE'2026-07-01' THEN returns_amount END) / NULLIF(SUM(CASE WHEN invoice_date >= DATE'2026-07-01' THEN invoiced_revenue_amount END), 0) * 100, 1) AS after_pct FROM sales_dev.gold.fact_sales WHERE product_id = 'HGL400ML'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "e8c9ef3af10b45a599d6142cd854d4e9",
+     "question": [
+      "Top 5 best-selling products in FY2025 by revenue?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT p.product_description AS product, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id WHERE d.fiscal_year = 2025 GROUP BY p.product_description ORDER BY net_revenue DESC LIMIT 5"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "e8b59fd0be6c47a0b9d93d24fcae0238",
+     "question": [
+      "What was net revenue by distribution channel in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ch.distribution_channel_name AS channel, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_channel ch ON f.distribution_channel_code = ch.distribution_channel_code WHERE d.fiscal_year = 2025 GROUP BY ch.distribution_channel_name ORDER BY net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "e660e2cf737748c48cc44ad7f684d46a",
+     "question": [
+      "How did revenue in July to September 2026 compare with July to September 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30' THEN net_revenue_amount END), 2) AS q_2026, ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2025-07-01' AND DATE'2025-09-30' THEN net_revenue_amount END), 2) AS q_2025, ROUND((SUM(CASE WHEN invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30' THEN net_revenue_amount END) / NULLIF(SUM(CASE WHEN invoice_date BETWEEN DATE'2025-07-01' AND DATE'2025-09-30' THEN net_revenue_amount END), 0) - 1) * 100, 1) AS growth_pct FROM sales_dev.gold.fact_sales"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "e55852ee1582446187ca251f9e9e12ce",
+     "question": [
+      "List our 10 biggest customers in FY2025."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.customer_name, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 GROUP BY c.customer_name ORDER BY net_revenue DESC LIMIT 10"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "e53005c1dbae47b88e529c260dd29c69",
+     "question": [
+      "Maha versus Yala season sales in FY2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(CASE WHEN d.cultivation_season = 'Maha' THEN f.net_revenue_amount END), 2) AS maha_net_revenue, ROUND(SUM(CASE WHEN d.cultivation_season = 'Yala' THEN f.net_revenue_amount END), 2) AS yala_net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "e39d9f81b39b4e6793faed4ac435becd",
+     "question": [
+      "How much revenue did returns cost us in fiscal year 2025, and what was the returns rate?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(-SUM(f.returns_amount), 2) AS returns_value, ROUND(-SUM(f.returns_amount) / NULLIF(SUM(f.invoiced_revenue_amount), 0) * 100, 1) AS returns_rate_pct FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "dd25b29973fe4a9b97f4fa91cd484b62",
+     "question": [
+      "What was net revenue in September 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales WHERE invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "d3eabc9fdc0b416aafbfd1a90f6d5274",
+     "question": [
+      "Did the returns rate of HGL INSECTICIDE 400ML go up after 1 July 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(-SUM(CASE WHEN invoice_date < DATE'2026-07-01' THEN returns_amount END) / NULLIF(SUM(CASE WHEN invoice_date < DATE'2026-07-01' THEN invoiced_revenue_amount END), 0) * 100, 1) AS before_pct, ROUND(-SUM(CASE WHEN invoice_date >= DATE'2026-07-01' THEN returns_amount END) / NULLIF(SUM(CASE WHEN invoice_date >= DATE'2026-07-01' THEN invoiced_revenue_amount END), 0) * 100, 1) AS after_pct FROM sales_dev.gold.fact_sales WHERE product_id = 'HGL400ML'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "cc95b96c711f45b9b33907af63ea191f",
+     "question": [
+      "Did weedicide volumes grow as fast as insecticide and fungicide volumes between April-September 2025 and April-September 2026? Show each group's growth."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT p.product_group_name AS product_group, ROUND((SUM(CASE WHEN f.invoice_date BETWEEN DATE'2026-04-01' AND DATE'2026-09-30' THEN f.quantity END) / NULLIF(SUM(CASE WHEN f.invoice_date BETWEEN DATE'2025-04-01' AND DATE'2025-09-30' THEN f.quantity END), 0) - 1) * 100, 1) AS units_growth_pct FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id WHERE p.product_group_name IN ('WEEDICIDE', 'INSECTICIDE', 'FUNGICIDE') GROUP BY p.product_group_name ORDER BY units_growth_pct"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "cb68c2470db8423d864c8825b348b7be",
+     "question": [
+      "How much did General Trade, Modern Trade and Export Sales each sell in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ch.distribution_channel_name AS channel, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_channel ch ON f.distribution_channel_code = ch.distribution_channel_code WHERE d.fiscal_year = 2025 GROUP BY ch.distribution_channel_name ORDER BY net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "c7d12e188c55455989ee3107aeaf86b4",
+     "question": [
+      "Compare net revenue in the Maha and Yala seasons of fiscal year 2025."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(CASE WHEN d.cultivation_season = 'Maha' THEN f.net_revenue_amount END), 2) AS maha_net_revenue, ROUND(SUM(CASE WHEN d.cultivation_season = 'Yala' THEN f.net_revenue_amount END), 2) AS yala_net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "c66294a67fc74e5daec0db2b294eb30c",
+     "question": [
+      "On average, how much was one invoice worth in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(f.net_revenue_amount) / NULLIF(COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.invoice_number END), 0), 2) AS average_invoice_value FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "c5b1eb19a6d34327b0f11e9026404c18",
+     "question": [
+      "Which provinces sold the most in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.province, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 GROUP BY c.province ORDER BY net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "c0811873e2f24c93867a8fca34045a50",
+     "question": [
+      "Who were the top 10 customers by net revenue in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.customer_name, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 GROUP BY c.customer_name ORDER BY net_revenue DESC LIMIT 10"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "b9e672dae3704432b4050251ca422e50",
+     "question": [
+      "Show sales by province for FY2025, highest first."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.province, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 GROUP BY c.province ORDER BY net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "b7d6cf94c51b4184932ddb745b341fea",
+     "question": [
+      "How many customers bought from us in September 2026, and how many a year earlier?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT COUNT(DISTINCT CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN customer_id END) AS sep_2026, COUNT(DISTINCT CASE WHEN invoice_date BETWEEN DATE'2025-09-01' AND DATE'2025-09-30' THEN customer_id END) AS sep_2025 FROM sales_dev.gold.fact_sales WHERE invoice_type = 'ZAOR' AND NOT is_cancelled"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "b5b735ef6e684e5c98579eaf84baa1d1",
+     "question": [
+      "Rank the provinces by net revenue in fiscal year 2025."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.province, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 GROUP BY c.province ORDER BY net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "b595cf5ab67c4d76b9e8bd5abe757934",
+     "question": [
+      "Total sales for financial year 2025 (April 2025 to March 2026)?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "b3b69acc59d24bfc884672c7ee0d4153",
+     "question": [
+      "How did units of weedicide, insecticide and fungicide each grow from April-September 2025 to April-September 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT p.product_group_name AS product_group, ROUND((SUM(CASE WHEN f.invoice_date BETWEEN DATE'2026-04-01' AND DATE'2026-09-30' THEN f.quantity END) / NULLIF(SUM(CASE WHEN f.invoice_date BETWEEN DATE'2025-04-01' AND DATE'2025-09-30' THEN f.quantity END), 0) - 1) * 100, 1) AS units_growth_pct FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id WHERE p.product_group_name IN ('WEEDICIDE', 'INSECTICIDE', 'FUNGICIDE') GROUP BY p.product_group_name ORDER BY units_growth_pct"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "ac7a3a511e5f402d9085c8218b526457",
+     "question": [
+      "What were total sales for September 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales WHERE invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "a201c34c405642ef88fb8bdfa597ba0b",
+     "question": [
+      "Compare Q2 of FY2026 (July-September 2026) with the same quarter a year earlier."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30' THEN net_revenue_amount END), 2) AS q_2026, ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2025-07-01' AND DATE'2025-09-30' THEN net_revenue_amount END), 2) AS q_2025, ROUND((SUM(CASE WHEN invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30' THEN net_revenue_amount END) / NULLIF(SUM(CASE WHEN invoice_date BETWEEN DATE'2025-07-01' AND DATE'2025-09-30' THEN net_revenue_amount END), 0) - 1) * 100, 1) AS growth_pct FROM sales_dev.gold.fact_sales"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "a03e8f9af8c14a8e9838f73f04f3d5ea",
+     "question": [
+      "Top 10 customers by sales in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.customer_name, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 GROUP BY c.customer_name ORDER BY net_revenue DESC LIMIT 10"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "978278cf2d5c44d6a27246f7c321097a",
+     "question": [
+      "Number and value of invoice cancellations in FY2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT COUNT(DISTINCT f.invoice_number) AS cancellation_documents, ROUND(-SUM(f.cancellations_amount), 2) AS cancelled_value FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025 AND f.invoice_type = 'S1'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "92968b0a68f647ba9912c434babb342c",
+     "question": [
+      "What was gross margin % by product group in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT p.product_group_name AS product_group, ROUND(SUM(f.margin_amount) / NULLIF(SUM(f.net_revenue_amount), 0) * 100, 1) AS gross_margin_pct FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id WHERE d.fiscal_year = 2025 GROUP BY p.product_group_name ORDER BY SUM(f.net_revenue_amount) DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "905f0764725e4ece8e45f54abb6bcf9a",
+     "question": [
+      "Which customer group generated the most net revenue in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.customer_group_name AS customer_group, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 GROUP BY c.customer_group_name ORDER BY net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "8e3cc3a842e4482aaeca9eafeeaa09f9",
+     "question": [
+      "Margin percentage by product category for FY2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT p.product_group_name AS product_group, ROUND(SUM(f.margin_amount) / NULLIF(SUM(f.net_revenue_amount), 0) * 100, 1) AS gross_margin_pct FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id WHERE d.fiscal_year = 2025 GROUP BY p.product_group_name ORDER BY SUM(f.net_revenue_amount) DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "8c7877f16d794fc696742aaa3f8a2e5f",
+     "question": [
+      "Give me revenue for each month of fiscal year 2025."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT d.month_start_date AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025 GROUP BY d.month_start_date ORDER BY month"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "7fd96c014b8d44a097c629959499b3e4",
+     "question": [
+      "Number of invoices in Sep 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT COUNT(DISTINCT invoice_number) AS invoices FROM sales_dev.gold.fact_sales WHERE invoice_type = 'ZAOR' AND NOT is_cancelled AND invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "7dfbd5d6f1434af79ccdeb939b895c10",
+     "question": [
+      "Sales split by channel for FY2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ch.distribution_channel_name AS channel, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_channel ch ON f.distribution_channel_code = ch.distribution_channel_code WHERE d.fiscal_year = 2025 GROUP BY ch.distribution_channel_name ORDER BY net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "7d4920d348f54229b901e30311b656f9",
+     "question": [
+      "Show monthly net revenue for fiscal year 2025."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT d.month_start_date AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025 GROUP BY d.month_start_date ORDER BY month"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "793d9c104ed84245b2990cbb655b7a6c",
+     "question": [
+      "What was the value of returns in FY2025 and the returns percentage?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(-SUM(f.returns_amount), 2) AS returns_value, ROUND(-SUM(f.returns_amount) / NULLIF(SUM(f.invoiced_revenue_amount), 0) * 100, 1) AS returns_rate_pct FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "733a69470a42448c8344ffb30a9fa317",
+     "question": [
+      "What was total net revenue in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "6e6b7127538b4d3190fe808bd6535818",
+     "question": [
+      "How much did we lose to returns in fiscal year 2025, and what percentage of invoiced sales was that?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(-SUM(f.returns_amount), 2) AS returns_value, ROUND(-SUM(f.returns_amount) / NULLIF(SUM(f.invoiced_revenue_amount), 0) * 100, 1) AS returns_rate_pct FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "6cb4cbde91a04181a09645f5c02f22b5",
+     "question": [
+      "How many orders did we get in September 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT COUNT(DISTINCT invoice_number) AS invoices FROM sales_dev.gold.fact_sales WHERE invoice_type = 'ZAOR' AND NOT is_cancelled AND invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "61452d6515aa41b2bf1e3400734cbbec",
+     "question": [
+      "Within Western province, which districts sold the most in fiscal year 2025? Show all of them ranked."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.district_name AS district, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 AND c.province = 'Western' GROUP BY c.district_name ORDER BY net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "5e7af4d7fdef4bf398a19b433d2defe4",
+     "question": [
+      "What was month-on-month revenue growth in September 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN net_revenue_amount END), 2) AS sep_2026, ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-08-01' AND DATE'2026-08-31' THEN net_revenue_amount END), 2) AS aug_2026, ROUND((SUM(CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN net_revenue_amount END) / NULLIF(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-08-01' AND DATE'2026-08-31' THEN net_revenue_amount END), 0) - 1) * 100, 1) AS growth_pct FROM sales_dev.gold.fact_sales"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "5da84f88bc0a4289a0a9ef8cbdc62546",
+     "question": [
+      "Highest revenue per active customer by province for fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.province, ROUND(SUM(f.net_revenue_amount) / NULLIF(COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END), 0), 2) AS revenue_per_active_customer FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 GROUP BY c.province ORDER BY revenue_per_active_customer DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "5d782bc9f68a4662832ecfb283daf649",
+     "question": [
+      "Which province has the highest net revenue per active customer in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.province, ROUND(SUM(f.net_revenue_amount) / NULLIF(COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END), 0), 2) AS revenue_per_active_customer FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 GROUP BY c.province ORDER BY revenue_per_active_customer DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "5d5f2deb11b0480fa9e0f3e03e8d46a3",
+     "question": [
+      "How many cancellations did we have in fiscal year 2025, and how much were they worth?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT COUNT(DISTINCT f.invoice_number) AS cancellation_documents, ROUND(-SUM(f.cancellations_amount), 2) AS cancelled_value FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025 AND f.invoice_type = 'S1'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "5c235384bf25457e84ebfae34be2ae07",
+     "question": [
+      "Monthly sales trend for FY2025."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT d.month_start_date AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025 GROUP BY d.month_start_date ORDER BY month"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "5a24ea89b6a74bb08c83b84cb912b76a",
+     "question": [
+      "Compare the number of buying customers in Sep 2026 and Sep 2025."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT COUNT(DISTINCT CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN customer_id END) AS sep_2026, COUNT(DISTINCT CASE WHEN invoice_date BETWEEN DATE'2025-09-01' AND DATE'2025-09-30' THEN customer_id END) AS sep_2025 FROM sales_dev.gold.fact_sales WHERE invoice_type = 'ZAOR' AND NOT is_cancelled"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "505f86d88ef2443a95403a846eca695b",
+     "question": [
+      "Monthly revenue of HEX FUNGICIDE 1LTR since its first sale?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT d.month_start_date AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE f.product_id = 'HEX1LTR' GROUP BY d.month_start_date ORDER BY month"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "50470833f22243cb9515eb5327c07e95",
+     "question": [
+      "Which product group had the best gross margin % in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT p.product_group_name AS product_group, ROUND(SUM(f.margin_amount) / NULLIF(SUM(f.net_revenue_amount), 0) * 100, 1) AS gross_margin_pct FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id WHERE d.fiscal_year = 2025 GROUP BY p.product_group_name ORDER BY SUM(f.net_revenue_amount) DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "4b95500f9d924421819f97057ee47c46",
+     "question": [
+      "By what percentage did sales change from August to September 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN net_revenue_amount END), 2) AS sep_2026, ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-08-01' AND DATE'2026-08-31' THEN net_revenue_amount END), 2) AS aug_2026, ROUND((SUM(CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN net_revenue_amount END) / NULLIF(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-08-01' AND DATE'2026-08-31' THEN net_revenue_amount END), 0) - 1) * 100, 1) AS growth_pct FROM sales_dev.gold.fact_sales"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "494161564b534f1791769e6ea6b8ef97",
+     "question": [
+      "How did the returns rate of HGL INSECTICIDE 400ML change after 1 July 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(-SUM(CASE WHEN invoice_date < DATE'2026-07-01' THEN returns_amount END) / NULLIF(SUM(CASE WHEN invoice_date < DATE'2026-07-01' THEN invoiced_revenue_amount END), 0) * 100, 1) AS before_pct, ROUND(-SUM(CASE WHEN invoice_date >= DATE'2026-07-01' THEN returns_amount END) / NULLIF(SUM(CASE WHEN invoice_date >= DATE'2026-07-01' THEN invoiced_revenue_amount END), 0) * 100, 1) AS after_pct FROM sales_dev.gold.fact_sales WHERE product_id = 'HGL400ML'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "4730ed56f45042a5b972c2c24e744ddb",
+     "question": [
+      "How much did we sell in FY2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "4522a5a5fc504df08056a978ce40c3da",
+     "question": [
+      "Rank the districts in Western province by net revenue for fiscal year 2025."
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.district_name AS district, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 AND c.province = 'Western' GROUP BY c.district_name ORDER BY net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "439c7a68c78f4a158af8334975619617",
+     "question": [
+      "How many active customers did we have in September 2026 compared with September 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT COUNT(DISTINCT CASE WHEN invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30' THEN customer_id END) AS sep_2026, COUNT(DISTINCT CASE WHEN invoice_date BETWEEN DATE'2025-09-01' AND DATE'2025-09-30' THEN customer_id END) AS sep_2025 FROM sales_dev.gold.fact_sales WHERE invoice_type = 'ZAOR' AND NOT is_cancelled"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "3f24863def444c80bb2bb5eb605c9771",
+     "question": [
+      "When did HEX FUNGICIDE 1LTR start selling, and how have its monthly sales developed?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT d.month_start_date AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE f.product_id = 'HEX1LTR' GROUP BY d.month_start_date ORDER BY month"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "3b4075cac81040dfb4c69c6f2dd67215",
+     "question": [
+      "What were the top 5 products by net revenue in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT p.product_description AS product, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id WHERE d.fiscal_year = 2025 GROUP BY p.product_description ORDER BY net_revenue DESC LIMIT 5"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "3a4bfbb62f5142e59cc135575dc87649",
+     "question": [
+      "Which calendar months have the highest net revenue on average?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "WITH m AS ( SELECT d.month_start_date, d.month, SUM(f.net_revenue_amount) AS revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE NOT d.is_month_to_date GROUP BY d.month_start_date, d.month ) SELECT month, ROUND(AVG(revenue), 2) AS avg_monthly_revenue FROM m GROUP BY month ORDER BY avg_monthly_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "3a0d2f2d97e341b1b84a4f97f9f753a3",
+     "question": [
+      "What share of fiscal year 2025 net revenue came from the top 8 products?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "WITH p AS ( SELECT f.product_id, SUM(f.net_revenue_amount) AS revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025 GROUP BY f.product_id ), ranked AS (SELECT revenue, ROW_NUMBER() OVER (ORDER BY revenue DESC) AS rn FROM p) SELECT ROUND(SUM(CASE WHEN rn <= 8 THEN revenue END) / NULLIF(SUM(revenue), 0) * 100, 1) AS top8_share_pct FROM ranked"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "35f674c13955497c93541ad65afbb575",
+     "question": [
+      "How much revenue did we make in Sep 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales WHERE invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "349afbc43ac54d64bf0456aad228bb22",
+     "question": [
+      "What was the average invoice value in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(f.net_revenue_amount) / NULLIF(COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.invoice_number END), 0), 2) AS average_invoice_value FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "320c5a64b95541eaa04f14ddeccfe43e",
+     "question": [
+      "In which months of the year are sales usually highest?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "WITH m AS ( SELECT d.month_start_date, d.month, SUM(f.net_revenue_amount) AS revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE NOT d.is_month_to_date GROUP BY d.month_start_date, d.month ) SELECT month, ROUND(AVG(revenue), 2) AS avg_monthly_revenue FROM m GROUP BY month ORDER BY avg_monthly_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "320a14f8bc28405b95f7aed0f7a4e257",
+     "question": [
+      "How many invoices were cancelled in fiscal year 2025 and what was their value?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT COUNT(DISTINCT f.invoice_number) AS cancellation_documents, ROUND(-SUM(f.cancellations_amount), 2) AS cancelled_value FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025 AND f.invoice_type = 'S1'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "2f956d7cc91646db94c90952ee397bc5",
+     "question": [
+      "How concentrated are our sales: what percentage of FY2025 revenue came from our 8 best products?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "WITH p AS ( SELECT f.product_id, SUM(f.net_revenue_amount) AS revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025 GROUP BY f.product_id ), ranked AS (SELECT revenue, ROW_NUMBER() OVER (ORDER BY revenue DESC) AS rn FROM p) SELECT ROUND(SUM(CASE WHEN rn <= 8 THEN revenue END) / NULLIF(SUM(revenue), 0) * 100, 1) AS top8_share_pct FROM ranked"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "285347d7678b447c92da46d55e9cf025",
+     "question": [
+      "Is revenue for July-September 2026 up or down versus July-September 2025, and by how much?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30' THEN net_revenue_amount END), 2) AS q_2026, ROUND(SUM(CASE WHEN invoice_date BETWEEN DATE'2025-07-01' AND DATE'2025-09-30' THEN net_revenue_amount END), 2) AS q_2025, ROUND((SUM(CASE WHEN invoice_date BETWEEN DATE'2026-07-01' AND DATE'2026-09-30' THEN net_revenue_amount END) / NULLIF(SUM(CASE WHEN invoice_date BETWEEN DATE'2025-07-01' AND DATE'2025-09-30' THEN net_revenue_amount END), 0) - 1) * 100, 1) AS growth_pct FROM sales_dev.gold.fact_sales"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "25649440da704135b66a978772fd3525",
+     "question": [
+      "What was our average order value in FY2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(f.net_revenue_amount) / NULLIF(COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.invoice_number END), 0), 2) AS average_invoice_value FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "2067ebcb0ed540dd94f25442cbfcb661",
+     "question": [
+      "Which 5 products brought in the most revenue in fiscal year 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT p.product_description AS product, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id WHERE d.fiscal_year = 2025 GROUP BY p.product_description ORDER BY net_revenue DESC LIMIT 5"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "1a446fabbc5d483cad007dcfd8e0e419",
+     "question": [
+      "Which sold more in fiscal year 2025, the Maha season or the Yala season?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT ROUND(SUM(CASE WHEN d.cultivation_season = 'Maha' THEN f.net_revenue_amount END), 2) AS maha_net_revenue, ROUND(SUM(CASE WHEN d.cultivation_season = 'Yala' THEN f.net_revenue_amount END), 2) AS yala_net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "17cef211a96a4ccc808992f3a8d604ca",
+     "question": [
+      "Unit growth by crop chemical group (weedicide, insecticide, fungicide), April-September 2026 versus April-September 2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT p.product_group_name AS product_group, ROUND((SUM(CASE WHEN f.invoice_date BETWEEN DATE'2026-04-01' AND DATE'2026-09-30' THEN f.quantity END) / NULLIF(SUM(CASE WHEN f.invoice_date BETWEEN DATE'2025-04-01' AND DATE'2025-09-30' THEN f.quantity END), 0) - 1) * 100, 1) AS units_growth_pct FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_product p ON f.product_id = p.product_id WHERE p.product_group_name IN ('WEEDICIDE', 'INSECTICIDE', 'FUNGICIDE') GROUP BY p.product_group_name ORDER BY units_growth_pct"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "1446751de89847b1a312f9d8555440d0",
+     "question": [
+      "Which region earns the most per customer in FY2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.province, ROUND(SUM(f.net_revenue_amount) / NULLIF(COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END), 0), 2) AS revenue_per_active_customer FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 GROUP BY c.province ORDER BY revenue_per_active_customer DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "1396435d87fe4c8cb34c8039f5872da8",
+     "question": [
+      "Revenue by customer group for fiscal year 2025: which is largest?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.customer_group_name AS customer_group, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 GROUP BY c.customer_group_name ORDER BY net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "0ca4551b2e274a88a81a4d3a803a99d6",
+     "question": [
+      "Which customer segment brought the most revenue in FY2025?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.customer_group_name AS customer_group, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 GROUP BY c.customer_group_name ORDER BY net_revenue DESC"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "0c613da2f26e49eea9f0ed27960c56c1",
+     "question": [
+      "How many invoices did we issue in September 2026?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT COUNT(DISTINCT invoice_number) AS invoices FROM sales_dev.gold.fact_sales WHERE invoice_type = 'ZAOR' AND NOT is_cancelled AND invoice_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "07bebbcc902f40aeafc4c452e61afd7a",
+     "question": [
+      "How is the new HEX FUNGICIDE 1LTR doing month by month since launch?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT d.month_start_date AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE f.product_id = 'HEX1LTR' GROUP BY d.month_start_date ORDER BY month"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "03ef6586b9884d85b8be33a816c69c14",
+     "question": [
+      "Share of FY2025 sales from the top 8 products?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "WITH p AS ( SELECT f.product_id, SUM(f.net_revenue_amount) AS revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date WHERE d.fiscal_year = 2025 GROUP BY f.product_id ), ranked AS (SELECT revenue, ROW_NUMBER() OVER (ORDER BY revenue DESC) AS rn FROM p) SELECT ROUND(SUM(CASE WHEN rn <= 8 THEN revenue END) / NULLIF(SUM(revenue), 0) * 100, 1) AS top8_share_pct FROM ranked"
+       ]
+      }
+     ]
+    },
+    {
+     "id": "00d1fc121ecc42bb955f12213eac7571",
+     "question": [
+      "Western province districts by sales in FY2025, highest first?"
+     ],
+     "answer": [
+      {
+       "format": "SQL",
+       "content": [
+        "SELECT c.district_name AS district, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue FROM sales_dev.gold.fact_sales f JOIN sales_dev.gold.dim_date d ON f.invoice_date = d.date JOIN sales_dev.gold.dim_customer c ON f.customer_id = c.customer_id WHERE d.fiscal_year = 2025 AND c.province = 'Western' GROUP BY c.district_name ORDER BY net_revenue DESC"
+       ]
+      }
+     ]
+    }
+   ]
+  }
+ }
+}
