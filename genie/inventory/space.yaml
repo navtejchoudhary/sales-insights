@@ -32,7 +32,7 @@ instructions: |
   - Fiscal year April-March, named by its start year (FY2026 = Apr 2026-Mar 2027). Months: group by dim_date.month_start_date, never DATE_TRUNC (a timestamp).
   - Answer in the shape asked: "how much / how many" = one total row unless "per location/product/month" is asked; "which ... most" = full ranking unless a number is given ("top 5" = LIMIT 5).
   - Before/after comparisons: ONE row, one column per period (avg_daily_before, avg_daily_since). "From/since <date>" includes it, up to the latest snapshot_date; "the N days before" ends the day before. Average per day = total of all locations / days in the period.
-  - Round percentages and days to 1 decimal, money to 2 decimals. Always state the stock date you used.
+  - Round percentages and days of cover to 1 decimal, money to 2 decimals; leave per-day averages unrounded. Always state the stock date you used.
 sample_questions:
   - How much MC6001LT does each depot hold right now?
   - What was the stock value by province at the end of last month?

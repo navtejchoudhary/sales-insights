@@ -246,10 +246,10 @@ questions:
     needs_data_until: 2026-10-25
     sql: |
       SELECT
-        ROUND(SUM(CASE WHEN s.snapshot_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22' THEN s.issued_quantity END) / 30, 1)
+        SUM(CASE WHEN s.snapshot_date BETWEEN DATE'2026-09-23' AND DATE'2026-10-22' THEN s.issued_quantity END) / 30
           AS avg_daily_before,
-        ROUND(SUM(CASE WHEN s.snapshot_date >= DATE'2026-10-23' THEN s.issued_quantity END)
-              / NULLIF(COUNT(DISTINCT CASE WHEN s.snapshot_date >= DATE'2026-10-23' THEN s.snapshot_date END), 0), 1)
+        SUM(CASE WHEN s.snapshot_date >= DATE'2026-10-23' THEN s.issued_quantity END)
+          / NULLIF(COUNT(DISTINCT CASE WHEN s.snapshot_date >= DATE'2026-10-23' THEN s.snapshot_date END), 0)
           AS avg_daily_since
       FROM ${fact_stock_daily} s JOIN ${dim_location} l ON s.location_id = l.location_id
       WHERE s.product_id = 'MC6004LT' AND l.province = 'Western' AND l.location_type = 'Depot'
@@ -336,7 +336,7 @@ questions:
       - On an average September 2026 day, how much MC600 WEEDICIDE 1LTR was at the Colombo depot?
       - Mean daily MC6001LT stock at depot 2010-8001 for Sep 2026?
     sql: |
-      SELECT ROUND(AVG(stock_quantity), 1) AS average_daily_stock
+      SELECT AVG(stock_quantity) AS average_daily_stock
       FROM ${fact_stock_daily}
       WHERE product_id = 'MC6001LT' AND location_id = '2010-8001'
         AND snapshot_date BETWEEN DATE'2026-09-01' AND DATE'2026-09-30'
