@@ -17,8 +17,18 @@ when idle.
    ```
 2. Databricks > SQL Editor: paste `sql/setup/client_dev.sql`, then **Run all**. It creates the catalog, its
    schemas and volumes, and grants nothing: only you can see it. If the last line (REVOKE BROWSE) says there
-   was nothing to revoke, that is fine.
-3. Check: `SHOW GRANTS ON CATALOG client_dev;` lists only you (the owner).
+   was nothing to revoke, that is fine. The catalog may already exist (created on 26 Oct for the real data):
+   `IF NOT EXISTS` leaves it and its external inbox volume `raw.landing` as they are.
+3. Check: `SHOW GRANTS ON CATALOG client_dev;` returns no rows (no grants), and
+   `DESCRIBE CATALOG EXTENDED client_dev;` shows you as Owner.
+
+Volumes: `raw.landing` is the external, read-only inbox for the real upload; the pipeline never writes there.
+It uses `raw.staging` (the copy, or the dummy files), `raw.delivered` (what bronze loads) and `raw.output`.
+
+**Before the real copy:** the dummy run leaves SAP-shaped dummy rows in `client_dev` (bronze, silver, gold,
+ops and the staging and delivered volumes). Clear them first, so real and dummy rows never mix: drop and
+recreate the schemas bronze, silver, gold and ops, empty the staging and delivered volumes, then set
+`source: real` in `config/config.yaml`. The R-phase plan has the exact commands.
 
 ## Deploy and run
 
