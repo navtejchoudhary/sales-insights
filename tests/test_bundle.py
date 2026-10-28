@@ -219,6 +219,9 @@ def test_client_setup_sql_matches_the_config_and_grants_nothing():
     statements = [line for line in sql.splitlines() if line and not line.startswith("--")]
     assert not [s for s in statements if s.startswith("GRANT")]  # the client's data is shared with nobody
     assert f"REVOKE BROWSE ON CATALOG {dev.catalog} FROM `account users`;" in sql
+    inbox = f"/Volumes/{dev.catalog}/raw/landing"  # external, read-only: where the real files are uploaded
+    assert inbox not in (dev.staging_path, dev.landing_path, dev.output_path)
+    assert f"CREATE VOLUME IF NOT EXISTS {dev.catalog}.raw.landing" not in sql
     assert dev.catalog not in (ROOT / "sql" / "setup" / "permissions.sql").read_text()
 
 

@@ -74,8 +74,10 @@ areas:
       processed_files_log: lake/client/ops/_processed_files
       output_path: output/client
     dev:
+      # NOT raw.landing: that is the external, read-only inbox where the real files are uploaded. The pipeline
+      # never writes there; the copied files are placed in staging and delivered to raw.delivered.
       staging_path: /Volumes/client_dev/raw/staging
-      landing_path: /Volumes/client_dev/raw/landing
+      landing_path: /Volumes/client_dev/raw/delivered
       catalog: client_dev
       output_path: /Volumes/client_dev/raw/output
 
