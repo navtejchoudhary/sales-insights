@@ -27,7 +27,7 @@ deleted and this repo plus `workspace_export/` are the record.
 | Insights, forecast, alerts | Daily findings table, seasonal forecast, 3 SQL alerts (revenue drop, stock-outs) |
 | Weekly deck | python-pptx deck with native charts |
 | Access | 3 account groups (`sales_team`, `stock_team`, `management`), read-only grants on gold only |
-| Real data (from 28 Oct) | In progress: input contract `docs/sap_input_contract.md`; proven on SAP-shaped dummy data first |
+| Real data (from 28 Oct) | In progress: input contract `docs/sap_input_contract.md`; area `client` (`run_pipeline --area client`) runs bronze, silver, gold and reconciliation on SAP-shaped dummy data; next: its metric view and dashboard, then the real copy |
 | Not built | Agent Bricks Supervisor (not available on the workspace), a production target |
 
 ## How data flows
@@ -55,7 +55,7 @@ generator (plain Python) -> staging/ -> drip -> landing/ -> bronze -> silver -> 
 | `config/config.yaml` | Profiles `local` and `dev`, catalogs, paths, areas. The ONLY place for names and paths |
 | `src/sales_insights/common/` | `load_config`, `get_spark`, `Lake` (all table reads and writes) |
 | `src/sales_insights/generator/` | Dummy data. Stories ONLY in `stories.py`; names in `masters.py`; stock in `inventory.py`; SAP-shaped data for the real-data phase in `sap.py` |
-| `src/sales_insights/pipeline/` | bronze, silver, gold, reconcile, inventory_*, `run_pipeline.py` (orchestration) |
+| `src/sales_insights/pipeline/` | bronze, silver, gold, reconcile, inventory_*, sap_silver + sap_reconcile (SAP billing data), `run_pipeline.py` (orchestration) |
 | `src/sales_insights/semantic/` | metric views, KPI check, Genie (answer key, setup, sync, health, failures), dashboards, export |
 | `src/sales_insights/insights/`, `deck/` | Findings, forecast, narrative; weekly PowerPoint |
 | `sql/metric_views/*.yaml` | Every KPI defined ONCE; `sql/kpis/` holds the readable SQL twin |
@@ -76,6 +76,7 @@ uv run pytest                             # all tests incl. Spark (~10 min); mus
 uv run ruff check . && uv run ruff format .
 uv run python -m sales_insights.pipeline.run_pipeline --date 2026-10-06        # one day, every step, local
 uv run python -m sales_insights.pipeline.run_pipeline --area inventory --date 2026-10-06
+uv run python -m sales_insights.pipeline.run_pipeline --area client --date 2026-09-30     # SAP billing data
 uv run python -m sales_insights.semantic.dashboards                           # regenerate dashboards/*.lvdash.json
 databricks bundle deploy -t dev --profile sales-dev                           # jobs, dashboards, alerts
 ```

@@ -30,6 +30,9 @@ DOCUMENT_TYPES = {
     "ZARE": "Return",
     "S1": "Cancellation",
     "ZACR": "Price correction",
+    # SAP billing data (client area) also has these two; their amounts count in net revenue only
+    "ZADR": "Debit memo",
+    "S2": "Credit memo cancellation",
 }
 SALES_TYPES = ["ZAOR", "ZFOC"]
 HISTORY = "history"
@@ -65,9 +68,12 @@ def build_fact_sales(lines: DataFrame, products: DataFrame) -> DataFrame:
     t, qty, rev = F.col("invoice_type"), F.col("quantity"), F.col("revenue")
     doc_type = F.coalesce(*[F.when(t == code, F.lit(label)) for code, label in DOCUMENT_TYPES.items()])
     rep = F.col("sales_rep_id") if "sales_rep_id" in lines.columns else F.lit(None).cast("string")
-    cost = products.select("product_id", F.col("standard_cost").alias("_unit_cost"))
-    f = lines.join(F.broadcast(cost), "product_id", "left")
-    cost_amount = (qty * F.coalesce(F.col("_unit_cost"), F.lit(0))).cast(MONEY)
+    if "cost_amount" in lines.columns:  # SAP billing data carries the line's own cost (already signed)
+        f, cost_amount = lines, F.col("cost_amount").cast(MONEY)
+    else:  # the dummy sales extract: quantity x product standard cost
+        cost = products.select("product_id", F.col("standard_cost").alias("_unit_cost"))
+        f = lines.join(F.broadcast(cost), "product_id", "left")
+        cost_amount = (qty * F.coalesce(F.col("_unit_cost"), F.lit(0))).cast(MONEY)
     return f.select(
         "invoice_number",
         "invoice_item",

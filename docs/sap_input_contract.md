@@ -138,9 +138,25 @@ exactly; gold must match the source minus the filtered rows. A mismatch stops pu
 
 ## Dummy data in this shape
 
-`uv run python -m sales_insights.generator.sap` writes the same tables from our dummy business to
-`staging/sap/` (CSV, every value as text, the way bronze stores it), so the pipeline is built and tested
-without reading the real source. Same stories as the MVP (generator/engine.py), reshaped to SAP fields,
+`uv run python -m sales_insights.generator.sap` writes the same tables from our dummy business to the
+client area's staging folder (CSV, every value as text, the way bronze stores it), so the pipeline is built
+and tested without reading the real source. The layout is the one every area uses, and the real one-time
+copy must write it too:
+
+```
+staging/client/history/billing_items.csv, source_counts.csv, sap_manifest.json (written last)
+staging/client/masters/customer_master.csv, material_master.csv, text_<name>.csv, sap_manifest.json (last)
+```
+
+Run the whole chain (generates and delivers the files the first time, only while `source: dummy`):
+
+```
+uv run python -m sales_insights.pipeline.run_pipeline --area client --date 2026-09-30
+```
+
+Steps: bronze (same code as sales) → silver (`pipeline/sap_silver.py`) → gold (same code) → reconcile
+(`pipeline/sap_reconcile.py`). Scope (company codes, date window, currency) is in `config.yaml`
+(`areas.client.scope`). Same stories as the MVP (generator/engine.py), reshaped to SAP fields,
 plus every case found in the real source, at a fixed rate and logged in `sap_manifest.json`:
 
 | Planted case | Rate | The pipeline must |
@@ -157,6 +173,29 @@ plus every case found in the real source, at a fixed rate and logged in `sap_man
 | A second company code | from the engine | filter out |
 | A billed customer missing from the customer master | 1 customer | "Unknown" member |
 | Personal columns in the customer master (fake values) | every row | never store them |
+
+## What silver does with every source row
+
+Every bronze billing row gets exactly ONE fate, checked in this order, counted per company, billing month
+and category in `ops.sap_row_fates`:
+
+| Fate | Rule |
+|---|---|
+| `older_version` | another copy of the same document + item has a newer `_fivetran_synced` |
+| `deleted_in_source` | `_fivetran_deleted` is true |
+| `out_of_scope_company` | company code not in `scope.company_codes` |
+| `not_revenue` | category `U` or type `FAZ` / `FAS` |
+| `quarantined` | a quarantine reason above (row and reasons in `silver.quarantine`) |
+| `outside_window` | billing date outside `scope.date_from` … `scope.date_to` |
+| `kept` | goes to `silver.invoice_lines`: signed, converted to the company currency with the line's rate (a negative SAP rate is an indirect quotation: 1 / rate), fiscal year and period from the date |
+
+Customers: the display name is `Customer <id>`; personal columns are never selected. Customers and
+materials billed but missing from the masters get an `Unknown …` member. Province is `Unassigned` until
+the business gives the district → province list (open question 3).
+
+Reconciliation (fails the run): source totals = bronze rows (all fates), source − filtered rows = silver
+(lines and source net amount per company, month and category), silver = gold (lines and net revenue per
+invoice date and type). Results in `ops.sap_reconciliation`.
 
 `source_counts.csv` holds the control totals exactly as the real copy will record them (per company,
 billing month and document category: lines and sum of `netamount`, every row counted).
