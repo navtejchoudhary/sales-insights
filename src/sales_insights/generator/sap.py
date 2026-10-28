@@ -4,12 +4,16 @@ The real source is a warehouse holding raw SAP tables, copied there by a replica
 This module writes the SAME shape from our dummy business, so the pipeline can be built and proven
 without reading a single row from the real source:
 
-    staging/sap/billing_items.csv        the 40 contract columns, SAP field names, one row per SAP record
-    staging/sap/customer_master.csv      sold-to customers incl. fake personal columns (never stored by silver)
-    staging/sap/material_master.csv      materials
-    staging/sap/text_<name>.csv          lookup tables: code, language (E and D), name
-    staging/sap/source_counts.csv        control totals as the real copy will record them
-    staging/sap/sap_manifest.json        written LAST: rows, SHA-256, every planted case
+    staging/client/history/billing_items.csv      the 41 contract columns, SAP field names, one row per record
+    staging/client/history/source_counts.csv      control totals as the real copy will record them
+    staging/client/history/sap_manifest.json      written LAST: rows, SHA-256, every planted case
+    staging/client/masters/customer_master.csv    sold-to customers incl. fake personal columns (never stored)
+    staging/client/masters/material_master.csv    materials
+    staging/client/masters/text_<name>.csv        lookup tables: code, language (E and D), name
+    staging/client/masters/sap_manifest.json      written LAST
+
+The same folder layout as the other areas (masters/ and history/, manifest last), so landing, drip and bronze
+load it unchanged. The real one-time copy writes this layout too.
 
 How it is built: the invoice lines come from the shared engine (generator/engine.py, same stories as the
 MVP) and are reshaped to SAP fields: amounts and quantities become positive (SAP stores the meaning in
@@ -27,7 +31,8 @@ Deterministic: every choice is seeded from what it is about (invoice number, lin
 stream, so the output is identical on every run. Plain Python (NumPy, pandas), like the other generators.
 
 Run:
-    uv run python -m sales_insights.generator.sap
+    uv run python -m sales_insights.generator.sap          # writes the client area's staging folder
+    uv run python -m sales_insights.pipeline.run_pipeline --area client --date 2026-09-30   # or let it generate
 """
 
 from __future__ import annotations
@@ -45,7 +50,7 @@ from sales_insights.generator import engine as e
 from sales_insights.generator import history as h
 from sales_insights.generator import masters as m
 
-# The 40 billing-item columns of the contract, in contract order (SAP field names, lower case)
+# The billing-item columns of the contract (39 SAP fields + 2 replication columns), in contract order
 BILLING_COLUMNS = [
     "billingdocument",
     "billingdocumentitem",
@@ -493,35 +498,49 @@ def build_sap(seed: int, as_of: date, start: date | None = None) -> tuple[dict[s
     return out, log
 
 
+HISTORY_TABLES = ("billing_items", "source_counts")  # -> history/; everything else -> masters/
+MANIFEST = "sap_manifest.json"
+
+
+def folder_of(name: str) -> str:
+    return "history" if name in HISTORY_TABLES else "masters"
+
+
 def write_sap(out: dict[str, pd.DataFrame], log: list[dict], target: Path, seed: int, as_of: date) -> Path:
-    target.mkdir(parents=True, exist_ok=True)
-    files = {}
-    for name, df in out.items():
-        path = target / f"{name}.csv"
-        df.to_csv(path, index=False, lineterminator="\n")
-        files[path.name] = {"rows": len(df), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+    """Write masters/ and history/ (each with its manifest LAST), the layout landing and bronze expect."""
     cases: dict[str, int] = {}
     for item in log:
         cases[item["case"]] = cases.get(item["case"], 0) + 1
-    manifest = {
-        "kind": "sap",
-        "source_system": "SAP billing items via a replication tool (simulated)",
-        "as_of": as_of.isoformat(),
-        "seed": seed,
-        "contract": "docs/sap_input_contract.md",
-        "personal_columns": {"customer_master": PERSONAL_CUSTOMER_COLUMNS},
-        "files": files,
-        "planted_cases": cases,
-        "planted": log,
-    }
-    (target / "sap_manifest.json").write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
+    for folder in ("masters", "history"):
+        (target / folder).mkdir(parents=True, exist_ok=True)
+        files = {}
+        for name, df in out.items():
+            if folder_of(name) != folder:
+                continue
+            path = target / folder / f"{name}.csv"
+            df.to_csv(path, index=False, lineterminator="\n")
+            files[path.name] = {"rows": len(df), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
+        manifest = {
+            "kind": f"sap_{folder}",
+            "source_system": "SAP tables via a replication tool (simulated)",
+            "as_of": as_of.isoformat(),
+            "seed": seed,
+            "contract": "docs/sap_input_contract.md",
+            "files": files,
+        }
+        if folder == "masters":
+            manifest["personal_columns"] = {"customer_master": PERSONAL_CUSTOMER_COLUMNS}
+        else:
+            manifest["planted_cases"] = cases
+            manifest["planted"] = log
+        (target / folder / MANIFEST).write_text(json.dumps(manifest, indent=2) + "\n", encoding="utf-8")
     return target
 
 
 def main(argv: list[str] | None = None) -> None:
     from sales_insights.common.config import load_config
 
-    cfg = load_config()
+    cfg = load_config(area="client")
     parser = argparse.ArgumentParser(description="Generate SAP-shaped dummy data (real-data phase).")
     parser.add_argument(
         "--as-of",
@@ -530,7 +549,7 @@ def main(argv: list[str] | None = None) -> None:
         help="Data ends the day before (YYYY-MM-DD).",
     )
     parser.add_argument("--seed", type=int, default=cfg.business["random_seed"])
-    parser.add_argument("--out", type=Path, default=Path(cfg.path(cfg.staging_path)) / "sap")
+    parser.add_argument("--out", type=Path, default=Path(cfg.path(cfg.staging_path)))
     args = parser.parse_args(argv)
 
     out, log = build_sap(args.seed, args.as_of)
@@ -538,7 +557,7 @@ def main(argv: list[str] | None = None) -> None:
     billing = out["billing_items"]
     print(f"  {len(billing):,} billing items, {billing['billingdocument'].nunique():,} documents")
     print(f"  by category {billing['sddocumentcategory'].value_counts().sort_index().to_dict()}")
-    print(f"  planted {json.loads((target / 'sap_manifest.json').read_text())['planted_cases']}")
+    print(f"  planted {json.loads((target / 'history' / MANIFEST).read_text())['planted_cases']}")
     print(f"SAP-shaped data written to {target}")
 
 

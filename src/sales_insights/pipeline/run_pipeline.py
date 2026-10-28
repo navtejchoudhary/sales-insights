@@ -5,6 +5,7 @@
     uv run python -m sales_insights.pipeline.run_pipeline --from 2026-10-06 --to 2026-10-29 --downstream last
     uv run python -m sales_insights.pipeline.run_pipeline --date 2026-10-06 --area sales    # the default area
     uv run python -m sales_insights.pipeline.run_pipeline --date 2026-10-06 --area inventory   # after sales
+    uv run python -m sales_insights.pipeline.run_pipeline --date 2026-09-30 --area client      # SAP billing data
 
 For each business day:
     drip        deliver that day's files to landing/ (missed day, catch-up, Monday redelivery included)
@@ -21,6 +22,12 @@ gold (inventory_gold), checks (inventory_checks: source totals, stock roll-forwa
 kpis (inventory KPI SQL = the inventory_metrics and sales_and_stock metric views), answer_key (the Stock and
 Sales & Stock Genie answer keys + stories I1-I4), insights (confirmed stock-outs, low cover, overstock).
 It reads the sales gold, so run sales first for the same day. The sales deck shows the latest stock findings.
+
+Client area (--area client, SAP billing data, docs/sap_input_contract.md): bronze (same code), silver
+(sap_silver: one fate per source row), gold (same code), reconcile (sap_reconcile: source -> silver -> gold).
+No daily drops: the data is one copy. With `source: dummy` in config.yaml, SAP-shaped dummy files are generated
+and delivered the first time; with `source: real` nothing is ever generated and the run stops if the copied
+files have not landed. The date only labels the run.
 
 `--downstream last` only delivers (drip) each day's files and runs everything else, bronze included, once
 at the end (much faster: bronze checks every landed file each time it runs; the final numbers are identical
@@ -47,13 +54,15 @@ from sales_insights.drip import drip
 from sales_insights.generator import history as h
 from sales_insights.generator import inventory as inv
 from sales_insights.generator import masters as m
+from sales_insights.generator import sap
 from sales_insights.generator import simulate as s
 
 STEPS = ["drip", "bronze", "silver", "gold", "reconcile", "kpis", "answer_key", "insights"]
 INVENTORY_STEPS = ["drip", "bronze", "silver", "gold", "checks", "kpis", "answer_key", "insights"]
+CLIENT_STEPS = ["bronze", "silver", "gold", "reconcile"]  # semantic layer for this area: next step (D4)
 # Business areas this command can run (config.yaml `areas:`). Sales is the default and runs exactly as before.
 # Inventory reads the sales gold (shared dimensions, cross-area check), so run sales first each day.
-AREA_STEPS = {"sales": STEPS, "inventory": INVENTORY_STEPS}
+AREA_STEPS = {"sales": STEPS, "inventory": INVENTORY_STEPS, "client": CLIENT_STEPS}
 
 
 class StepFailed(Exception):
@@ -94,6 +103,8 @@ def ensure_source(cfg: Config, staging: Path, landing: Path, until: date) -> lis
     """Generate any missing source files up to `until` and do the one-time initial delivery. Idempotent."""
     if cfg.area == "inventory":
         return ensure_inventory_source(cfg, staging, landing, until)
+    if cfg.area == "client":
+        return ensure_client_source(cfg, staging, landing)
     seed = int(cfg.business["random_seed"])
     start = date.fromisoformat(cfg.business["simulation_start"])
     done = []
@@ -143,6 +154,30 @@ def ensure_inventory_source(cfg: Config, staging: Path, landing: Path, until: da
     if not (landing / "masters").exists():
         drip.deliver_initial(staging, landing)
         done.append("initial delivery of the locations master and stock history")
+    return done
+
+
+def ensure_client_source(cfg: Config, staging: Path, landing: Path) -> list[str]:
+    """Client area: SAP-shaped dummy files (only when config says `source: dummy`), then the one-time delivery.
+
+    With `source: real` (or no setting) nothing is generated: real and dummy rows must never mix.
+    """
+    source = (cfg.areas.get(cfg.area) or {}).get("source", "real")
+    done = []
+    if not (staging / "history" / sap.MANIFEST).exists():
+        if source != "dummy":
+            raise FileNotFoundError(
+                f"{staging / 'history' / sap.MANIFEST} not found: the copied SAP files have not landed yet "
+                f"(source: {source} never generates dummy data)"
+            )
+        seed = int(cfg.business["random_seed"])
+        start = date.fromisoformat(cfg.business["simulation_start"])
+        out, log = sap.build_sap(seed, start)
+        sap.write_sap(out, log, staging, seed, start)
+        done.append(f"generated SAP-shaped dummy data ({len(out['billing_items']):,} billing rows)")
+    if not (landing / "masters").exists():
+        drip.deliver_initial(staging, landing)
+        done.append("initial delivery of the SAP files")
     return done
 
 
@@ -294,7 +329,36 @@ INVENTORY_STEP_FUNCS: dict[str, Callable[[dict, date], str]] = {
     "drip": _drip, "bronze": _bronze, "silver": _inventory_silver, "gold": _inventory_gold,
     "checks": _inventory_checks, "kpis": _kpis, "answer_key": _answer_key, "insights": _inventory_insights,
 }  # fmt: skip
-AREA_STEP_FUNCS = {"sales": STEP_FUNCS, "inventory": INVENTORY_STEP_FUNCS}
+
+
+def _sap_silver(ctx: dict, d: date) -> str:
+    from sales_insights.pipeline.sap_silver import KEPT, run_sap_silver
+
+    r = run_sap_silver(ctx["spark"], ctx["cfg"], lake=ctx["lake"])
+    if r.dq_failures:
+        raise StepFailed(f"{r.dq_failures} data-quality failure(s), see ops.dq_results")
+    filtered = sum(n for f, n in r.fates.items() if f != KEPT) - r.quarantined
+    notes = f"; notes: {', '.join(r.warnings)}" if r.warnings else ""
+    return (
+        f"{r.rows['invoice_lines']:,} lines, {filtered:,} filtered (counted in ops.sap_row_fates), "
+        f"{r.quarantined} quarantined{notes}"
+    )
+
+
+def _sap_reconcile(ctx: dict, d: date) -> str:
+    from sales_insights.pipeline.sap_reconcile import run_sap_reconcile
+
+    r = run_sap_reconcile(ctx["spark"], ctx["cfg"], lake=ctx["lake"])
+    summary = ", ".join(f"{name} {n - r.failed[name]}/{n}" for name, n in r.groups.items())
+    if r.failed_groups:
+        raise StepFailed(f"{summary}; see ops.sap_reconciliation")
+    return f"{summary} groups match"
+
+
+CLIENT_STEP_FUNCS: dict[str, Callable[[dict, date], str]] = {
+    "bronze": _bronze, "silver": _sap_silver, "gold": _gold, "reconcile": _sap_reconcile,
+}  # fmt: skip
+AREA_STEP_FUNCS = {"sales": STEP_FUNCS, "inventory": INVENTORY_STEP_FUNCS, "client": CLIENT_STEP_FUNCS}
 
 
 def run_day(ctx: dict, d: date, steps: list[str], echo: Callable[[str], None] = print) -> DayResult:
@@ -347,7 +411,8 @@ def run_range(
     }  # fmt: skip
     results = []
     for d in days:
-        steps = area_steps if downstream == "each" or d == max(days) else area_steps[:1]  # drip only
+        drip_only = [st for st in area_steps[:1] if st == "drip"]  # the client area has no daily drops
+        steps = area_steps if downstream == "each" or d == max(days) else drip_only
         echo(f"  {d:%a %d %b %Y}")
         r = run_day(ctx, d, steps, echo)
         results.append(r)

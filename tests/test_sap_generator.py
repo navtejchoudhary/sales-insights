@@ -180,9 +180,28 @@ def test_same_seed_gives_identical_data():
         pd.testing.assert_frame_equal(one[name], two[name])
 
 
-def test_written_files_and_manifest_last(tmp_path):
+def test_written_files_use_the_landing_layout_with_a_manifest_per_folder(tmp_path):
+    import json
+
+    from sales_insights.common.config import load_config
+    from sales_insights.pipeline import landing as lz
+
     out, log = sap.build_sap(SEED, AS_OF, start=date(2026, 9, 15))
-    target = sap.write_sap(out, log, tmp_path / "sap", SEED, AS_OF)
-    files = sorted(p.name for p in target.iterdir())
-    assert "sap_manifest.json" in files and "billing_items.csv" in files
-    assert len(files) == len(out) + 1
+    target = sap.write_sap(out, log, tmp_path / "client", SEED, AS_OF)
+    history = sorted(p.name for p in (target / "history").iterdir())
+    assert history == ["billing_items.csv", "sap_manifest.json", "source_counts.csv"]
+    masters = {p.name for p in (target / "masters").iterdir()}
+    assert {"customer_master.csv", "material_master.csv", "text_regions.csv", "sap_manifest.json"} <= masters
+    assert len(history) + len(masters) == len(out) + 2
+    manifest = json.loads((target / "history" / "sap_manifest.json").read_text())
+    assert manifest["files"]["billing_items.csv"]["rows"] == len(out["billing_items"])
+    assert manifest["planted_cases"]["older_version"] == len(_logged(log, "older_version"))
+
+    # landing finds every file and routes it with the client area's rules
+    found = lz.discover(target, load_config("local", area="client").file_targets)
+    targets = {f.rel_path: f.target for f in found.files}
+    assert targets["history/billing_items.csv"] == "billing_items"
+    assert targets["history/source_counts.csv"] == "source_counts"
+    assert targets["masters/customer_master.csv"] == "masters_customer_master"
+    assert targets["masters/text_regions.csv"] == "masters_text_regions"
+    assert not found.incomplete_folders and not found.unexpected_files

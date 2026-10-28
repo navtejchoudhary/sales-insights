@@ -54,6 +54,30 @@ areas:
       landing_path: /Volumes/inventory_dev/raw/landing
       catalog: inventory_dev
       output_path: /Volumes/inventory_dev/raw/output
+  # Real-data phase (docs/sap_input_contract.md): SAP billing data in SAP's own shape. Its own folders and
+  # catalog, so dummy and real rows never mix with the sales demo. Until the one-time copy it runs on
+  # SAP-shaped dummy data (generator/sap.py). Steps: run_pipeline --area client.
+  client:
+    file_targets: {billing: billing_items, source: source_counts}
+    # dummy: run_pipeline may generate SAP-shaped dummy files when none have landed.
+    # real:  it never generates anything; it stops if the copied files are missing.
+    source: dummy
+    scope:                           # which rows count; everything else is filtered out and counted
+      company_codes: ["2010"]
+      date_from: "2025-04-01"        # dummy history window; the real copy: 2024-01-01 to 2026-01-31
+      date_to: "2026-09-30"
+      currency: LKR                  # company currency; other currencies are converted with the line's rate
+    local:
+      staging_path: staging/client
+      landing_path: landing/client
+      lake_path: lake/client
+      processed_files_log: lake/client/ops/_processed_files
+      output_path: output/client
+    dev:
+      staging_path: /Volumes/client_dev/raw/staging
+      landing_path: /Volumes/client_dev/raw/landing
+      catalog: client_dev
+      output_path: /Volumes/client_dev/raw/output
 
 # Business settings shared by all profiles
 business:
