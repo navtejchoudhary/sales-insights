@@ -54,7 +54,7 @@ generator (plain Python) -> staging/ -> drip -> landing/ -> bronze -> silver -> 
 |---|---|
 | `config/config.yaml` | Profiles `local` and `dev`, catalogs, paths, areas. The ONLY place for names and paths |
 | `src/sales_insights/common/` | `load_config`, `get_spark`, `Lake` (all table reads and writes) |
-| `src/sales_insights/generator/` | Dummy data. Stories ONLY in `stories.py`; names in `masters.py`; stock in `inventory.py` |
+| `src/sales_insights/generator/` | Dummy data. Stories ONLY in `stories.py`; names in `masters.py`; stock in `inventory.py`; SAP-shaped data for the real-data phase in `sap.py` |
 | `src/sales_insights/pipeline/` | bronze, silver, gold, reconcile, inventory_*, `run_pipeline.py` (orchestration) |
 | `src/sales_insights/semantic/` | metric views, KPI check, Genie (answer key, setup, sync, health, failures), dashboards, export |
 | `src/sales_insights/insights/`, `deck/` | Findings, forecast, narrative; weekly PowerPoint |

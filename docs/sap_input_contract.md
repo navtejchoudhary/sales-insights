@@ -5,7 +5,7 @@ which columns, which rules. Written with **SAP's standard field names** only; th
 table names, the client's name and any connection details are never in this repo (see "Where the real
 names live").
 
-Status: draft (28 Oct 2026). Billing items are complete; the master tables are completed once their column
+Status: draft (28 Oct 2026). Billing items are complete and have SAP-shaped dummy data (below); the master tables are completed once their column
 lists are known. Design choices: `docs/decisions.md` (28 Oct 2026).
 
 ## How the data arrives
@@ -35,7 +35,7 @@ bronze (as received + load columns) ──► silver (rules below) ──► gol
 Not needed in the first version: sales order items, delivery items, pricing conditions (the billing item
 already carries net, gross, tax and cost amounts). Stock tables: later, if the source has them.
 
-## Billing items: columns we read (40 of about 160)
+## Billing items: columns we read (39 SAP fields + 2 replication columns, of about 160)
 
 Only these columns are copied. Types are as the source delivers them; silver casts them.
 
@@ -135,6 +135,31 @@ exactly; gold must match the source minus the filtered rows. A mismatch stops pu
 | `customer_master` | customer id, customer group, region (district), city, country, sales office, distribution channel, payer, created date | names, street, phone, e-mail, tax/VAT numbers, bank details |
 | `material_master` | material id, description, material group, material type, division, base unit, plant / sales org | (none expected) |
 | text tables | code, language, name | (none) |
+
+## Dummy data in this shape
+
+`uv run python -m sales_insights.generator.sap` writes the same tables from our dummy business to
+`staging/sap/` (CSV, every value as text, the way bronze stores it), so the pipeline is built and tested
+without reading the real source. Same stories as the MVP (generator/engine.py), reshaped to SAP fields,
+plus every case found in the real source, at a fixed rate and logged in `sap_manifest.json`:
+
+| Planted case | Rate | The pipeline must |
+|---|---|---|
+| Pro-forma copy of an invoice (F5, category U) | 3% of invoices | exclude it |
+| Down-payment request + its cancellation (FAZ/FAS) | 0.2% of invoices | exclude both |
+| Cancellation of a credit memo (S2, category S) | 10% of credit memos | add it back (+) |
+| Debit memo (ZADR, category P) | 0.2% of invoices | count it (+) |
+| Export invoice billed in USD, with exchange rate | 2% of export invoices | keep, flag the currency |
+| Older version of a line (same key, older sync time) | 1% of lines | keep only the newest |
+| Line deleted in SAP (`_fivetran_deleted`) | 0.1% of lines | drop and count |
+| Missing / impossible billing date (e.g. year 4334) | 0.02% / 0.02% of lines | quarantine |
+| Fiscal year `0000` on documents older than a year | all older documents | ignore the field |
+| A second company code | from the engine | filter out |
+| A billed customer missing from the customer master | 1 customer | "Unknown" member |
+| Personal columns in the customer master (fake values) | every row | never store them |
+
+`source_counts.csv` holds the control totals exactly as the real copy will record them (per company,
+billing month and document category: lines and sum of `netamount`, every row counted).
 
 ## Where the real names live
 
