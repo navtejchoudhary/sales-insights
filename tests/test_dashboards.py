@@ -19,8 +19,9 @@ ROOT = Path(__file__).resolve().parents[1]
 GROUPS = {"sales_team", "stock_team", "management"}
 
 
-def _tables():
-    return db.config_names(load_config("dev"))
+def _tables(name: str | None = None):
+    """Dev table names; with a dashboard name, as that dashboard sees them (its `area:`)."""
+    return db.config_names(load_config("dev"), db.spec_area(name) if name else None)
 
 
 def _widgets(spec):
@@ -44,7 +45,7 @@ def _shown_fields(kind, w):
 @pytest.mark.parametrize("name", db.NAMES)
 def test_dashboard_files_are_up_to_date(name):
     """dashboards/<name>.lvdash.json is what the YAML gives with the dev names: regenerate after editing."""
-    expected = db.render(name, _tables())
+    expected = db.render(name, _tables(name))
     assert (ROOT / "dashboards" / f"{name}.lvdash.json").read_text(encoding="utf-8") == expected, (
         "run: uv run python -m sales_insights.semantic.dashboards"
     )
@@ -61,7 +62,7 @@ def test_every_widget_shows_a_column_of_its_dataset(name):
         body = w[kind]
         assert body["dataset"] in data, (name, body)
         used.add(body["dataset"])
-        sql = db.databricks_sql(data[body["dataset"]], _tables())
+        sql = db.databricks_sql(data[body["dataset"]], _tables(name))
         for field in _shown_fields(kind, body):
             assert re.search(rf"\b{re.escape(field)}\b", sql), (name, body["dataset"], field)
     used |= {f["values"] for f in spec.get("filters", [])}  # a global filter's list of choices
@@ -187,6 +188,24 @@ def test_filters_are_added_to_the_where_of_metric_view_datasets():
     assert db.filter_defaults(db.load("stock")) == {"province": "All", "product_group": "All"}
 
 
+def test_client_dashboard_reads_only_the_client_catalog_and_is_shared_with_nobody():
+    """The SAP-data dashboard: every table and the metric view from client_dev, the sales KPIs reused (same_as),
+    no Province filter (SAP has no province list yet), no group may open it."""
+    client = load_config("dev", area="client").catalog
+    board = (ROOT / "dashboards" / "client.lvdash.json").read_text()
+    tables = set(re.findall(r"\b(\w+_dev)\.\w+\.\w+", board))
+    assert tables == {client}, tables
+    assert f"FROM {client}.gold.sales_metrics" in board
+    spec = db.load("client")
+    assert spec["area"] == "client" and spec["audience"] == []
+    assert "province" not in {f["param"] for f in spec["filters"]}
+    reused = {k for k, ds in spec["datasets"].items() if "same_as" in ds}
+    assert {"headline_mtd", "top_products_fytd", "top_customers_fytd"} <= reused
+    assert "permissions" not in _bundle_dashboards()["client_dashboard"]
+    for name in ("sales", "stock", "ceo"):  # the demo dashboards never read the client catalog
+        assert f"{client}." not in (ROOT / "dashboards" / f"{name}.lvdash.json").read_text(), name
+
+
 def test_no_workspace_details_in_the_dashboard_files():
     for path in (ROOT / "dashboards").glob("*.lvdash.json"):
         text = path.read_text()
@@ -205,7 +224,7 @@ def test_bundle_deploys_each_dashboard_to_its_audience():
         assert (ROOT / "bundle" / "resources" / d["file_path"]).resolve() == ROOT / "dashboards" / f"{name}.lvdash.json"
         assert d["warehouse_id"] == "${var.warehouse_id}"
         assert d["embed_credentials"] is False  # viewers query with their own rights
-        groups = {p["group_name"] for p in d["permissions"]}
+        groups = {p["group_name"] for p in d.get("permissions", [])}
         assert groups == set(db.load(name)["audience"]) and groups <= GROUPS, name
         assert d["display_name"] in ex.DASHBOARD_NAMES and ex.DASHBOARD_NAMES[d["display_name"]] == name
 

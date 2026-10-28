@@ -10,6 +10,7 @@ from sales_insights.common.config import load_config
 
 ROOT = Path(__file__).resolve().parents[1]
 JOBS_FILE = ROOT / "bundle" / "resources" / "jobs.yml"
+PAUSE = "${var.schedule_pause_status}"  # every schedule follows one switch (default UNPAUSED)
 
 
 def _launcher():
@@ -60,12 +61,12 @@ def test_every_job_has_cost_guards():
 
 def test_daily_schedule_is_sri_lanka_time():
     s = _jobs()["sales_daily_pipeline"]["schedule"]
-    assert s["timezone_id"] == "Asia/Colombo" and s["pause_status"] == "UNPAUSED"
+    assert s["timezone_id"] == "Asia/Colombo" and s["pause_status"] == PAUSE
 
 
 def test_genie_check_runs_weekly_after_the_daily_job():
     job = _jobs()["sales_genie_health"]
-    assert job["schedule"]["timezone_id"] == "Asia/Colombo" and job["schedule"]["pause_status"] == "UNPAUSED"
+    assert job["schedule"]["timezone_id"] == "Asia/Colombo" and job["schedule"]["pause_status"] == PAUSE
     assert job["schedule"]["quartz_cron_expression"] == "0 0 7 ? * MON"  # Monday 07:00, after the 06:30 run
     tasks = {t["task_key"]: t for t in job["tasks"]}
     agents = {}
@@ -81,6 +82,18 @@ def test_genie_check_runs_weekly_after_the_daily_job():
     assert {v.removeprefix("${var.").removesuffix("}") for v in agents.values()} <= set(bundle["variables"])
     deps = job["environments"][0]["spec"]["dependencies"]
     assert any(d.startswith("databricks-sdk") for d in deps)  # the Genie evaluation API needs a recent SDK
+
+
+def test_one_switch_pauses_every_schedule():
+    """`--var schedule_pause_status=PAUSED` keeps the demo paused through a deploy (cost); the default runs it."""
+    bundle = yaml.safe_load((ROOT / "databricks.yml").read_text())
+    assert bundle["variables"]["schedule_pause_status"]["default"] == "UNPAUSED"
+    for f in ("jobs.yml", "alerts.yml"):
+        text = (ROOT / "bundle" / "resources" / f).read_text()
+        assert "pause_status: UNPAUSED" not in text and "pause_status: PAUSED" not in text, f
+    scheduled = [j["schedule"] for j in _jobs().values() if "schedule" in j]
+    scheduled += [a["schedule"] for a in _alerts().values()]
+    assert scheduled and all(s["pause_status"] == PAUSE for s in scheduled)
 
 
 def test_scheduled_jobs_use_standard_serverless():
@@ -126,7 +139,7 @@ def test_alerts_read_the_latest_insights_run_and_email_the_owner():
         assert ev["notification"]["subscriptions"] == [{"user_email": "${workspace.current_user.userName}"}]
         s = a["schedule"]
         when = (s["quartz_cron_schedule"], s["timezone_id"], s["pause_status"])
-        assert when == ("0 0 8 * * ?", "Asia/Colombo", "UNPAUSED"), name  # 08:00, after the 06:30 daily job
+        assert when == ("0 0 8 * * ?", "Asia/Colombo", PAUSE), name  # 08:00, after the 06:30 daily job
     assert kinds == {"revenue_drop", "stock_out", "stock_out_confirmed"}
     assert kinds <= set(ALERT_KINDS) | set(STOCK_ALERT_KINDS)
 
@@ -177,9 +190,36 @@ def test_inventory_jobs_run_the_inventory_area_after_sales():
         params = _params(job)
         assert params[params.index("--area") + 1] == "inventory", name
     daily = inventory["inventory_daily_pipeline"]["schedule"]
-    assert (daily["timezone_id"], daily["pause_status"]) == ("Asia/Colombo", "UNPAUSED")
+    assert (daily["timezone_id"], daily["pause_status"]) == ("Asia/Colombo", PAUSE)
     assert daily["quartz_cron_expression"] == "0 0 7 * * ?"  # 07:00: after the 06:30 sales job, whose gold it reads
     assert jobs["sales_daily_pipeline"]["schedule"]["quartz_cron_expression"] == "0 30 6 * * ?"
+
+
+def test_client_job_runs_by_hand_only_and_publishes_after_the_checks():
+    job = _jobs()["client_pipeline"]
+    assert "schedule" not in job and "trigger" not in job  # never runs (or bills) on its own
+    assert job.get("performance_target") == "STANDARD"
+    pipeline, publish = job["tasks"]
+    p = pipeline["spark_python_task"]["parameters"]
+    assert p[0] == "pipeline" and p[p.index("--area") + 1] == "client"
+    q = publish["spark_python_task"]["parameters"]
+    assert q[0] == "kpis" and q[q.index("--area") + 1] == "client"
+    assert publish["depends_on"] == [{"task_key": "pipeline"}] and "run_if" not in publish  # only after a pass
+
+
+def test_client_setup_sql_matches_the_config_and_grants_nothing():
+    sql = (ROOT / "sql" / "setup" / "client_dev.sql").read_text()
+    dev = load_config("dev", area="client")
+    assert f"CREATE CATALOG IF NOT EXISTS {dev.catalog}" in sql
+    for layer in ("raw", "bronze", "silver", "gold", "ops"):
+        assert f"CREATE SCHEMA IF NOT EXISTS {dev.catalog}.{layer}" in sql
+    for path in (dev.staging_path, dev.landing_path, dev.output_path):
+        volume = ".".join(path.removeprefix("/Volumes/").split("/"))
+        assert f"CREATE VOLUME IF NOT EXISTS {volume};" in sql
+    statements = [line for line in sql.splitlines() if line and not line.startswith("--")]
+    assert not [s for s in statements if s.startswith("GRANT")]  # the client's data is shared with nobody
+    assert f"REVOKE BROWSE ON CATALOG {dev.catalog} FROM `account users`;" in sql
+    assert dev.catalog not in (ROOT / "sql" / "setup" / "permissions.sql").read_text()
 
 
 def test_inventory_setup_sql_matches_the_config():

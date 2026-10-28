@@ -8,6 +8,11 @@
 #   databricks bundle run     -t dev inventory_backfill      # inventory first load (after sales_backfill)
 #   databricks bundle run     -t dev inventory_publish_semantic  # stock KPI views + 2 metric views
 #   ... --params data_until=2026-10-29                       # backfills only: run the simulated days ahead
+#   databricks bundle run     -t dev client_pipeline         # client area (SAP billing data), by hand only
+#
+# Cost: every schedule (daily jobs, weekly Genie check, alerts) follows `schedule_pause_status`. A deploy
+# while the demo is paused must keep it paused:
+#   databricks bundle deploy -t dev --var schedule_pause_status=PAUSED
 #
 # The workspace URL and your login come from your Databricks CLI profile (~/.databrickscfg), never from git.
 # Step-by-step first deployment: docs/day15_runbook.md
@@ -25,6 +30,9 @@ variables:
   inventory_catalog:
     description: Catalog of the inventory area (same as areas.inventory.dev.catalog in config/config.yaml)
     default: inventory_dev
+  schedule_pause_status:
+    description: UNPAUSED runs the daily jobs, the weekly Genie check and the alerts; PAUSED stops them all (no cost)
+    default: UNPAUSED
   warehouse_id:
     description: SQL warehouse that runs the alerts, found by its name (no ID in git)
     lookup:

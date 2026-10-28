@@ -1,0 +1,230 @@
+# Sales (SAP data) dashboard (AI/BI): the client area, built from SAP billing documents. Source of
+# dashboards/client.lvdash.json, which the Asset Bundle deploys (bundle/resources/dashboards.yml), shared with
+# nobody but its owner until the real data has been reviewed. After editing this file:
+#   uv run python -m sales_insights.semantic.dashboards        # rewrites dashboards/*.lvdash.json
+#
+# `area: client`: ${fact_sales}, ${dim_*} and the sales_metrics metric view are read from the client catalog
+# (client_dev.gold.*), so `same_as: sales.<dataset>` reuses the Sales dashboard's datasets, KPIs and all,
+# on the SAP data. Province is left out: SAP has no district -> province list yet (all "Unassigned").
+# Layout: widgets fill a 6-column grid left to right; `size: [width, height]`.
+
+title: Sales (SAP data)
+area: client
+audience: []  # the owner only (no group grants on the client catalog; sql/setup/client_dev.sql)
+
+filters:
+  - param: product_group
+    title: Product group
+    description: Material group from SAP
+    values: product_group_values
+    fields: {sales_metrics: product_group}
+  - param: channel
+    title: Channel
+    description: Distribution channel from SAP
+    values: channel_values
+    fields: {sales_metrics: channel}
+
+datasets:
+  product_group_values:
+    same_as: sales.product_group_values
+  channel_values:
+    same_as: sales.channel_values
+
+  trust:
+    # "SAP billing data up to ... | N of N reconciliation checks passed" (latest sap_reconcile run).
+    sql: |
+      WITH rec AS (
+        SELECT * FROM ${client_reconciliation}
+        WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM ${client_reconciliation})
+      ),
+      latest AS (SELECT MAX(invoice_date) AS d FROM ${fact_sales})
+      SELECT concat('SAP billing data up to ', date_format(MAX(latest.d), 'd MMM yyyy'), '  |  ',
+                    CAST(SUM(CASE WHEN rec.status = 'PASS' THEN 1 ELSE 0 END) AS STRING), ' of ', CAST(COUNT(*) AS STRING),
+                    ' reconciliation checks (source to silver to gold) passed') AS status
+      FROM rec CROSS JOIN latest
+
+  headline_mtd:
+    same_as: sales.headline_mtd
+
+  monthly_by_document_type:
+    # Net revenue by month and SAP document type: invoices, returns, cancellations, debit memos ...
+    metric_view: sales_metrics
+    fields: [month, document_type]
+    measures: [net_revenue]
+    where: is_current_fiscal_year OR is_previous_fiscal_year
+    select:
+      - month
+      - document_type
+      - ROUND(CAST(net_revenue AS DOUBLE) / 1e6, 2) AS lkr_m
+
+  product_group_month:
+    same_as: sales.product_group_month
+  top_products_fytd:
+    same_as: sales.top_products_fytd
+  channel_fytd:
+    same_as: sales.channel_fytd
+  top_customers_fytd:
+    same_as: sales.top_customers_fytd
+  returns_by_month:
+    same_as: sales.returns_by_month
+
+  row_fates:
+    # What happened to every row of the source (ops.sap_row_fates): in gold, or filtered for a stated reason.
+    sql: |
+      SELECT CASE fate
+               WHEN 'kept' THEN 'In silver and gold'
+               WHEN 'older_version' THEN 'Older copy of a line (the newest is kept)'
+               WHEN 'deleted_in_source' THEN 'Deleted in SAP'
+               WHEN 'out_of_scope_company' THEN 'Another company code'
+               WHEN 'not_revenue' THEN 'Pro-forma or down payment (not revenue)'
+               WHEN 'quarantined' THEN 'Quarantined: bad date, key or number'
+               WHEN 'outside_window' THEN 'Outside the agreed date window'
+               ELSE fate END AS what_happened,
+             CAST(SUM(line_count) AS DOUBLE) AS row_count
+      FROM ${client_row_fates}
+      GROUP BY fate
+      ORDER BY CASE fate WHEN 'kept' THEN 0 ELSE 1 END, row_count DESC
+
+  reconciliation:
+    # Latest sap_reconcile run: groups compared and passed, per link of the chain.
+    sql: |
+      SELECT CASE check_name WHEN 'source_to_silver' THEN 'Source to silver (per company, month, category)'
+                             WHEN 'silver_to_gold' THEN 'Silver to gold (per invoice date and type)'
+                             ELSE check_name END AS link,
+             CAST(COUNT(*) AS DOUBLE) AS group_count,
+             CAST(SUM(CASE WHEN status = 'PASS' THEN 1 ELSE 0 END) AS DOUBLE) AS passed,
+             CAST(SUM(actual_lines) AS DOUBLE) AS line_count
+      FROM ${client_reconciliation}
+      WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM ${client_reconciliation})
+      GROUP BY check_name
+      ORDER BY check_name DESC
+
+  data_checks:
+    # Every check of the latest run of each kind (client ops.dq_results): what was compared, and the result.
+    sql: |
+      SELECT layer, check_name, status, COUNT(*) AS results,
+             date_format(from_utc_timestamp(MAX(checked_ts), 'Asia/Colombo'), 'd MMM yyyy HH:mm') AS last_run
+      FROM ${client_dq_results}
+      WHERE run_id IN (SELECT max_by(run_id, checked_ts) FROM ${client_dq_results} GROUP BY layer, check_name)
+      GROUP BY layer, check_name, status
+      ORDER BY CASE layer WHEN 'bronze' THEN 1 WHEN 'silver' THEN 2 ELSE 3 END, check_name, status
+
+pages:
+  - title: How are we doing?
+    widgets:
+      - text: |
+          ## Sales from SAP billing data
+          Built from SAP billing documents with the same KPI definitions as the Sales dashboard and Genie.
+          Month to date = the month of the latest data, against the same days last year.
+          Filters (top left: Product group, Channel). Province is not shown yet: SAP has no district to province list.
+        size: [6, 2]
+      - table: {dataset: trust, title: Data status, columns: [{field: status, title: " "}]}
+        size: [6, 3]
+      - counter: {dataset: headline_mtd, value: revenue_mtd, title: Net revenue month to date (LKR), format: compact}
+        size: [2, 3]
+      - counter: {dataset: headline_mtd, value: revenue_change_pct, title: vs same days last year (%)}
+        size: [2, 3]
+      - counter: {dataset: headline_mtd, value: margin_pct_mtd, title: Gross margin month to date (%)}
+        size: [2, 3]
+      - table:
+          dataset: headline_mtd
+          title: Month to date vs the same days last year
+          description: Change is % for amounts and counts, percentage points for rates.
+          columns:
+            - {field: kpi, title: KPI}
+            - {field: this_period, title: Month to date, type: number}
+            - {field: same_days_last_year, title: Same days last year, type: number}
+            - {field: change_vs_ly, title: Change, type: number}
+        size: [3, 6]
+      - bar:
+          dataset: monthly_by_document_type
+          title: Net revenue by month and SAP document type, this and last fiscal year (LKR m)
+          description: Returns, cancellations and price corrections are negative; debit memos and credit memo cancellations positive.
+          x: {field: month, title: Month, temporal: month}
+          y: {field: lkr_m, title: LKR m}
+          color: {field: document_type, title: Document type}
+        size: [3, 6]
+
+  - title: Products and customers
+    widgets:
+      - combo:
+          dataset: product_group_month
+          title: Net revenue by product group, last complete month
+          x: {field: product_group, title: Product group}
+          bars: [{field: lkr_m, title: LKR m}]
+          line: [{field: change_pct, title: vs same month last year %}]
+        size: [4, 6]
+      - bar:
+          dataset: channel_fytd
+          title: Net revenue by channel, fiscal year to date (LKR m)
+          x: {field: channel, title: Channel}
+          y: {field: lkr_m, title: LKR m}
+        size: [2, 6]
+      - table:
+          dataset: top_products_fytd
+          title: Top 10 products, fiscal year to date
+          columns:
+            - {field: product, title: Product}
+            - {field: product_group, title: Group}
+            - {field: lkr_m, title: LKR m, type: number}
+            - {field: change_pct, title: vs last year %, type: number}
+            - {field: units, title: Units, type: number}
+            - {field: margin_pct, title: Margin %, type: number}
+        size: [3, 7]
+      - table:
+          dataset: top_customers_fytd
+          title: Top 15 customers, fiscal year to date
+          description: Customers are shown by number only; names and contact details are never loaded.
+          columns:
+            - {field: customer_name, title: Customer}
+            - {field: customer_group, title: Group}
+            - {field: lkr_m, title: LKR m, type: number}
+            - {field: change_pct, title: vs last year %, type: number}
+            - {field: invoices, title: Invoices, type: number}
+        size: [3, 7]
+      - line:
+          dataset: returns_by_month
+          title: Returns rate % by month
+          x: {field: month, title: Month, temporal: month}
+          y: {field: returns_rate_pct, title: Returns rate %}
+        size: [3, 5]
+      - line:
+          dataset: returns_by_month
+          title: Gross margin % by month
+          x: {field: month, title: Month, temporal: month}
+          y: {field: margin_pct, title: Gross margin %}
+        size: [3, 5]
+
+  - title: Can we trust the numbers?
+    widgets:
+      - text: |
+          ## Can we trust the numbers?
+          Every row of the source is accounted for: it is in the dashboards, or filtered for a stated reason.
+          Reconciliation proves the source totals = what was loaded = silver = gold; any difference stops the run.
+        size: [6, 2]
+      - table:
+          dataset: row_fates
+          title: What happened to every source row
+          columns:
+            - {field: what_happened, title: What happened}
+            - {field: row_count, title: Rows, type: number, format: "0,0"}
+        size: [3, 6]
+      - table:
+          dataset: reconciliation
+          title: Reconciliation, latest run
+          columns:
+            - {field: link, title: Link}
+            - {field: group_count, title: Groups, type: number, format: "0,0"}
+            - {field: passed, title: Passed, type: number, format: "0,0"}
+            - {field: line_count, title: Lines, type: number, format: "0,0"}
+        size: [3, 6]
+      - table:
+          dataset: data_checks
+          title: Latest data checks
+          columns:
+            - {field: layer, title: Layer}
+            - {field: check_name, title: Check}
+            - {field: status, title: Result}
+            - {field: results, title: Results, type: number}
+            - {field: last_run, title: Last run (Colombo time)}
+        size: [6, 6]

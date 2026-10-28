@@ -15,7 +15,7 @@ resources:
       schedule:
         quartz_cron_expression: "0 30 6 * * ?"  # 06:30 every day
         timezone_id: Asia/Colombo
-        pause_status: UNPAUSED
+        pause_status: ${var.schedule_pause_status}
       email_notifications:
         on_failure:
           - ${workspace.current_user.userName}
@@ -101,7 +101,7 @@ resources:
       schedule:
         quartz_cron_expression: "0 0 7 ? * MON"  # Monday 07:00
         timezone_id: Asia/Colombo
-        pause_status: UNPAUSED
+        pause_status: ${var.schedule_pause_status}
       email_notifications:
         on_failure:
           - ${workspace.current_user.userName}
@@ -179,7 +179,7 @@ resources:
       schedule:
         quartz_cron_expression: "0 0 7 * * ?"  # 07:00 every day, 30 minutes after the sales job
         timezone_id: Asia/Colombo
-        pause_status: UNPAUSED
+        pause_status: ${var.schedule_pause_status}
       email_notifications:
         on_failure:
           - ${workspace.current_user.userName}
@@ -214,6 +214,43 @@ resources:
           spark_python_task:
             python_file: ../run.py
             parameters: ["kpis", "--profile", "dev", "--area", "inventory"]
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "6"  # serverless environment 6: Python 3.12
+            dependencies:
+              - numpy>=2.5.3
+              - pandas>=3.0.6
+              - pyyaml>=6.0.3
+              - python-pptx==1.0.2
+
+    # ---------------------------------------------------------------- client area (catalog client_dev)
+    # SAP billing data (docs/sap_input_contract.md). NO schedule: it runs only when started by hand
+    #   databricks bundle run -t dev client_pipeline --profile sales-dev
+    # so it never costs anything on its own. The data is one copy, not a daily feed. With `source: dummy`
+    # (config.yaml) the first run generates SAP-shaped dummy files in the volume; with `source: real` it only
+    # loads the copied files and stops if they are missing. Setup first: sql/setup/client_dev.sql.
+    client_pipeline:
+      name: client-pipeline
+      performance_target: STANDARD  # cost: cheaper serverless; a few minutes slower start is fine
+      description: Client area (SAP billing data) - bronze, silver, gold, reconciliation and KPI check, then publishes the KPI views and the metric view client_dev.gold.sales_metrics. Manual runs only.
+      max_concurrent_runs: 1
+      timeout_seconds: 3600  # cost guard: stopped after 1 hour (a run takes about 10 minutes)
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      tasks:
+        - task_key: pipeline
+          environment_key: default
+          spark_python_task:
+            python_file: ../run.py
+            parameters: ["pipeline", "--profile", "dev", "--area", "client", "--date", "today"]
+        - task_key: publish
+          depends_on: [{task_key: pipeline}]  # only after every check passed
+          environment_key: default
+          spark_python_task:
+            python_file: ../run.py
+            parameters: ["kpis", "--profile", "dev", "--area", "client"]
       environments:
         - environment_key: default
           spec:

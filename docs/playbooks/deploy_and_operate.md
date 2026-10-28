@@ -10,6 +10,10 @@ git checkout main && git pull
 databricks bundle validate -t dev --profile sales-dev
 databricks bundle deploy -t dev --profile sales-dev
 ```
+While the demo is paused (to save cost), keep it paused through the deploy: add
+`--var schedule_pause_status=PAUSED`. Without it every schedule (daily jobs, weekly Genie check, alerts) is
+switched back on, because that is the default.
+
 The output lists what changed (`Updated jobs.…`, `Updated dashboards.…`). A deploy that would delete or
 recreate a dashboard asks first; recreated dashboards get new links.
 
@@ -55,7 +59,8 @@ checked numbers.
      --space sales=<id> --space inventory=<id> --space sales_and_stock=<id>
    ```
    Copy `output/export/*` to `workspace_export/` and commit it.
-2. Pause the scheduled jobs (job > Schedules & Triggers > Pause).
+2. Pause every schedule (jobs and alerts) with one deploy:
+   `databricks bundle deploy -t dev --profile sales-dev --var schedule_pause_status=PAUSED`.
 3. Azure portal: delete the resource group `sales-insights-rg`; check the credit page a day later.
 
 Rebuild on a new workspace: `docs/day15_runbook.md`, then create the Genie agents from
