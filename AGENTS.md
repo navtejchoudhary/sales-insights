@@ -27,7 +27,8 @@ deleted and this repo plus `workspace_export/` are the record.
 | Insights, forecast, alerts | Daily findings table, seasonal forecast, 3 SQL alerts (revenue drop, stock-outs) |
 | Weekly deck | python-pptx deck with native charts |
 | Access | 3 account groups (`sales_team`, `stock_team`, `management`), read-only grants on gold only |
-| Not built | Agent Bricks Supervisor (not available on the workspace), real data, a production target |
+| Real data (from 28 Oct) | In progress: input contract `docs/sap_input_contract.md`; proven on SAP-shaped dummy data first |
+| Not built | Agent Bricks Supervisor (not available on the workspace), a production target |
 
 ## How data flows
 

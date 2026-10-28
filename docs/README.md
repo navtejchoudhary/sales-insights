@@ -26,6 +26,7 @@ says which doc answers which question. "Generated" docs are rewritten by code; e
 | [story_sheet.md](story_sheet.md) | The dummy business, planted stories and planted dirt |
 | [invoice_data.md](invoice_data.md) | Invoice documents (ZAOR, ZARE, S1), sign rules, daily drops |
 | [multiple_gold_layers.md](multiple_gold_layers.md) | Design of the stock area and of future areas (finance) |
+| [sap_input_contract.md](sap_input_contract.md) | Real-data phase: which SAP tables and columns the pipeline reads, sign and quarantine rules |
 
 ## Reference (generated)
 
