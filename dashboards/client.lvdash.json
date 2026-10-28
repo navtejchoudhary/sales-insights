@@ -1,0 +1,2441 @@
+{
+  "datasets": [
+    {
+      "name": "28b80b38",
+      "displayName": "product_group_values",
+      "queryLines": [
+        "SELECT product_group FROM (\n",
+        "  SELECT 'All' AS product_group, 0 AS sort_order\n",
+        "  UNION ALL\n",
+        "  SELECT DISTINCT product_group_name, 1 AS sort_order FROM client_dev.gold.dim_product WHERE product_group_name IS NOT NULL\n",
+        ") AS v\n",
+        "ORDER BY sort_order, product_group"
+      ]
+    },
+    {
+      "name": "a16fb220",
+      "displayName": "channel_values",
+      "queryLines": [
+        "SELECT channel FROM (\n",
+        "  SELECT 'All' AS channel, 0 AS sort_order\n",
+        "  UNION ALL\n",
+        "  SELECT DISTINCT distribution_channel_name, 1 AS sort_order FROM client_dev.gold.dim_channel WHERE distribution_channel_name IS NOT NULL\n",
+        ") AS v\n",
+        "ORDER BY sort_order, channel"
+      ]
+    },
+    {
+      "name": "45db3610",
+      "displayName": "trust",
+      "queryLines": [
+        "WITH rec AS (\n",
+        "  SELECT * FROM client_dev.ops.sap_reconciliation\n",
+        "  WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM client_dev.ops.sap_reconciliation)\n",
+        "),\n",
+        "latest AS (SELECT MAX(invoice_date) AS d FROM client_dev.gold.fact_sales)\n",
+        "SELECT concat('SAP billing data up to ', date_format(MAX(latest.d), 'd MMM yyyy'), '  |  ',\n",
+        "              CAST(SUM(CASE WHEN rec.status = 'PASS' THEN 1 ELSE 0 END) AS STRING), ' of ', CAST(COUNT(*) AS STRING),\n",
+        "              ' reconciliation checks (source to silver to gold) passed') AS status\n",
+        "FROM rec CROSS JOIN latest"
+      ]
+    },
+    {
+      "name": "d969dca5",
+      "displayName": "headline_mtd",
+      "queryLines": [
+        "SELECT *, ROUND(this_period_raw, 1) AS this_period, ROUND(last_year_raw, 1) AS same_days_last_year,\n",
+        "       ROUND(change_raw, 1) AS change_vs_ly\n",
+        "FROM (\n",
+        "SELECT CAST(revenue_mtd AS DOUBLE) AS revenue_mtd,\n",
+        "       CAST(ROUND((revenue_mtd / NULLIF(revenue_ly, 0) - 1) * 100, 1) AS DOUBLE) AS revenue_change_pct,\n",
+        "       CAST(ROUND(margin_pct_mtd, 1) AS DOUBLE) AS margin_pct_mtd,\n",
+        "       stack(6,\n",
+        "         1, 'Net revenue (LKR m)', CAST(revenue_mtd / 1e6 AS DOUBLE), CAST(revenue_ly / 1e6 AS DOUBLE),\n",
+        "            CAST((revenue_mtd / NULLIF(revenue_ly, 0) - 1) * 100 AS DOUBLE),\n",
+        "         2, 'Gross margin %', CAST(margin_pct_mtd AS DOUBLE), CAST(margin_pct_ly AS DOUBLE),\n",
+        "            CAST(margin_pct_mtd - margin_pct_ly AS DOUBLE),\n",
+        "         3, 'Paid invoices', CAST(invoices_mtd AS DOUBLE), CAST(invoices_ly AS DOUBLE),\n",
+        "            CAST((invoices_mtd / NULLIF(invoices_ly, 0) - 1) * 100 AS DOUBLE),\n",
+        "         4, 'Active customers', CAST(customers_mtd AS DOUBLE), CAST(customers_ly AS DOUBLE),\n",
+        "            CAST((customers_mtd / NULLIF(customers_ly, 0) - 1) * 100 AS DOUBLE),\n",
+        "         5, 'Average invoice value (LKR 000)', CAST(aiv_mtd / 1e3 AS DOUBLE), CAST(aiv_ly / 1e3 AS DOUBLE),\n",
+        "            CAST((aiv_mtd / NULLIF(aiv_ly, 0) - 1) * 100 AS DOUBLE),\n",
+        "         6, 'Returns rate %', CAST(returns_pct_mtd AS DOUBLE), CAST(returns_pct_ly AS DOUBLE),\n",
+        "            CAST(returns_pct_mtd - returns_pct_ly AS DOUBLE)\n",
+        "       ) AS (row_order, kpi, this_period_raw, last_year_raw, change_raw)\n",
+        "FROM (\n",
+        "  SELECT\n",
+        "    MAX(net_revenue) FILTER (WHERE is_month_to_date) AS revenue_mtd,\n",
+        "    MAX(net_revenue) FILTER (WHERE NOT is_month_to_date) AS revenue_ly,\n",
+        "    MAX(gross_margin_pct) FILTER (WHERE is_month_to_date) AS margin_pct_mtd,\n",
+        "    MAX(gross_margin_pct) FILTER (WHERE NOT is_month_to_date) AS margin_pct_ly,\n",
+        "    MAX(invoice_count) FILTER (WHERE is_month_to_date) AS invoices_mtd,\n",
+        "    MAX(invoice_count) FILTER (WHERE NOT is_month_to_date) AS invoices_ly,\n",
+        "    MAX(active_customers) FILTER (WHERE is_month_to_date) AS customers_mtd,\n",
+        "    MAX(active_customers) FILTER (WHERE NOT is_month_to_date) AS customers_ly,\n",
+        "    MAX(average_invoice_value) FILTER (WHERE is_month_to_date) AS aiv_mtd,\n",
+        "    MAX(average_invoice_value) FILTER (WHERE NOT is_month_to_date) AS aiv_ly,\n",
+        "    MAX(returns_rate_pct) FILTER (WHERE is_month_to_date) AS returns_pct_mtd,\n",
+        "    MAX(returns_rate_pct) FILTER (WHERE NOT is_month_to_date) AS returns_pct_ly\n",
+        "  FROM (\n",
+        "    SELECT `is_month_to_date`, MEASURE(`net_revenue`) AS `net_revenue`, MEASURE(`gross_margin_pct`) AS `gross_margin_pct`, MEASURE(`invoice_count`) AS `invoice_count`, MEASURE(`active_customers`) AS `active_customers`, MEASURE(`average_invoice_value`) AS `average_invoice_value`, MEASURE(`returns_rate_pct`) AS `returns_rate_pct`\n",
+        "    FROM client_dev.gold.sales_metrics\n",
+        "    WHERE (is_month_to_date OR is_same_days_last_year) AND (:product_group = 'All' OR product_group = :product_group) AND (:channel = 'All' OR channel = :channel)\n",
+        "    GROUP BY ALL\n",
+        "  ) AS q\n",
+        ") AS previous\n",
+        ") AS kpis\n",
+        "ORDER BY row_order"
+      ],
+      "parameters": [
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "channel",
+          "keyword": "channel",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "09782646",
+      "displayName": "monthly_by_document_type",
+      "queryLines": [
+        "SELECT\n",
+        "  month,\n",
+        "  document_type,\n",
+        "  ROUND(CAST(net_revenue AS DOUBLE) / 1e6, 2) AS lkr_m\n",
+        "FROM (\n",
+        "  SELECT `month`, `document_type`, MEASURE(`net_revenue`) AS `net_revenue`\n",
+        "  FROM client_dev.gold.sales_metrics\n",
+        "  WHERE (is_current_fiscal_year OR is_previous_fiscal_year) AND (:product_group = 'All' OR product_group = :product_group) AND (:channel = 'All' OR channel = :channel)\n",
+        "  GROUP BY ALL\n",
+        ") AS q"
+      ],
+      "parameters": [
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "channel",
+          "keyword": "channel",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "2729cb07",
+      "displayName": "product_group_month",
+      "queryLines": [
+        "SELECT\n",
+        "  product_group,\n",
+        "  ROUND(CAST(MAX(net_revenue) FILTER (WHERE is_last_complete_month) AS DOUBLE) / 1e6, 1) AS lkr_m,\n",
+        "  ROUND((MAX(net_revenue) FILTER (WHERE is_last_complete_month) / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_last_complete_month), 0) - 1) * 100, 1) AS change_pct\n",
+        "FROM (\n",
+        "  SELECT `product_group`, `is_last_complete_month`, MEASURE(`net_revenue`) AS `net_revenue`\n",
+        "  FROM client_dev.gold.sales_metrics\n",
+        "  WHERE (is_last_complete_month OR is_last_complete_month_last_year) AND (:product_group = 'All' OR product_group = :product_group) AND (:channel = 'All' OR channel = :channel)\n",
+        "  GROUP BY ALL\n",
+        ") AS q\n",
+        "GROUP BY product_group"
+      ],
+      "parameters": [
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "channel",
+          "keyword": "channel",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "495998ab",
+      "displayName": "top_products_fytd",
+      "queryLines": [
+        "SELECT\n",
+        "  product,\n",
+        "  product_group,\n",
+        "  ROUND(CAST(MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) / 1e6, 2) AS lkr_m,\n",
+        "  ROUND((MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_fiscal_year_to_date), 0) - 1) * 100, 1) AS change_pct,\n",
+        "  CAST(MAX(units) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) AS units,\n",
+        "  ROUND(MAX(gross_margin_pct) FILTER (WHERE is_fiscal_year_to_date), 1) AS margin_pct\n",
+        "FROM (\n",
+        "  SELECT `product`, `product_group`, `is_fiscal_year_to_date`, MEASURE(`net_revenue`) AS `net_revenue`, MEASURE(`units`) AS `units`, MEASURE(`gross_margin_pct`) AS `gross_margin_pct`\n",
+        "  FROM client_dev.gold.sales_metrics\n",
+        "  WHERE (is_fiscal_year_to_date OR is_same_period_last_fiscal_year) AND (:product_group = 'All' OR product_group = :product_group) AND (:channel = 'All' OR channel = :channel)\n",
+        "  GROUP BY ALL\n",
+        ") AS q\n",
+        "GROUP BY product, product_group\n",
+        "ORDER BY lkr_m DESC NULLS LAST\n",
+        "LIMIT 10"
+      ],
+      "parameters": [
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "channel",
+          "keyword": "channel",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "9b8d2f2a",
+      "displayName": "channel_fytd",
+      "queryLines": [
+        "SELECT\n",
+        "  channel,\n",
+        "  ROUND(CAST(net_revenue AS DOUBLE) / 1e6, 1) AS lkr_m\n",
+        "FROM (\n",
+        "  SELECT `channel`, MEASURE(`net_revenue`) AS `net_revenue`\n",
+        "  FROM client_dev.gold.sales_metrics\n",
+        "  WHERE (is_fiscal_year_to_date) AND (:product_group = 'All' OR product_group = :product_group) AND (:channel = 'All' OR channel = :channel)\n",
+        "  GROUP BY ALL\n",
+        ") AS q"
+      ],
+      "parameters": [
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "channel",
+          "keyword": "channel",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "7a1fb00e",
+      "displayName": "top_customers_fytd",
+      "queryLines": [
+        "SELECT\n",
+        "  customer_name,\n",
+        "  customer_group,\n",
+        "  province,\n",
+        "  ROUND(CAST(MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) / 1e6, 2) AS lkr_m,\n",
+        "  ROUND((MAX(net_revenue) FILTER (WHERE is_fiscal_year_to_date) / NULLIF(MAX(net_revenue) FILTER (WHERE NOT is_fiscal_year_to_date), 0) - 1) * 100, 1) AS change_pct,\n",
+        "  CAST(MAX(invoice_count) FILTER (WHERE is_fiscal_year_to_date) AS DOUBLE) AS invoices\n",
+        "FROM (\n",
+        "  SELECT `customer_name`, `customer_group`, `province`, `is_fiscal_year_to_date`, MEASURE(`net_revenue`) AS `net_revenue`, MEASURE(`invoice_count`) AS `invoice_count`\n",
+        "  FROM client_dev.gold.sales_metrics\n",
+        "  WHERE (is_fiscal_year_to_date OR is_same_period_last_fiscal_year) AND (:product_group = 'All' OR product_group = :product_group) AND (:channel = 'All' OR channel = :channel)\n",
+        "  GROUP BY ALL\n",
+        ") AS q\n",
+        "GROUP BY customer_name, customer_group, province\n",
+        "ORDER BY lkr_m DESC NULLS LAST\n",
+        "LIMIT 15"
+      ],
+      "parameters": [
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "channel",
+          "keyword": "channel",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "161dfecb",
+      "displayName": "returns_by_month",
+      "queryLines": [
+        "SELECT\n",
+        "  month,\n",
+        "  ROUND(returns_rate_pct, 2) AS returns_rate_pct,\n",
+        "  ROUND(gross_margin_pct, 1) AS margin_pct\n",
+        "FROM (\n",
+        "  SELECT `month`, MEASURE(`returns_rate_pct`) AS `returns_rate_pct`, MEASURE(`gross_margin_pct`) AS `gross_margin_pct`\n",
+        "  FROM client_dev.gold.sales_metrics\n",
+        "  WHERE (is_current_fiscal_year OR is_previous_fiscal_year) AND (:product_group = 'All' OR product_group = :product_group) AND (:channel = 'All' OR channel = :channel)\n",
+        "  GROUP BY ALL\n",
+        ") AS q"
+      ],
+      "parameters": [
+        {
+          "displayName": "product_group",
+          "keyword": "product_group",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        },
+        {
+          "displayName": "channel",
+          "keyword": "channel",
+          "dataType": "STRING",
+          "defaultSelection": {
+            "values": {
+              "dataType": "STRING",
+              "values": [
+                {
+                  "value": "All"
+                }
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "0020b6bf",
+      "displayName": "row_fates",
+      "queryLines": [
+        "SELECT CASE fate\n",
+        "         WHEN 'kept' THEN 'In silver and gold'\n",
+        "         WHEN 'older_version' THEN 'Older copy of a line (the newest is kept)'\n",
+        "         WHEN 'deleted_in_source' THEN 'Deleted in SAP'\n",
+        "         WHEN 'out_of_scope_company' THEN 'Another company code'\n",
+        "         WHEN 'not_revenue' THEN 'Pro-forma or down payment (not revenue)'\n",
+        "         WHEN 'quarantined' THEN 'Quarantined: bad date, key or number'\n",
+        "         WHEN 'outside_window' THEN 'Outside the agreed date window'\n",
+        "         ELSE fate END AS what_happened,\n",
+        "       CAST(SUM(line_count) AS DOUBLE) AS row_count\n",
+        "FROM client_dev.ops.sap_row_fates\n",
+        "GROUP BY fate\n",
+        "ORDER BY CASE fate WHEN 'kept' THEN 0 ELSE 1 END, row_count DESC"
+      ]
+    },
+    {
+      "name": "fcf982ec",
+      "displayName": "reconciliation",
+      "queryLines": [
+        "SELECT CASE check_name WHEN 'source_to_silver' THEN 'Source to silver (per company, month, category)'\n",
+        "                       WHEN 'silver_to_gold' THEN 'Silver to gold (per invoice date and type)'\n",
+        "                       ELSE check_name END AS link,\n",
+        "       CAST(COUNT(*) AS DOUBLE) AS group_count,\n",
+        "       CAST(SUM(CASE WHEN status = 'PASS' THEN 1 ELSE 0 END) AS DOUBLE) AS passed,\n",
+        "       CAST(SUM(actual_lines) AS DOUBLE) AS line_count\n",
+        "FROM client_dev.ops.sap_reconciliation\n",
+        "WHERE run_id = (SELECT max_by(run_id, checked_ts) FROM client_dev.ops.sap_reconciliation)\n",
+        "GROUP BY check_name\n",
+        "ORDER BY check_name DESC"
+      ]
+    },
+    {
+      "name": "f5f84e2c",
+      "displayName": "data_checks",
+      "queryLines": [
+        "SELECT layer, check_name, status, COUNT(*) AS results,\n",
+        "       date_format(from_utc_timestamp(MAX(checked_ts), 'Asia/Colombo'), 'd MMM yyyy HH:mm') AS last_run\n",
+        "FROM client_dev.ops.dq_results\n",
+        "WHERE run_id IN (SELECT max_by(run_id, checked_ts) FROM client_dev.ops.dq_results GROUP BY layer, check_name)\n",
+        "GROUP BY layer, check_name, status\n",
+        "ORDER BY CASE layer WHEN 'bronze' THEN 1 WHEN 'silver' THEN 2 ELSE 3 END, check_name, status"
+      ]
+    }
+  ],
+  "pages": [
+    {
+      "name": "df732e6c",
+      "displayName": "How are we doing?",
+      "layout": [
+        {
+          "widget": {
+            "name": "ed1e6469",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Sales from SAP billing data\n",
+                "Built from SAP billing documents with the same KPI definitions as the Sales dashboard and Genie.\n",
+                "Month to date = the month of the latest data, against the same days last year.\n",
+                "Filters (top left: Product group, Channel). Province is not shown yet: SAP has no district to province list."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "4d9838d0",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "45db3610",
+                  "fields": [
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "status",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": " ",
+                    "displayName": "status",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Data status"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 6,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "7238cd47",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d969dca5",
+                  "fields": [
+                    {
+                      "name": "max(revenue_mtd)",
+                      "expression": "MAX(`revenue_mtd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(revenue_mtd)",
+                  "displayName": "Net revenue month to date (LKR)",
+                  "format": {
+                    "type": "number-plain",
+                    "abbreviation": "compact",
+                    "decimalPlaces": {
+                      "type": "max",
+                      "places": 1
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Net revenue month to date (LKR)"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "738c25dd",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d969dca5",
+                  "fields": [
+                    {
+                      "name": "max(revenue_change_pct)",
+                      "expression": "MAX(`revenue_change_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(revenue_change_pct)",
+                  "displayName": "vs same days last year (%)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "vs same days last year (%)"
+              }
+            }
+          },
+          "position": {
+            "x": 2,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "9ec7cb01",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d969dca5",
+                  "fields": [
+                    {
+                      "name": "max(margin_pct_mtd)",
+                      "expression": "MAX(`margin_pct_mtd`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "counter",
+              "encodings": {
+                "value": {
+                  "fieldName": "max(margin_pct_mtd)",
+                  "displayName": "Gross margin month to date (%)"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Gross margin month to date (%)"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 5,
+            "width": 2,
+            "height": 3
+          }
+        },
+        {
+          "widget": {
+            "name": "755a3ecb",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "d969dca5",
+                  "fields": [
+                    {
+                      "name": "kpi",
+                      "expression": "`kpi`"
+                    },
+                    {
+                      "name": "this_period",
+                      "expression": "`this_period`"
+                    },
+                    {
+                      "name": "same_days_last_year",
+                      "expression": "`same_days_last_year`"
+                    },
+                    {
+                      "name": "change_vs_ly",
+                      "expression": "`change_vs_ly`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "kpi",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": "KPI",
+                    "displayName": "kpi",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "this_period",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100001,
+                    "title": "Month to date",
+                    "displayName": "this_period",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  },
+                  {
+                    "fieldName": "same_days_last_year",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "title": "Same days last year",
+                    "displayName": "same_days_last_year",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  },
+                  {
+                    "fieldName": "change_vs_ly",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100003,
+                    "title": "Change",
+                    "displayName": "change_vs_ly",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Month to date vs the same days last year",
+                "showDescription": true,
+                "description": "Change is % for amounts and counts, percentage points for rates."
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "887b06ae",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "09782646",
+                  "fields": [
+                    {
+                      "name": "monthly(month)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `month`)"
+                    },
+                    {
+                      "name": "sum(lkr_m)",
+                      "expression": "SUM(`lkr_m`)"
+                    },
+                    {
+                      "name": "document_type",
+                      "expression": "`document_type`"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(month)",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Month"
+                },
+                "y": {
+                  "fieldName": "sum(lkr_m)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "LKR m"
+                },
+                "color": {
+                  "fieldName": "document_type",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Document type"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Net revenue by month and SAP document type, this and last fiscal year (LKR m)",
+                "showDescription": true,
+                "description": "Returns, cancellations and price corrections are negative; debit memos and credit memo cancellations positive."
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 8,
+            "width": 3,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "28e090f9",
+      "displayName": "Products and customers",
+      "layout": [
+        {
+          "widget": {
+            "name": "89724b36",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "2729cb07",
+                  "fields": [
+                    {
+                      "name": "product_group",
+                      "expression": "`product_group`"
+                    },
+                    {
+                      "name": "sum(lkr_m)",
+                      "expression": "SUM(`lkr_m`)"
+                    },
+                    {
+                      "name": "sum(change_pct)",
+                      "expression": "SUM(`change_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "combo",
+              "encodings": {
+                "x": {
+                  "fieldName": "product_group",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Product group"
+                },
+                "label": {
+                  "show": false
+                },
+                "y": {
+                  "primary": {
+                    "fields": [
+                      {
+                        "fieldName": "sum(lkr_m)"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  },
+                  "secondary": {
+                    "fields": [
+                      {
+                        "fieldName": "sum(change_pct)"
+                      }
+                    ],
+                    "scale": {
+                      "type": "quantitative"
+                    }
+                  }
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Net revenue by product group, last complete month"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 4,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "bf07b785",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "9b8d2f2a",
+                  "fields": [
+                    {
+                      "name": "channel",
+                      "expression": "`channel`"
+                    },
+                    {
+                      "name": "sum(lkr_m)",
+                      "expression": "SUM(`lkr_m`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "bar",
+              "encodings": {
+                "x": {
+                  "fieldName": "channel",
+                  "scale": {
+                    "type": "categorical"
+                  },
+                  "displayName": "Channel"
+                },
+                "y": {
+                  "fieldName": "sum(lkr_m)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "LKR m"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Net revenue by channel, fiscal year to date (LKR m)"
+              }
+            }
+          },
+          "position": {
+            "x": 4,
+            "y": 0,
+            "width": 2,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "62a37f72",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "495998ab",
+                  "fields": [
+                    {
+                      "name": "product",
+                      "expression": "`product`"
+                    },
+                    {
+                      "name": "product_group",
+                      "expression": "`product_group`"
+                    },
+                    {
+                      "name": "lkr_m",
+                      "expression": "`lkr_m`"
+                    },
+                    {
+                      "name": "change_pct",
+                      "expression": "`change_pct`"
+                    },
+                    {
+                      "name": "units",
+                      "expression": "`units`"
+                    },
+                    {
+                      "name": "margin_pct",
+                      "expression": "`margin_pct`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "product",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": "Product",
+                    "displayName": "product",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "product_group",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100001,
+                    "title": "Group",
+                    "displayName": "product_group",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "lkr_m",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "title": "LKR m",
+                    "displayName": "lkr_m",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  },
+                  {
+                    "fieldName": "change_pct",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100003,
+                    "title": "vs last year %",
+                    "displayName": "change_pct",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  },
+                  {
+                    "fieldName": "units",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100004,
+                    "title": "Units",
+                    "displayName": "units",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  },
+                  {
+                    "fieldName": "margin_pct",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100005,
+                    "title": "Margin %",
+                    "displayName": "margin_pct",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Top 10 products, fiscal year to date"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 6,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "2d395a47",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "7a1fb00e",
+                  "fields": [
+                    {
+                      "name": "customer_name",
+                      "expression": "`customer_name`"
+                    },
+                    {
+                      "name": "customer_group",
+                      "expression": "`customer_group`"
+                    },
+                    {
+                      "name": "lkr_m",
+                      "expression": "`lkr_m`"
+                    },
+                    {
+                      "name": "change_pct",
+                      "expression": "`change_pct`"
+                    },
+                    {
+                      "name": "invoices",
+                      "expression": "`invoices`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "customer_name",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": "Customer",
+                    "displayName": "customer_name",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "customer_group",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100001,
+                    "title": "Group",
+                    "displayName": "customer_group",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "lkr_m",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "title": "LKR m",
+                    "displayName": "lkr_m",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  },
+                  {
+                    "fieldName": "change_pct",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100003,
+                    "title": "vs last year %",
+                    "displayName": "change_pct",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  },
+                  {
+                    "fieldName": "invoices",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100004,
+                    "title": "Invoices",
+                    "displayName": "invoices",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Top 15 customers, fiscal year to date",
+                "showDescription": true,
+                "description": "Customers are shown by number only; names and contact details are never loaded."
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 6,
+            "width": 3,
+            "height": 7
+          }
+        },
+        {
+          "widget": {
+            "name": "ee595121",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "161dfecb",
+                  "fields": [
+                    {
+                      "name": "monthly(month)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `month`)"
+                    },
+                    {
+                      "name": "sum(returns_rate_pct)",
+                      "expression": "SUM(`returns_rate_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(month)",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Month"
+                },
+                "y": {
+                  "fieldName": "sum(returns_rate_pct)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Returns rate %"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Returns rate % by month"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 13,
+            "width": 3,
+            "height": 5
+          }
+        },
+        {
+          "widget": {
+            "name": "feace504",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "161dfecb",
+                  "fields": [
+                    {
+                      "name": "monthly(month)",
+                      "expression": "DATE_TRUNC(\"MONTH\", `month`)"
+                    },
+                    {
+                      "name": "sum(margin_pct)",
+                      "expression": "SUM(`margin_pct`)"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 3,
+              "widgetType": "line",
+              "encodings": {
+                "x": {
+                  "fieldName": "monthly(month)",
+                  "scale": {
+                    "type": "temporal"
+                  },
+                  "displayName": "Month"
+                },
+                "y": {
+                  "fieldName": "sum(margin_pct)",
+                  "scale": {
+                    "type": "quantitative"
+                  },
+                  "displayName": "Gross margin %"
+                }
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Gross margin % by month"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 13,
+            "width": 3,
+            "height": 5
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "ab22b158",
+      "displayName": "Can we trust the numbers?",
+      "layout": [
+        {
+          "widget": {
+            "name": "def0f9fe",
+            "multilineTextboxSpec": {
+              "lines": [
+                "## Can we trust the numbers?\n",
+                "Every row of the source is accounted for: it is in the dashboards, or filtered for a stated reason.\n",
+                "Reconciliation proves the source totals = what was loaded = silver = gold; any difference stops the run."
+              ]
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 6,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "ad8f2af5",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "0020b6bf",
+                  "fields": [
+                    {
+                      "name": "what_happened",
+                      "expression": "`what_happened`"
+                    },
+                    {
+                      "name": "row_count",
+                      "expression": "`row_count`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "what_happened",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": "What happened",
+                    "displayName": "what_happened",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "row_count",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100001,
+                    "title": "Rows",
+                    "displayName": "row_count",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "What happened to every source row"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "df8f596f",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "fcf982ec",
+                  "fields": [
+                    {
+                      "name": "link",
+                      "expression": "`link`"
+                    },
+                    {
+                      "name": "group_count",
+                      "expression": "`group_count`"
+                    },
+                    {
+                      "name": "passed",
+                      "expression": "`passed`"
+                    },
+                    {
+                      "name": "line_count",
+                      "expression": "`line_count`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "link",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": "Link",
+                    "displayName": "link",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "group_count",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100001,
+                    "title": "Groups",
+                    "displayName": "group_count",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0"
+                  },
+                  {
+                    "fieldName": "passed",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100002,
+                    "title": "Passed",
+                    "displayName": "passed",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0"
+                  },
+                  {
+                    "fieldName": "line_count",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100003,
+                    "title": "Lines",
+                    "displayName": "line_count",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Reconciliation, latest run"
+              }
+            }
+          },
+          "position": {
+            "x": 3,
+            "y": 2,
+            "width": 3,
+            "height": 6
+          }
+        },
+        {
+          "widget": {
+            "name": "ab984ecd",
+            "queries": [
+              {
+                "name": "main_query",
+                "query": {
+                  "datasetName": "f5f84e2c",
+                  "fields": [
+                    {
+                      "name": "layer",
+                      "expression": "`layer`"
+                    },
+                    {
+                      "name": "check_name",
+                      "expression": "`check_name`"
+                    },
+                    {
+                      "name": "status",
+                      "expression": "`status`"
+                    },
+                    {
+                      "name": "results",
+                      "expression": "`results`"
+                    },
+                    {
+                      "name": "last_run",
+                      "expression": "`last_run`"
+                    }
+                  ],
+                  "disaggregated": true
+                }
+              }
+            ],
+            "spec": {
+              "version": 1,
+              "widgetType": "table",
+              "invisibleColumns": [],
+              "allowHTMLByDefault": false,
+              "itemsPerPage": 25,
+              "paginationSize": "default",
+              "condensed": true,
+              "withRowNumber": false,
+              "encodings": {
+                "columns": [
+                  {
+                    "fieldName": "layer",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100000,
+                    "title": "Layer",
+                    "displayName": "layer",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "check_name",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100001,
+                    "title": "Check",
+                    "displayName": "check_name",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "status",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100002,
+                    "title": "Result",
+                    "displayName": "status",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  },
+                  {
+                    "fieldName": "results",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "float",
+                    "displayAs": "number",
+                    "visible": true,
+                    "order": 100003,
+                    "title": "Results",
+                    "displayName": "results",
+                    "allowSearch": false,
+                    "alignContent": "right",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false,
+                    "numberFormat": "0,0.0"
+                  },
+                  {
+                    "fieldName": "last_run",
+                    "booleanValues": [
+                      "false",
+                      "true"
+                    ],
+                    "imageUrlTemplate": "{{ @ }}",
+                    "imageTitleTemplate": "{{ @ }}",
+                    "imageWidth": "",
+                    "imageHeight": "",
+                    "linkUrlTemplate": "{{ @ }}",
+                    "linkTextTemplate": "{{ @ }}",
+                    "linkTitleTemplate": "{{ @ }}",
+                    "linkOpenInNewTab": true,
+                    "type": "string",
+                    "displayAs": "string",
+                    "visible": true,
+                    "order": 100004,
+                    "title": "Last run (Colombo time)",
+                    "displayName": "last_run",
+                    "allowSearch": false,
+                    "alignContent": "left",
+                    "allowHTML": false,
+                    "highlightLinks": false,
+                    "useMonospaceFont": false,
+                    "preserveWhitespace": false
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Latest data checks"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 8,
+            "width": 6,
+            "height": 6
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_CANVAS"
+    },
+    {
+      "name": "d2aa7fdb",
+      "displayName": "Global filters",
+      "layout": [
+        {
+          "widget": {
+            "name": "46186c35",
+            "queries": [
+              {
+                "name": "dashboards/client/datasets/28b80b38_product_group",
+                "query": {
+                  "datasetName": "28b80b38",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "product_group",
+                      "expression": "`product_group`"
+                    },
+                    {
+                      "name": "product_group_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/d969dca5_product_group",
+                "query": {
+                  "datasetName": "d969dca5",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/09782646_product_group",
+                "query": {
+                  "datasetName": "09782646",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/2729cb07_product_group",
+                "query": {
+                  "datasetName": "2729cb07",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/495998ab_product_group",
+                "query": {
+                  "datasetName": "495998ab",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/9b8d2f2a_product_group",
+                "query": {
+                  "datasetName": "9b8d2f2a",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/7a1fb00e_product_group",
+                "query": {
+                  "datasetName": "7a1fb00e",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/161dfecb_product_group",
+                "query": {
+                  "datasetName": "161dfecb",
+                  "parameters": [
+                    {
+                      "name": "product_group",
+                      "keyword": "product_group"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "product_group",
+                    "queryName": "dashboards/client/datasets/28b80b38_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/client/datasets/d969dca5_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/client/datasets/09782646_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/client/datasets/2729cb07_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/client/datasets/495998ab_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/client/datasets/9b8d2f2a_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/client/datasets/7a1fb00e_product_group"
+                  },
+                  {
+                    "parameterName": "product_group",
+                    "queryName": "parameter_dashboards/client/datasets/161dfecb_product_group"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Product group",
+                "showDescription": true,
+                "description": "Material group from SAP"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 0,
+            "width": 1,
+            "height": 2
+          }
+        },
+        {
+          "widget": {
+            "name": "df7ae754",
+            "queries": [
+              {
+                "name": "dashboards/client/datasets/a16fb220_channel",
+                "query": {
+                  "datasetName": "a16fb220",
+                  "disaggregated": false,
+                  "fields": [
+                    {
+                      "name": "channel",
+                      "expression": "`channel`"
+                    },
+                    {
+                      "name": "channel_associativity",
+                      "expression": "COUNT_IF(`associative_filter_predicate_group`)"
+                    }
+                  ]
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/d969dca5_channel",
+                "query": {
+                  "datasetName": "d969dca5",
+                  "parameters": [
+                    {
+                      "name": "channel",
+                      "keyword": "channel"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/09782646_channel",
+                "query": {
+                  "datasetName": "09782646",
+                  "parameters": [
+                    {
+                      "name": "channel",
+                      "keyword": "channel"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/2729cb07_channel",
+                "query": {
+                  "datasetName": "2729cb07",
+                  "parameters": [
+                    {
+                      "name": "channel",
+                      "keyword": "channel"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/495998ab_channel",
+                "query": {
+                  "datasetName": "495998ab",
+                  "parameters": [
+                    {
+                      "name": "channel",
+                      "keyword": "channel"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/9b8d2f2a_channel",
+                "query": {
+                  "datasetName": "9b8d2f2a",
+                  "parameters": [
+                    {
+                      "name": "channel",
+                      "keyword": "channel"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/7a1fb00e_channel",
+                "query": {
+                  "datasetName": "7a1fb00e",
+                  "parameters": [
+                    {
+                      "name": "channel",
+                      "keyword": "channel"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              },
+              {
+                "name": "parameter_dashboards/client/datasets/161dfecb_channel",
+                "query": {
+                  "datasetName": "161dfecb",
+                  "parameters": [
+                    {
+                      "name": "channel",
+                      "keyword": "channel"
+                    }
+                  ],
+                  "disaggregated": false
+                }
+              }
+            ],
+            "spec": {
+              "version": 2,
+              "widgetType": "filter-single-select",
+              "encodings": {
+                "fields": [
+                  {
+                    "fieldName": "channel",
+                    "queryName": "dashboards/client/datasets/a16fb220_channel"
+                  },
+                  {
+                    "parameterName": "channel",
+                    "queryName": "parameter_dashboards/client/datasets/d969dca5_channel"
+                  },
+                  {
+                    "parameterName": "channel",
+                    "queryName": "parameter_dashboards/client/datasets/09782646_channel"
+                  },
+                  {
+                    "parameterName": "channel",
+                    "queryName": "parameter_dashboards/client/datasets/2729cb07_channel"
+                  },
+                  {
+                    "parameterName": "channel",
+                    "queryName": "parameter_dashboards/client/datasets/495998ab_channel"
+                  },
+                  {
+                    "parameterName": "channel",
+                    "queryName": "parameter_dashboards/client/datasets/9b8d2f2a_channel"
+                  },
+                  {
+                    "parameterName": "channel",
+                    "queryName": "parameter_dashboards/client/datasets/7a1fb00e_channel"
+                  },
+                  {
+                    "parameterName": "channel",
+                    "queryName": "parameter_dashboards/client/datasets/161dfecb_channel"
+                  }
+                ]
+              },
+              "frame": {
+                "showTitle": true,
+                "title": "Channel",
+                "showDescription": true,
+                "description": "Distribution channel from SAP"
+              }
+            }
+          },
+          "position": {
+            "x": 0,
+            "y": 2,
+            "width": 1,
+            "height": 2
+          }
+        }
+      ],
+      "pageType": "PAGE_TYPE_GLOBAL_FILTERS"
+    }
+  ]
+}

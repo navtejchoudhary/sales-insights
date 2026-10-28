@@ -2,6 +2,7 @@
 
     uv run python -m sales_insights.semantic.kpis
     uv run python -m sales_insights.semantic.kpis --area inventory
+    uv run python -m sales_insights.semantic.kpis --area client      # SAP billing data: the sales KPIs
 
 Each file in sql/kpis/ (sales) or sql/kpis/inventory/ is one SELECT over the gold tables, with
 ${fact_sales}-style placeholders.
@@ -143,18 +144,25 @@ INVENTORY_AGREEMENTS = [
 
 @dataclass(frozen=True)
 class AreaSemantic:
-    """Where an area's KPI SQL lives, which metric views it publishes, and what must agree."""
+    """Where an area's KPI SQL lives, which metric views it publishes, and what must agree.
+
+    own_gold: the area has the whole sales-shaped gold model in its own catalog (sales; client = SAP billing
+    data), so every table name comes from that area. Otherwise it reads the shared dimensions in sales gold.
+    """
 
     folder: Path
     metric_views: tuple[str, ...]
     agreements: tuple[Agreement, ...]
+    own_gold: bool = False
 
 
 AREAS = {
-    "sales": AreaSemantic(KPI_SQL, ("sales_metrics",), tuple(AGREEMENTS)),
+    "sales": AreaSemantic(KPI_SQL, ("sales_metrics",), tuple(AGREEMENTS), own_gold=True),
     "inventory": AreaSemantic(
         KPI_SQL / "inventory", ("inventory_metrics", "sales_and_stock"), tuple(INVENTORY_AGREEMENTS)
     ),
+    # The same KPI SQL and metric view as sales (one definition per KPI), published in the client catalog
+    "client": AreaSemantic(KPI_SQL, ("sales_metrics",), tuple(AGREEMENTS), own_gold=True),
 }
 
 
@@ -167,8 +175,9 @@ def render(name: str, tables: dict[str, str], folder: Path = KPI_SQL) -> str:
 
 
 def area_tables(lake: Lake, sales_lake: Lake | None = None) -> dict[str, str]:
-    """Placeholder -> table name for lake's area. Other areas also read the shared tables in sales gold."""
-    if lake.cfg.area == "sales":
+    """Placeholder -> table name for lake's area. Areas without their own gold model also read the shared
+    tables in sales gold."""
+    if AREAS[lake.cfg.area].own_gold:
         return mvs.table_names(lake)
     if sales_lake is None:
         raise ValueError(f"the {lake.cfg.area} area reads the shared dimensions in sales gold: pass sales_lake")
@@ -237,11 +246,11 @@ def main(argv: list[str] | None = None) -> None:
     cfg = load_config(area=args.area)
     spark = get_spark(cfg, app_name="kpis")
     lake = Lake(spark, cfg)
-    sales_lake = None if cfg.area == "sales" else Lake(spark, cfg.for_area("sales"))
+    sales_lake = None if AREAS[cfg.area].own_gold else Lake(spark, cfg.for_area("sales"))
     published = publish(spark, cfg, lake, sales_lake)
     print(f"  views: {', '.join(published)}")
 
-    if cfg.area == "sales":
+    if AREAS[cfg.area].own_gold:
         print("  last 6 months (kpi_sales_monthly):")
         cols = ["month", "net_revenue", "units", "invoice_count", "gross_margin_pct", "returns_rate_pct",
                 "mom_growth_pct", "yoy_growth_pct"]  # fmt: skip

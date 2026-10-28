@@ -12,6 +12,7 @@ says which doc answers which question. "Generated" docs are rewritten by code; e
 | [playbooks/tune_a_genie_agent.md](playbooks/tune_a_genie_agent.md) | Score a Genie agent, find why answers fail, fix and reload |
 | [playbooks/add_a_business_area.md](playbooks/add_a_business_area.md) | Add an area such as finance next to sales and stock |
 | [playbooks/deploy_and_operate.md](playbooks/deploy_and_operate.md) | Deploy, daily checks, troubleshooting, export and shutdown |
+| [playbooks/run_the_client_area.md](playbooks/run_the_client_area.md) | Run the client area (SAP billing data) on Databricks and open its dashboard |
 | [setup_mac.md](setup_mac.md) | Set up a Mac for development (once, about 30 minutes) |
 
 ## Understand the design

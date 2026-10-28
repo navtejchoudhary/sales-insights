@@ -40,3 +40,11 @@ resources:
       permissions:
         - group_name: management
           level: CAN_RUN
+
+    # The client area (SAP billing data, catalog client_dev): no `permissions`, so only the owner (who deploys)
+    # can open it. Share it only after the real data has been reviewed and the client agrees who may see it.
+    client_dashboard:
+      display_name: Sales (SAP data)
+      file_path: ../../dashboards/client.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      embed_credentials: false

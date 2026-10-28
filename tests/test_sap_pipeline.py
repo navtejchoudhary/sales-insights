@@ -47,7 +47,7 @@ def test_the_pipeline_text_tables_are_the_contract_ones():
 
 
 def test_client_area_steps():
-    assert rp.AREA_STEPS["client"] == ["bronze", "silver", "gold", "reconcile"]
+    assert rp.AREA_STEPS["client"] == ["bronze", "silver", "gold", "reconcile", "kpis"]
     assert set(rp.AREA_STEPS["client"]) == set(rp.AREA_STEP_FUNCS["client"])
     assert rp.AREA_STEP_FUNCS["client"]["bronze"] is rp._bronze  # same bronze and gold code as sales
     assert rp.AREA_STEP_FUNCS["client"]["gold"] is rp._gold
@@ -433,7 +433,7 @@ def _fact(world):
 
 def test_every_step_passes(world):
     (day,) = world["results"]
-    assert [st.step for st in day.steps] == ["bronze", "silver", "gold", "reconcile"]
+    assert [st.step for st in day.steps] == ["bronze", "silver", "gold", "reconcile", "kpis"]
     assert day.ok, [st.detail for st in day.steps]
 
 
@@ -536,3 +536,48 @@ def test_no_personal_data_reaches_silver_or_gold(world):
         assert not set(sap.PERSONAL_CUSTOMER_COLUMNS) & set(df.columns)
         text = " ".join(str(v) for r in df.collect() for v in r)
         assert not [s for s in samples if s in text], table
+
+
+def test_the_client_area_uses_the_sales_kpis_and_metric_view():
+    from sales_insights.semantic import kpis as k
+
+    client = k.AREAS["client"]
+    assert client.own_gold and client.metric_views == ("sales_metrics",)
+    assert client.folder == k.AREAS["sales"].folder and client.agreements == k.AREAS["sales"].agreements
+
+
+def test_kpi_sql_matches_the_metric_view_on_sap_data(world, spark):
+    from sales_insights.semantic import kpis as k
+
+    results = k.check_against_metric_view(spark, world["lake"])
+    assert results and all(rows > 0 and bad == 0 for _, rows, bad in results), results
+
+
+def test_every_client_dashboard_dataset_runs(world, spark):
+    """Every dataset of the Sales (SAP data) dashboard runs on the client tables (metric view compiled locally)
+    and returns the columns its widgets show."""
+    from sales_insights.semantic import dashboards as db
+
+    tables = db.lake_names(None, None, client_lake=world["lake"], area="client")
+    assert tables["fact_sales"] == world["lake"].sql_name("gold", "fact_sales")
+    spec = db.load("client")
+    results = {}
+    for key, ds in db.datasets(spec).items():
+        df = spark.sql(db.local_sql(ds, tables, db.filter_defaults(spec)))
+        results[key] = (set(df.columns), df.collect())
+    for page in spec["pages"]:
+        for w in page["widgets"]:
+            kind = db.widget_kind(w)
+            if kind == "text":
+                continue
+            body = w[kind]
+            shown = {c["field"] for c in body.get("columns", [])}
+            shown |= {body[x]["field"] for x in ("x", "y", "color") if x in body}
+            shown |= {b["field"] for b in body.get("bars", []) + body.get("line", [])}
+            shown |= {body["value"]} if "value" in body else set()
+            assert shown <= results[body["dataset"]][0], (body["dataset"], shown - results[body["dataset"]][0])
+    for key in ("trust", "headline_mtd", "monthly_by_document_type", "row_fates", "reconciliation", "data_checks"):
+        assert results[key][1], f"{key} returned no rows"
+    fates = {r["what_happened"]: r["row_count"] for r in results["row_fates"][1]}
+    assert fates["In silver and gold"] == _fact(world).count()
+    assert "Debit memo" in {r["document_type"] for r in results["monthly_by_document_type"][1]}

@@ -3,10 +3,14 @@
     uv run python -m sales_insights.semantic.dashboards              # rewrite dashboards/*.lvdash.json (dev names)
     databricks bundle deploy -t dev                                  # creates / updates the 3 dashboards
 
-Three dashboards, one per audience (docs/access.md):
+Four dashboards, one per audience (docs/access.md):
     sales.yaml   Sales (3 pages)          sales_team, management
     stock.yaml   Stock (1 page)           stock_team, management
     ceo.yaml     Company overview (1 page) management
+    client.yaml  Sales (SAP data) (2 pages) the owner only (the client area: SAP billing data)
+
+`area: client` in a dashboard YAML: the sales-shaped tables and the sales metric view are read from that
+area's catalog instead of the sales one (same placeholders, same metric view definition).
 
 Why YAML -> JSON instead of clicking the dashboards together: the dashboard file format (.lvdash.json) is long
 and repetitive, but a dashboard is only datasets + widgets on a grid. The YAML keeps the parts a person reviews
@@ -51,7 +55,7 @@ from sales_insights.common.config import REPO_ROOT, Config
 from sales_insights.semantic import metric_views as mvs
 
 DASHBOARDS = REPO_ROOT / "dashboards"
-NAMES = ["sales", "stock", "ceo"]
+NAMES = ["sales", "stock", "ceo", "client"]
 GRID_WIDTH = 6
 METRIC_VIEWS = {"sales_metrics": "sales", "inventory_metrics": "inventory", "sales_and_stock": "inventory"}
 # Non-gold-model tables the datasets read: placeholder -> (area, layer, table)
@@ -67,29 +71,50 @@ EXTRA_TABLES = {
     "stock_cross_checks": ("inventory", "ops", "cross_checks"),
     "stock_manifest_dirt": ("inventory", "ops", "manifest_dirt"),
     "sales_genie_accuracy": ("sales", "ops", "genie_accuracy"),
+    "client_row_fates": ("client", "ops", "sap_row_fates"),
+    "client_reconciliation": ("client", "ops", "sap_reconciliation"),
+    "client_dq_results": ("client", "ops", "dq_results"),
 }
 
-NameFn = Callable[[str, str, str], str]  # (area, layer, table) -> SQL name
+NameFn = Callable[[str, str, str], "str | None"]  # (area, layer, table) -> SQL name (None: not available)
 
 
-def table_names(name: NameFn) -> dict[str, str]:
-    """Placeholder -> SQL name for every table and metric view a dashboard may read."""
-    names = {t: name("sales", "gold", t) for t in mvs.GOLD_TABLES}
-    names |= {t: name("inventory", "gold", t) for t in mvs.AREA_GOLD_TABLES["inventory"]}
-    names |= {mv: name(area, "gold", mv) for mv, area in METRIC_VIEWS.items()}
-    names |= {key: name(*where) for key, where in EXTRA_TABLES.items()}
-    return names
+def table_names(name: NameFn, area: str | None = None) -> dict[str, str]:
+    """Placeholder -> SQL name for every table and metric view a dashboard may read.
+
+    area: the area whose catalog holds the dashboard's sales-shaped gold and sales metric view (default sales).
+    """
+    home = area or "sales"
+
+    def n(a: str, layer: str, t: str) -> str | None:
+        return name(home if a == "sales" else a, layer, t)
+
+    pairs = [(t, ("sales", "gold", t)) for t in mvs.GOLD_TABLES]
+    pairs += [(t, ("inventory", "gold", t)) for t in mvs.AREA_GOLD_TABLES["inventory"]]
+    pairs += [(mv, (a, "gold", mv)) for mv, a in METRIC_VIEWS.items()]
+    pairs += list(EXTRA_TABLES.items())
+    names = {key: n(*where) for key, where in pairs}
+    return {key: value for key, value in names.items() if value is not None}
 
 
-def config_names(cfg: Config) -> dict[str, str]:
+def config_names(cfg: Config, area: str | None = None) -> dict[str, str]:
     """Table names of a config profile (dev: sales_dev.gold.fact_sales, inventory_dev.gold.insights, ...)."""
-    return table_names(lambda area, layer, t: cfg.for_area(area).table(layer, t))
+    return table_names(lambda a, layer, t: cfg.for_area(a).table(layer, t), area)
 
 
-def lake_names(sales_lake, stock_lake) -> dict[str, str]:
-    """Local table names (delta.`/path`), for running the datasets in tests."""
-    lakes = {"sales": sales_lake, "inventory": stock_lake}
-    return table_names(lambda area, layer, t: lakes[area].sql_name(layer, t))
+def lake_names(sales_lake, stock_lake, client_lake=None, area: str | None = None) -> dict[str, str]:
+    """Local table names (delta.`/path`), for running the datasets in tests (areas without a lake left out)."""
+    lakes = {"sales": sales_lake, "inventory": stock_lake, "client": client_lake}
+
+    def name(a: str, layer: str, t: str) -> str | None:
+        return lakes[a].sql_name(layer, t) if lakes.get(a) is not None else None
+
+    return table_names(name, area)
+
+
+def spec_area(name: str, folder: Path = DASHBOARDS) -> str | None:
+    """The `area:` of a dashboard YAML (None: the sales catalog)."""
+    return load(name, folder).get("area")
 
 
 # ---------------------------------------------------------------------------
@@ -435,10 +460,10 @@ def render(name: str, tables: dict[str, str], folder: Path = DASHBOARDS) -> str:
 
 
 def write(cfg: Config, folder: Path = DASHBOARDS) -> list[Path]:
-    tables, paths = config_names(cfg), []
+    paths = []
     for name in NAMES:
         path = folder / f"{name}.lvdash.json"
-        path.write_text(render(name, tables, folder), encoding="utf-8")
+        path.write_text(render(name, config_names(cfg, spec_area(name, folder)), folder), encoding="utf-8")
         paths.append(path)
     return paths
 

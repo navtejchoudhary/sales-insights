@@ -20,14 +20,14 @@ deleted and this repo plus `workspace_export/` are the record.
 | Part | State |
 |---|---|
 | Sales and stock pipelines (landing, bronze, silver, gold, checks) | Daily jobs 06:30 and 07:00 Asia/Colombo |
-| Metric views | 3: `sales_metrics`, `inventory_metrics`, `sales_and_stock` |
-| AI/BI dashboards | 3: Sales, Stock, Company overview; global filters Province, Product group (+ Channel on Sales) |
+| Metric views | 3: `sales_metrics`, `inventory_metrics`, `sales_and_stock` (+ `sales_metrics` again in `client_dev`) |
+| AI/BI dashboards | 3: Sales, Stock, Company overview; global filters Province, Product group (+ Channel on Sales); + Sales (SAP data) for the client area, owner only |
 | Genie agents | 3: Sales (93-97%), Stock (90-97%), Sales & Stock (97-100%) on their benchmark questions |
 | Weekly Genie check | Job every Monday 07:00 scores all 3 agents; below 90% fails and emails |
 | Insights, forecast, alerts | Daily findings table, seasonal forecast, 3 SQL alerts (revenue drop, stock-outs) |
 | Weekly deck | python-pptx deck with native charts |
 | Access | 3 account groups (`sales_team`, `stock_team`, `management`), read-only grants on gold only |
-| Real data (from 28 Oct) | In progress: input contract `docs/sap_input_contract.md`; area `client` (`run_pipeline --area client`) runs bronze, silver, gold and reconciliation on SAP-shaped dummy data; next: its metric view and dashboard, then the real copy |
+| Real data (from 28 Oct) | In progress: input contract `docs/sap_input_contract.md`; area `client` (catalog `client_dev`, owner only) runs bronze, silver, gold, reconciliation and the sales KPIs on SAP-shaped dummy data; job `client_pipeline` (manual) and dashboard Sales (SAP data); `docs/playbooks/run_the_client_area.md`. Next: the one-time copy of the client's data |
 | Not built | Agent Bricks Supervisor (not available on the workspace), a production target |
 
 ## How data flows
@@ -79,6 +79,7 @@ uv run python -m sales_insights.pipeline.run_pipeline --area inventory --date 20
 uv run python -m sales_insights.pipeline.run_pipeline --area client --date 2026-09-30     # SAP billing data
 uv run python -m sales_insights.semantic.dashboards                           # regenerate dashboards/*.lvdash.json
 databricks bundle deploy -t dev --profile sales-dev                           # jobs, dashboards, alerts
+databricks bundle deploy -t dev --profile sales-dev --var schedule_pause_status=PAUSED   # same, schedules stay paused
 ```
 Genie (setup, benchmark sync, failure export) and deployment steps: `docs/playbooks/`.
 

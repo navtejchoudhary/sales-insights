@@ -24,7 +24,8 @@ Sales & Stock Genie answer keys + stories I1-I4), insights (confirmed stock-outs
 It reads the sales gold, so run sales first for the same day. The sales deck shows the latest stock findings.
 
 Client area (--area client, SAP billing data, docs/sap_input_contract.md): bronze (same code), silver
-(sap_silver: one fate per source row), gold (same code), reconcile (sap_reconcile: source -> silver -> gold).
+(sap_silver: one fate per source row), gold (same code), reconcile (sap_reconcile: source -> silver -> gold),
+kpis (the sales KPI SQL = the sales metric view, on the client gold).
 No daily drops: the data is one copy. With `source: dummy` in config.yaml, SAP-shaped dummy files are generated
 and delivered the first time; with `source: real` nothing is ever generated and the run stops if the copied
 files have not landed. The date only labels the run.
@@ -59,7 +60,7 @@ from sales_insights.generator import simulate as s
 
 STEPS = ["drip", "bronze", "silver", "gold", "reconcile", "kpis", "answer_key", "insights"]
 INVENTORY_STEPS = ["drip", "bronze", "silver", "gold", "checks", "kpis", "answer_key", "insights"]
-CLIENT_STEPS = ["bronze", "silver", "gold", "reconcile"]  # semantic layer for this area: next step (D4)
+CLIENT_STEPS = ["bronze", "silver", "gold", "reconcile", "kpis"]  # kpis: the sales KPI SQL = the metric view
 # Business areas this command can run (config.yaml `areas:`). Sales is the default and runs exactly as before.
 # Inventory reads the sales gold (shared dimensions, cross-area check), so run sales first each day.
 AREA_STEPS = {"sales": STEPS, "inventory": INVENTORY_STEPS, "client": CLIENT_STEPS}
@@ -356,7 +357,7 @@ def _sap_reconcile(ctx: dict, d: date) -> str:
 
 
 CLIENT_STEP_FUNCS: dict[str, Callable[[dict, date], str]] = {
-    "bronze": _bronze, "silver": _sap_silver, "gold": _gold, "reconcile": _sap_reconcile,
+    "bronze": _bronze, "silver": _sap_silver, "gold": _gold, "reconcile": _sap_reconcile, "kpis": _kpis,
 }  # fmt: skip
 AREA_STEP_FUNCS = {"sales": STEP_FUNCS, "inventory": INVENTORY_STEP_FUNCS, "client": CLIENT_STEP_FUNCS}
 

@@ -506,6 +506,8 @@ def test_every_dashboard_dataset_runs(world, spark, cfg):
     results = {}
     for name in db.NAMES:
         spec = db.load(name)
+        if spec.get("area"):  # another area's catalog (the client dashboard runs in test_sap_pipeline.py)
+            continue
         for key, ds in db.datasets(spec).items():
             df = spark.sql(db.local_sql(ds, tables, db.filter_defaults(spec)))  # filters at "All"
             results[(name, key)] = (df.columns, df.collect())

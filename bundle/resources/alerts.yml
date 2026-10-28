@@ -37,7 +37,7 @@ resources:
       schedule:
         quartz_cron_schedule: "0 0 8 * * ?"  # 08:00 every day
         timezone_id: Asia/Colombo
-        pause_status: UNPAUSED
+        pause_status: ${var.schedule_pause_status}
 
     sales_stock_out:
       display_name: Sales - possible stock-out
@@ -65,7 +65,7 @@ resources:
       schedule:
         quartz_cron_schedule: "0 0 8 * * ?"  # 08:00 every day
         timezone_id: Asia/Colombo
-        pause_status: UNPAUSED
+        pause_status: ${var.schedule_pause_status}
 
     stock_confirmed_stock_out:
       display_name: Stock - confirmed stock-out
@@ -94,4 +94,4 @@ resources:
       schedule:
         quartz_cron_schedule: "0 0 8 * * ?"  # 08:00 every day, after the 07:00 inventory job
         timezone_id: Asia/Colombo
-        pause_status: UNPAUSED
+        pause_status: ${var.schedule_pause_status}
