@@ -99,7 +99,7 @@ class Scope:
 
 
 def scope_of(cfg: Config) -> Scope:
-    spec = (cfg.areas.get(cfg.area) or {}).get("scope")
+    spec = cfg.area_setting("scope")
     if not spec:
         raise ValueError(f"Area '{cfg.area}' has no scope: in config.yaml (company_codes, date_from, date_to)")
     return Scope(

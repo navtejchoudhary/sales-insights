@@ -49,12 +49,14 @@ databricks fs rm dbfs:/Volumes/client_dev/raw/delivered/_delivery_log.csv --prof
 ```
 Never touch `client_dev.raw.landing` (the external inbox).
 
-## 3. Switch the config to the real data (a small PR)
+## 3. The config for the real data (done 29 Oct)
 
-In `config/config.yaml`, `areas.client`: `source: real`, `scope.date_from: "2024-01-01"`,
-`scope.date_to: "2026-01-31"`, and `scope.excluded_types` with the type the business does not count as sales.
-Merge, then `databricks bundle deploy -t dev --profile sales-dev --var schedule_pause_status=PAUSED`.
-With `source: real` the pipeline never generates dummy data, and the copy refuses to run without it.
+`config/config.yaml`, `areas.client.dev`: `source: real` and the real scope (company 2010, 2024-01-01 to
+2026-01-31). A Mac and the tests keep the dummy settings (`source: dummy`). Set `scope.excluded_types` once the
+business names the type it does not count as sales. After any change:
+`databricks bundle deploy -t dev --profile sales-dev --var schedule_pause_status=PAUSED`.
+With `source: real` the pipeline never generates dummy data, and the copy refuses to run while staging or
+bronze still holds earlier rows.
 
 ## 4. The source map (real names, never in git)
 

@@ -163,7 +163,7 @@ def ensure_client_source(cfg: Config, staging: Path, landing: Path) -> list[str]
 
     With `source: real` (or no setting) nothing is generated: real and dummy rows must never mix.
     """
-    source = (cfg.areas.get(cfg.area) or {}).get("source", "real")
+    source = cfg.area_setting("source", "real")
     done = []
     if not (staging / "history" / sap.MANIFEST).exists():
         if source != "dummy":

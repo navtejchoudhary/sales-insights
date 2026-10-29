@@ -35,6 +35,8 @@ AREA_SETTINGS = (
     "processed_files_log",
     "output_path",
 )
+# Settings about WHAT an area loads (not where); an area may set them once or per profile (see area_setting)
+AREA_RUN_SETTINGS = ("source", "scope")
 # Used when config.yaml has no `areas:` section (older config files, tests with a custom file).
 SALES_FILE_TARGETS = {"orders": "orders", "changes": "changes", "invoices": "invoices_history"}
 
@@ -69,6 +71,15 @@ class Config:
         p = Path(relative)
         return str(p if p.is_absolute() else REPO_ROOT / p)
 
+    def area_setting(self, key: str, default: Any = None) -> Any:
+        """An area setting such as `source` or `scope`: the profile's own value if it sets one, else the area's.
+
+        Lets the client area load SAP-shaped dummy data on a Mac (and in the tests) and the real data on
+        Databricks, from one config file.
+        """
+        spec = self.areas.get(self.area) or {}
+        return (spec.get(self.profile) or {}).get(key, spec.get(key, default))
+
     def area_names(self) -> list[str]:
         """Every configured area, the default (sales) first."""
         return [DEFAULT_AREA, *sorted(a for a in self.areas if a != DEFAULT_AREA)]
@@ -86,7 +97,7 @@ class Config:
         overrides = spec.get(self.profile) or {}
         if name == DEFAULT_AREA and overrides:
             raise ValueError("The default area (sales) uses the profile settings; change them under profiles:")
-        unknown = sorted(set(overrides) - set(AREA_SETTINGS))
+        unknown = sorted(set(overrides) - set(AREA_SETTINGS) - set(AREA_RUN_SETTINGS))
         if unknown:
             raise ValueError(f"Area '{name}', profile '{self.profile}': unknown setting(s) {unknown}")
         targets = spec.get("file_targets") or (SALES_FILE_TARGETS if name == DEFAULT_AREA else {})

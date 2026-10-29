@@ -201,6 +201,28 @@ def test_the_copy_refuses_dummy_mode_and_a_second_copy(tmp_path, source):
         _run(tmp_path, source)
 
 
+def test_the_copy_refuses_while_bronze_holds_earlier_rows(tmp_path, source):
+    with pytest.raises(RuntimeError, match="bronze still holds"):
+        _run(tmp_path, source, bronze_loaded=True)
+    assert not (tmp_path / "staging").exists()
+
+
+def test_databricks_copies_the_real_window_while_a_mac_keeps_dummy_data():
+    from sales_insights.pipeline.sap_silver import scope_of
+
+    local, dev = load_config("local", area="client"), load_config("dev", area="client")
+    assert local.area_setting("source") == "dummy" and dev.area_setting("source") == "real"
+    scope = scope_of(dev)
+    assert (scope.company_codes, str(scope.date_from), str(scope.date_to)) == (("2010",), "2024-01-01", "2026-01-31")
+    assert scope_of(local).date_from.isoformat() == "2025-04-01"
+
+
+def test_the_client_customer_master_personal_columns_are_refused():
+    for col in ("customerfullname", "organizationbpname1", "taxnumber3", "sortfield", "createdbyuser"):
+        with pytest.raises(ValueError, match="personal"):
+            cp.load_source_map(_map(customer_master={"table": "src.c", "columns": {"cityname": col}}))
+
+
 def test_rows_that_differ_from_the_source_totals_stop_the_copy(tmp_path, source):
     run, _ = _run(tmp_path, source, fetch=FakeSource(source, drop_one_billing_row=True))
     assert run.stopped and "differ" in run.stopped
