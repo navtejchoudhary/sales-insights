@@ -260,3 +260,41 @@ resources:
               - pandas>=3.0.6
               - pyyaml>=6.0.3
               - python-pptx==1.0.2
+
+    # The ONE-TIME copy of the client's SAP tables (pipeline/sap_copy.py, docs/playbooks/copy_the_client_data.md).
+    # No schedule. Dry run by default: prints the queries and sends nothing to the source. Then, by hand:
+    #   databricks bundle run -t dev client_copy --profile sales-dev                               # dry run
+    #   databricks bundle run -t dev client_copy --profile sales-dev --params mode=pilot           # 1 small table
+    #   databricks bundle run -t dev client_copy --profile sales-dev --params mode=copy            # once
+    # The source map (real names) is a file in the client volume, never in git.
+    client_copy:
+      name: client-copy
+      performance_target: STANDARD  # cost: cheaper serverless
+      description: One-time copy of the client's SAP tables into client_dev staging. Dry run unless mode=pilot or mode=copy. Manual runs only.
+      max_concurrent_runs: 1
+      timeout_seconds: 1800  # cost guard: stopped after 30 minutes (the copy needs about 10)
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      parameters:
+        - name: mode
+          default: dry_run
+        - name: source_map
+          default: /Volumes/client_dev/raw/output/source_map.json
+        - name: only
+          default: ""
+      tasks:
+        - task_key: copy
+          environment_key: default
+          spark_python_task:
+            python_file: ../run.py
+            parameters: ["client_copy", "--profile", "dev", "--area", "client", "--source-map", "{{job.parameters.source_map}}", "--mode", "{{job.parameters.mode}}", "--only", "{{job.parameters.only}}"]
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "6"  # serverless environment 6: Python 3.12
+            dependencies:
+              - numpy>=2.5.3
+              - pandas>=3.0.6
+              - pyyaml>=6.0.3
+              - python-pptx==1.0.2

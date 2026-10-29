@@ -3,6 +3,7 @@
     run.py pipeline --profile dev --date 2026-10-15     ->  sales_insights.pipeline.run_pipeline
     run.py pipeline --profile dev --area inventory --from 2026-10-01 --to today
     run.py kpis --profile dev                           ->  sales_insights.semantic.kpis
+    run.py client_copy --profile dev --source-map <json> [--mode dry_run|pilot|copy]   (one-time real copy)
 
 The bundle uploads the repository as workspace files; this script puts its src/ folder on the Python
 path, so config/, sql/ and genie/ are found exactly as on the Mac. `--profile` selects the config profile.
@@ -25,6 +26,7 @@ COMMANDS = {
     "insights": "sales_insights.insights.job",
     "answer_key": "sales_insights.semantic.answer_key",
     "genie_health": "sales_insights.semantic.genie_health",
+    "client_copy": "sales_insights.pipeline.sap_copy",
 }
 
 

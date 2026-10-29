@@ -19,7 +19,8 @@ Every bronze billing row gets exactly ONE fate, checked in this order:
     older_version         an older copy of the same line (same document + item, older sync time)
     deleted_in_source     deleted in SAP (_fivetran_deleted)
     out_of_scope_company  company code not in scope (config: areas.client.scope)
-    not_revenue           pro-forma (category U) or down payment (FAZ / FAS)
+    not_revenue           pro-forma (category U), down payment (FAZ / FAS), or a type listed in
+                          scope.excluded_types (a custom type the business does not count as sales)
     quarantined           missing key, impossible date, bad number, unknown category
     outside_window        billing date outside the scope window
     kept                  -> silver.invoice_lines
@@ -94,6 +95,7 @@ class Scope:
     date_from: date
     date_to: date
     currency: str = "LKR"
+    excluded_types: tuple[str, ...] = ()  # billing types the business does not count as sales (default none)
 
 
 def scope_of(cfg: Config) -> Scope:
@@ -105,6 +107,7 @@ def scope_of(cfg: Config) -> Scope:
         date_from=date.fromisoformat(str(spec["date_from"])),
         date_to=date.fromisoformat(str(spec["date_to"])),
         currency=str(spec.get("currency", "LKR")),
+        excluded_types=tuple(str(t) for t in spec.get("excluded_types") or ()),
     )
 
 
@@ -216,7 +219,7 @@ def assign_fates(raw: DataFrame, scope: Scope) -> DataFrame:
         .when(~company.isin(*scope.company_codes), F.lit("out_of_scope_company"))
         .when(
             txt("sddocumentcategory").isin(*NOT_REVENUE_CATEGORIES)
-            | txt("billingdocumenttype").isin(*NOT_REVENUE_TYPES),
+            | txt("billingdocumenttype").isin(*NOT_REVENUE_TYPES, *scope.excluded_types),
             F.lit("not_revenue"),
         )
         .when(F.col("_reasons") != "", F.lit(QUARANTINED))

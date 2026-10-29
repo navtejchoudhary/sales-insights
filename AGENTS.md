@@ -27,7 +27,7 @@ deleted and this repo plus `workspace_export/` are the record.
 | Insights, forecast, alerts | Daily findings table, seasonal forecast, 3 SQL alerts (revenue drop, stock-outs) |
 | Weekly deck | python-pptx deck with native charts |
 | Access | 3 account groups (`sales_team`, `stock_team`, `management`), read-only grants on gold only |
-| Real data (from 28 Oct) | In progress: input contract `docs/sap_input_contract.md`; area `client` (catalog `client_dev`, owner only) runs bronze, silver, gold, reconciliation and the sales KPIs on SAP-shaped dummy data; job `client_pipeline` (manual) and dashboard Sales (SAP data); `docs/playbooks/run_the_client_area.md`. Next: the one-time copy of the client's data |
+| Real data (from 28 Oct) | In progress: input contract `docs/sap_input_contract.md`; area `client` (catalog `client_dev`, owner only) runs bronze, silver, gold, reconciliation and the sales KPIs on SAP-shaped dummy data; job `client_pipeline` (manual) and dashboard Sales (SAP data); `docs/playbooks/run_the_client_area.md`. One-time copy job `client_copy` (dry run by default; `docs/playbooks/copy_the_client_data.md`) ready; next: the copy itself |
 | Not built | Agent Bricks Supervisor (not available on the workspace), a production target |
 
 ## How data flows
@@ -55,7 +55,7 @@ generator (plain Python) -> staging/ -> drip -> landing/ -> bronze -> silver -> 
 | `config/config.yaml` | Profiles `local` and `dev`, catalogs, paths, areas. The ONLY place for names and paths |
 | `src/sales_insights/common/` | `load_config`, `get_spark`, `Lake` (all table reads and writes) |
 | `src/sales_insights/generator/` | Dummy data. Stories ONLY in `stories.py`; names in `masters.py`; stock in `inventory.py`; SAP-shaped data for the real-data phase in `sap.py` |
-| `src/sales_insights/pipeline/` | bronze, silver, gold, reconcile, inventory_*, sap_silver + sap_reconcile (SAP billing data), `run_pipeline.py` (orchestration) |
+| `src/sales_insights/pipeline/` | bronze, silver, gold, reconcile, inventory_*, sap_silver + sap_reconcile + sap_copy (SAP billing data), `run_pipeline.py` (orchestration) |
 | `src/sales_insights/semantic/` | metric views, KPI check, Genie (answer key, setup, sync, health, failures), dashboards, export |
 | `src/sales_insights/insights/`, `deck/` | Findings, forecast, narrative; weekly PowerPoint |
 | `sql/metric_views/*.yaml` | Every KPI defined ONCE; `sql/kpis/` holds the readable SQL twin |

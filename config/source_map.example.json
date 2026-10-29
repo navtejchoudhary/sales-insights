@@ -1,0 +1,40 @@
+{
+  "_readme": [
+    "Template of the source map for the one-time copy (pipeline/sap_copy.py). Copy it, fill in the REAL names,",
+    "upload the filled copy to the client area's output volume, never commit it (the repo is public):",
+    "  databricks fs cp source_map.json dbfs:/Volumes/client_dev/raw/output/source_map.json --profile sales-dev",
+    "catalog: the foreign catalog of the Redshift connection. tables: logical name -> schema.table, or an object",
+    "with `table`, optional `columns` (contract column -> source column; null = not in the source) and an",
+    "optional `filter` in source column names. Contract columns: docs/sap_input_contract.md."
+  ],
+  "catalog": "<foreign_catalog>",
+  "tables": {
+    "billing_items": {
+      "table": "<transactional_schema>.<billing_items_table>"
+    },
+    "customer_master": {
+      "table": "<master_schema>.<customer_table>",
+      "columns": {
+        "customer": "<customer_id_column>"
+      }
+    },
+    "material_master": {
+      "table": "<master_schema>.<material_table>",
+      "columns": {
+        "product": "<material_id_column>"
+      },
+      "filter": "<plant_column> = '2010'"
+    },
+    "text_company_codes": "<master_schema>.<company_codes_text_table>",
+    "text_sales_orgs": "<master_schema>.<sales_orgs_text_table>",
+    "text_sales_offices": "<master_schema>.<sales_offices_text_table>",
+    "text_distribution_channels": "<master_schema>.<distribution_channels_text_table>",
+    "text_divisions": "<master_schema>.<divisions_text_table>",
+    "text_customer_groups": "<master_schema>.<customer_groups_text_table>",
+    "text_material_groups": "<master_schema>.<material_groups_text_table>",
+    "text_material_types": "<master_schema>.<material_types_text_table>",
+    "text_plants": "<master_schema>.<plants_text_table>",
+    "text_regions": "<master_schema>.<regions_text_table>",
+    "text_document_types": "<master_schema>.<document_types_text_table>"
+  }
+}
