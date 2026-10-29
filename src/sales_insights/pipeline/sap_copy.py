@@ -49,6 +49,9 @@ CONTRACT: dict[str, list[str]] = {
 # Source columns that must never be read, whatever the map says (personal data or free text)
 PERSONAL = {
     *sap.PERSONAL_CUSTOMER_COLUMNS,
+    # seen in the client's customer master (29 Oct): names, tax numbers, search term, the SAP user who created it
+    "customerfullname", "organizationbpname1", "organizationbpname2", "taxnumber3", "taxnumber4", "taxnumber5",
+    "taxnumber6", "sortfield", "createdbyuser", "addressid", "taxinvoicerepresentativename",
     "name1", "name2", "name3", "name4", "street", "streetname", "housenumber", "telephonenumber2",
     "faxnumber", "mobilephonenumber", "emailaddress", "taxnumber2", "vatregistration", "paymentreference",
     "billingdocumentitemtext", "bankaccount", "iban",
@@ -204,9 +207,9 @@ def totals_agree(copied: pd.DataFrame, control: pd.DataFrame) -> list[str]:
     return problems
 
 
-def ready_to_copy(cfg: Config, staging: Path) -> None:
+def ready_to_copy(cfg: Config, staging: Path, bronze_loaded: bool = False) -> None:
     """Refuse a copy that could mix real and dummy rows or overwrite an earlier copy."""
-    source = (cfg.areas.get(cfg.area) or {}).get("source", "real")
+    source = cfg.area_setting("source", "real")
     if source != "real":
         raise RuntimeError(
             f"config says `source: {source}`: clear the dummy data and set `source: real` first "
@@ -214,6 +217,11 @@ def ready_to_copy(cfg: Config, staging: Path) -> None:
         )
     if (staging / "history" / sap.MANIFEST).exists() or (staging / "masters" / sap.MANIFEST).exists():
         raise RuntimeError(f"{staging} already holds a copy: never copy twice (empty the staging volume to redo it)")
+    if bronze_loaded:
+        raise RuntimeError(
+            "bronze still holds earlier rows (the dummy data?): drop and recreate the client schemas first "
+            "(docs/playbooks/copy_the_client_data.md, step 2)"
+        )
 
 
 # ---------------------------------------------------------------------------
@@ -232,6 +240,7 @@ def run_copy(
     only: str | None = None,
     max_seconds: float = 120.0,
     echo: Callable[[str], None] = print,
+    bronze_loaded: bool = False,
 ) -> CopyRun:
     from sales_insights.pipeline.sap_silver import scope_of
 
@@ -260,7 +269,7 @@ def run_copy(
     if mode == "copy":
         if only:
             raise ValueError("a copy takes every table at once (--only is for the pilot)")
-        ready_to_copy(cfg, staging)
+        ready_to_copy(cfg, staging, bronze_loaded)
 
     frames: dict[str, pd.DataFrame] = {}
     for name, sql in run.queries.items():
@@ -318,13 +327,20 @@ def main(argv: list[str] | None = None) -> None:
     smap = read_source_map(args.source_map)
     staging = Path(cfg.path(cfg.staging_path))
     fetch: Fetch
+    bronze_loaded = False
     if args.mode == "dry_run":
         fetch = lambda sql: pd.DataFrame()  # noqa: E731 - never called in a dry run
     else:
+        from sales_insights.common.lake import Lake
         from sales_insights.common.spark import get_spark
 
-        fetch = spark_fetch(get_spark(cfg, app_name="client-copy"))
-    run = run_copy(cfg, smap, fetch, staging, args.mode, args.only or None, args.max_seconds)
+        spark = get_spark(cfg, app_name="client-copy")
+        fetch = spark_fetch(spark)
+        bronze_loaded = Lake(spark, cfg).exists("bronze", "billing_items")
+    run = run_copy(
+        cfg, smap, fetch, staging, args.mode, args.only or None, args.max_seconds,
+        bronze_loaded=args.mode == "copy" and bronze_loaded,
+    )  # fmt: skip
     if run.stopped:
         raise SystemExit(1)
 

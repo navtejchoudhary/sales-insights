@@ -64,7 +64,7 @@ areas:
     source: dummy
     scope:                           # which rows count; everything else is filtered out and counted
       company_codes: ["2010"]
-      date_from: "2025-04-01"        # dummy history window; the real copy: 2024-01-01 to 2026-01-31
+      date_from: "2025-04-01"        # dummy history window (the dev profile has the real one)
       date_to: "2026-09-30"
       currency: LKR                  # company currency; other currencies are converted with the line's rate
       excluded_types: []             # billing types the business does not count as sales, e.g. ["ZCF2"]
@@ -81,6 +81,15 @@ areas:
       landing_path: /Volumes/client_dev/raw/delivered
       catalog: client_dev
       output_path: /Volumes/client_dev/raw/output
+      # Databricks holds the REAL data (one-time copy, docs/playbooks/copy_the_client_data.md); a Mac and the
+      # tests keep the dummy settings above. Agreed 28 Oct: company 2010, 25 months.
+      source: real
+      scope:
+        company_codes: ["2010"]
+        date_from: "2024-01-01"
+        date_to: "2026-01-31"
+        currency: LKR
+        excluded_types: []           # to confirm with the business
 
 # Business settings shared by all profiles
 business:
