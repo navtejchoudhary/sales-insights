@@ -95,8 +95,9 @@ SAP stores amounts and quantities as positive numbers; the meaning comes from th
 | `U` | Pro-forma invoice | excluded | not revenue |
 
 - **Down-payment requests and their cancellations** (SAP types `FAZ`, `FAS`) are excluded.
-- **Type-level overrides** come from config, for example a custom invoice type the business does not count
-  as sales. Default: none. The real-data phase has one to confirm with the business.
+- **Type-level overrides** come from config (`areas.client.scope.excluded_types`), for example a custom
+  invoice type the business does not count as sales: such rows get the fate `not_revenue`. Default: none.
+  The real-data phase has one to confirm with the business.
 - **Free-of-charge lines** (category `M`, net amount 0): quantity counts, revenue does not.
 - A cancelled original invoice is **not** removed: its cancellation (`N`) reverses it, as in the MVP.
 
@@ -203,8 +204,11 @@ billing month and document category: lines and sum of `netamount`, every row cou
 ## Where the real names live
 
 The pipeline reads **logical names** (`billing_items`, `customer_master` …). The physical schema and table
-names of the source, and the connection, are given at run time (Databricks job parameters or a git-ignored
-local file). They are never committed: the repo is public.
+names of the source, and the connection, are given at run time: the one-time copy (`pipeline/sap_copy.py`,
+job `client_copy`) reads a "source map" JSON kept in the client area's output volume (template:
+`config/source_map.example.json`). It maps each logical table to its schema.table and any column whose name
+differs from the contract, and refuses personal columns. Never committed: the repo is public.
+How to copy: `docs/playbooks/copy_the_client_data.md`.
 
 ## Open questions (for the business)
 

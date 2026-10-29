@@ -36,7 +36,7 @@ def test_client_area_has_its_own_folders_catalog_and_scope():
     from sales_insights.pipeline.sap_silver import scope_of
 
     scope = scope_of(local)
-    assert scope.company_codes == ("2010",) and scope.currency == "LKR"
+    assert scope.company_codes == ("2010",) and scope.currency == "LKR" and scope.excluded_types == ()
     assert (scope.date_from, scope.date_to) == (date(2025, 4, 1), date(2026, 9, 30))
 
 
@@ -202,6 +202,17 @@ def test_every_row_gets_exactly_one_fate_in_the_contract_order(spark, ss):
     assert only("9000000012") == ("quarantined", "invalid_amount")
     assert only("9000000013") == ("quarantined", "invalid_quantity")
     assert only("9000000014")[0] == "deleted_in_source"
+
+
+def test_a_custom_type_excluded_by_config_is_not_revenue(spark, ss):
+    rows = [line("9000000001"), line("9100000001", billingdocumenttype="ZCF2")]
+    scope = ss.Scope(**SCOPE_KW, excluded_types=("ZCF2",))
+    fated = {r["billingdocument"]: r["_fate"] for r in ss.assign_fates(frame(spark, rows), scope).collect()}
+    assert fated == {"9000000001": "kept", "9100000001": "not_revenue"}
+    default = {
+        r["billingdocument"]: r["_fate"] for r in ss.assign_fates(frame(spark, rows), ss.Scope(**SCOPE_KW)).collect()
+    }
+    assert default["9100000001"] == "kept"  # nothing is excluded unless config says so
 
 
 def test_fate_counts_add_up_to_the_rows_and_find_a_missing_one(spark, ss):

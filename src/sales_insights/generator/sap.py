@@ -467,8 +467,10 @@ def build_text_tables(tables: dict[str, pd.DataFrame]) -> dict[str, pd.DataFrame
 def source_counts(billing: pd.DataFrame) -> pd.DataFrame:
     """Control totals as the real copy records them from the source: per company, billing month and
     document category, the number of lines and the sum of netamount (as stored, every row counted)."""
-    month = billing["billingdocumentdate"].str[:7].where(billing["billingdocumentdate"] != "", "")
-    g = billing.assign(billing_month=month, net=billing["netamount"].astype(float)).groupby(
+    dates = billing["billingdocumentdate"].fillna("").astype(str)
+    month = dates.str[:7]
+    net = pd.to_numeric(billing["netamount"], errors="coerce").fillna(0.0)  # a bad amount still counts as a line
+    g = billing.assign(billing_month=month, net=net).groupby(
         ["companycode", "billing_month", "sddocumentcategory"], dropna=False
     )
     out = g.agg(line_count=("net", "size"), netamount_sum=("net", "sum")).reset_index()
@@ -506,8 +508,19 @@ def folder_of(name: str) -> str:
     return "history" if name in HISTORY_TABLES else "masters"
 
 
-def write_sap(out: dict[str, pd.DataFrame], log: list[dict], target: Path, seed: int, as_of: date) -> Path:
-    """Write masters/ and history/ (each with its manifest LAST), the layout landing and bronze expect."""
+SIMULATED = "SAP tables via a replication tool (simulated)"
+
+
+def write_sap(
+    out: dict[str, pd.DataFrame],
+    log: list[dict],
+    target: Path,
+    seed: int | None,
+    as_of: date,
+    source_system: str = SIMULATED,
+) -> Path:
+    """Write masters/ and history/ (each with its manifest LAST), the layout landing and bronze expect.
+    The real copy (pipeline/sap_copy.py) writes through here too, with its own `source_system`."""
     cases: dict[str, int] = {}
     for item in log:
         cases[item["case"]] = cases.get(item["case"], 0) + 1
@@ -522,7 +535,7 @@ def write_sap(out: dict[str, pd.DataFrame], log: list[dict], target: Path, seed:
             files[path.name] = {"rows": len(df), "sha256": hashlib.sha256(path.read_bytes()).hexdigest()}
         manifest = {
             "kind": f"sap_{folder}",
-            "source_system": "SAP tables via a replication tool (simulated)",
+            "source_system": source_system,
             "as_of": as_of.isoformat(),
             "seed": seed,
             "contract": "docs/sap_input_contract.md",

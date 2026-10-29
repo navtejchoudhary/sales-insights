@@ -13,6 +13,8 @@ reference/
 *o2c*.csv
 
 # Secrets and credentials
+source_map.json
+config/source_map*.local.json
 .env
 .env.*
 *.pem

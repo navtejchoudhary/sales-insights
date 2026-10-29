@@ -67,6 +67,7 @@ areas:
       date_from: "2025-04-01"        # dummy history window; the real copy: 2024-01-01 to 2026-01-31
       date_to: "2026-09-30"
       currency: LKR                  # company currency; other currencies are converted with the line's rate
+      excluded_types: []             # billing types the business does not count as sales, e.g. ["ZCF2"]
     local:
       staging_path: staging/client
       landing_path: landing/client
