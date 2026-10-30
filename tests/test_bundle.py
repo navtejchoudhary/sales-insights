@@ -207,6 +207,13 @@ def test_client_job_runs_by_hand_only_and_publishes_after_the_checks():
     assert publish["depends_on"] == [{"task_key": "pipeline"}] and "run_if" not in publish  # only after a pass
 
 
+def test_client_jobs_never_retry_by_themselves():
+    """A stop (the copy's 2-minute rule, a failed check) must stay a stop: serverless retries are switched off."""
+    for name in ("client_copy", "client_pipeline"):
+        for task in _jobs()[name]["tasks"]:
+            assert task["max_retries"] == 0 and task["disable_auto_optimization"] is True, (name, task["task_key"])
+
+
 def test_client_setup_sql_matches_the_config_and_grants_nothing():
     sql = (ROOT / "sql" / "setup" / "client_dev.sql").read_text()
     dev = load_config("dev", area="client")

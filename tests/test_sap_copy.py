@@ -92,12 +92,13 @@ def test_every_query_names_its_columns_and_billing_is_filtered_at_the_source():
             }
         )
     )
-    for name in smap.tables:
+    for name, src in smap.tables.items():
         sql = cp.select_query(name, smap, scope)
-        assert "*" not in sql and sql.count(" AS `") == len(cp.CONTRACT[name]), name
+        assert "*" not in sql and sql.count(" AS `") == sum(1 for s in src.columns.values() if s), name
     billing = cp.select_query("billing_items", smap, scope)
     assert "FROM `fc`.`src`.`billing`" in billing
-    assert "`billing_date` AS `billingdocumentdate`" in billing and "CAST(NULL AS STRING) AS `salesgroup`" in billing
+    assert "`billing_date` AS `billingdocumentdate`" in billing
+    assert "salesgroup" not in billing and "NULL" not in billing  # a column the source lacks is never asked for
     assert "WHERE `companycode` IN ('2010')" in billing
     assert (
         "`billing_date` >= TIMESTAMP '2024-01-01 00:00:00' AND `billing_date` < TIMESTAMP '2026-02-01 00:00:00'"
@@ -191,6 +192,24 @@ def test_the_copy_writes_the_layout_the_pipeline_loads(tmp_path, source):
     found = lz.discover(staging, load_config("local", area="client").file_targets)
     assert not found.incomplete_folders and not found.unexpected_files
     assert {f.target for f in found.files} >= {"billing_items", "source_counts", "masters_customer_master"}
+
+
+def test_columns_the_source_lacks_are_written_truly_empty(tmp_path, source):
+    """Never the text "None", "nan", "null" or "<NA>" (30 Oct: the real copy wrote "null" for such columns)."""
+    out = {k: v.copy() for k, v in source.items()}
+    out["material_master"] = out["material_master"].drop(columns=["productdescription", "plant"])
+    raw = _map(material_master={"table": "src.materials", "columns": {"productdescription": None, "plant": None}})
+    cfg = _cfg("real", date_from="2026-09-15", date_to="2026-09-30")
+    run = cp.run_copy(cfg, cp.load_source_map(raw), FakeSource(out), tmp_path / "staging", "copy", echo=lambda _: None)
+    assert run.written
+    text = (tmp_path / "staging" / "masters" / "material_master.csv").read_text()
+    materials = pd.read_csv(tmp_path / "staging" / "masters" / "material_master.csv", dtype=str, keep_default_na=False)
+    assert list(materials.columns) == sap.MATERIAL_COLUMNS
+    assert set(materials["productdescription"]) == {""} and set(materials["plant"]) == {""}
+    for word in ("None", "nan", "null", "<NA>"):
+        assert f",{word}," not in text, word
+    frame = pd.DataFrame({"a": [None, float("nan"), pd.NA, "x"]})
+    assert list(cp.as_text(frame)["a"]) == ["", "", "", "x"]
 
 
 def test_the_copy_refuses_dummy_mode_and_a_second_copy(tmp_path, source):

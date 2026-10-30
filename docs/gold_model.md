@@ -12,7 +12,7 @@ Sales transactions: one row per invoice line (invoice_number + invoice_item). In
 | `invoice_number` | SAP billing document number, 10 digits. Returns start with 7, cancellations 8, price corrections 6, invoices 9. |
 | `invoice_item` | Line number within the invoice (10, 20, 30 ...). |
 | `invoice_type` | SAP billing type code: ZAOR invoice, ZFOC free of charge, ZARE return, S1 cancellation, ZACR price correction; on SAP billing data also ZADR debit memo and S2 credit memo cancellation. |
-| `document_type` | Plain-English billing type: Invoice, Free of charge, Return, Cancellation, Price correction, Debit memo (extra charge, positive) or Credit memo cancellation (reverses a credit, positive). |
+| `document_type` | Plain-English billing type: Invoice, Free of charge, Return, Cancellation, Price correction, Debit memo (extra charge, positive) or Credit memo cancellation (reverses a credit, positive); a client-specific billing type shows as Other (<type>), e.g. Other (ZCF2). |
 | `invoice_date` | Date of the billing document (Sri Lanka time). Use this date for all sales reporting. |
 | `fiscal_year` | Fiscal year April-March, labelled by its start year (April 2026 to March 2027 = 2026). |
 | `fiscal_period` | Fiscal month 1-12; 1 = April, 12 = March. |
@@ -28,7 +28,7 @@ Sales transactions: one row per invoice line (invoice_number + invoice_item). In
 | `sold_quantity` | Quantity invoiced (invoices and free-of-charge lines only), in cases; 0 on other rows. |
 | `returned_quantity` | Quantity returned (return credit memos only), negative, in cases; 0 on other rows. |
 | `net_revenue_amount` | Net revenue in LKR excluding VAT. The headline revenue measure: sum it to get revenue. Returns, cancellations and price corrections are negative. |
-| `invoiced_revenue_amount` | Revenue from invoices and free-of-charge lines only (before returns, cancellations and corrections), LKR. |
+| `invoiced_revenue_amount` | Revenue from invoices and free-of-charge lines only (before returns, cancellations and corrections), LKR. On SAP billing data: every invoice-type document (SAP category M). |
 | `returns_amount` | Revenue reversed by return credit memos, LKR, negative; 0 on other rows. |
 | `cancellations_amount` | Revenue reversed by invoice cancellations, LKR, negative; 0 on other rows. |
 | `price_corrections_amount` | Credits given for pricing errors, LKR, negative; 0 on other rows. |

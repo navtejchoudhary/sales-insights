@@ -126,8 +126,12 @@ class SapSilverRun:
 # ---------------------------------------------------------------------------
 
 
+# Text that means "no value" when a file passed through another tool (seen in the real copy, 30 Oct: "null")
+NULL_TEXTS = ("null", "none", "nan", "<na>")
+
+
 def blank(c: Column) -> Column:
-    return c.isNull() | (F.trim(c) == "")
+    return c.isNull() | (F.trim(c) == "") | F.lower(F.trim(c)).isin(*NULL_TEXTS)
 
 
 def txt(col: str) -> Column:
