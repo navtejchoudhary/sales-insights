@@ -82,12 +82,14 @@ areas:
       catalog: client_dev
       output_path: /Volumes/client_dev/raw/output
       # Databricks holds the REAL data (one-time copy, docs/playbooks/copy_the_client_data.md); a Mac and the
-      # tests keep the dummy settings above. Agreed 28 Oct: company 2010, 25 months.
+      # tests keep the dummy settings above. Agreed 28 Oct: company 2010, copied Jan 2024 - Jan 2026.
+      # 30 Oct: the source ends on 19 Jan 2026, so only WHOLE months are shown (Jan 2024 - Dec 2025); the
+      # January rows stay in bronze, counted as outside_window (decisions.md).
       source: real
       scope:
         company_codes: ["2010"]
         date_from: "2024-01-01"
-        date_to: "2026-01-31"
+        date_to: "2025-12-31"
         currency: LKR
         excluded_types: []           # to confirm with the business
 
