@@ -86,6 +86,8 @@ databricks bundle run -t dev client_copy --profile sales-dev --params mode=copy
 Small tables first, billing items last, then the source's own totals. It stops before the next query when one
 took longer than 2 minutes, and stops without writing anything when the copied rows differ from the source's
 totals. It refuses to run twice.
+Neither client job retries by itself: when the stop rule fires, the run ends there. Look at the times it
+printed, then decide; never just start it again.
 
 ## 6. Load it
 
@@ -94,3 +96,7 @@ databricks bundle run -t dev client_pipeline --profile sales-dev
 ```
 Bronze, silver, gold, reconciliation, KPI check, publish: the dashboard Sales (SAP data) now shows the real data.
 Review `client_dev.silver.quarantine` and `client_dev.ops.sap_row_fates` before showing anyone.
+
+If the load fails after the copy, fix the code and run `client_pipeline` again: the copied files stay in
+staging and bronze, so nothing goes back to the source. Billing types the demo never had are counted by their
+document category (an invoice-type document is revenue) and shown as `Other (<type>)` until they get a name.

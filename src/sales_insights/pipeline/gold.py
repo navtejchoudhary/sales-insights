@@ -66,7 +66,15 @@ def _only(condition: Column, value: Column, sql_type: str) -> Column:
 
 def build_fact_sales(lines: DataFrame, products: DataFrame) -> DataFrame:
     t, qty, rev = F.col("invoice_type"), F.col("quantity"), F.col("revenue")
-    doc_type = F.coalesce(*[F.when(t == code, F.lit(label)) for code, label in DOCUMENT_TYPES.items()])
+    doc_type = F.coalesce(
+        *[F.when(t == code, F.lit(label)) for code, label in DOCUMENT_TYPES.items()],
+        F.concat(F.lit("Other ("), t, F.lit(")")),  # a client-specific billing type, e.g. "Other (ZCF2)"
+    )
+    if "sd_document_category" in lines.columns:  # SAP billing data: SAP's own classification decides
+        category = F.col("sd_document_category")
+        is_sale, is_cancellation = category == "M", category == "N"
+    else:  # the dummy sales extract: its fixed billing types
+        is_sale, is_cancellation = t.isin(SALES_TYPES), t == "S1"
     rep = F.col("sales_rep_id") if "sales_rep_id" in lines.columns else F.lit(None).cast("string")
     if "cost_amount" in lines.columns:  # SAP billing data carries the line's own cost (already signed)
         f, cost_amount = lines, F.col("cost_amount").cast(MONEY)
@@ -91,12 +99,12 @@ def build_fact_sales(lines: DataFrame, products: DataFrame) -> DataFrame:
         "company_code",
         rep.alias("sales_rep_id"),
         qty.cast(QTY).alias("quantity"),
-        _only(t.isin(SALES_TYPES), qty, QTY).alias("sold_quantity"),
+        _only(is_sale, qty, QTY).alias("sold_quantity"),
         _only(t == "ZARE", qty, QTY).alias("returned_quantity"),
         rev.cast(MONEY).alias("net_revenue_amount"),
-        _only(t.isin(SALES_TYPES), rev, MONEY).alias("invoiced_revenue_amount"),
+        _only(is_sale, rev, MONEY).alias("invoiced_revenue_amount"),
         _only(t == "ZARE", rev, MONEY).alias("returns_amount"),
-        _only(t == "S1", rev, MONEY).alias("cancellations_amount"),
+        _only(is_cancellation, rev, MONEY).alias("cancellations_amount"),
         _only(t == "ZACR", rev, MONEY).alias("price_corrections_amount"),
         F.col("gross_revenue").cast(MONEY).alias("gross_revenue_amount"),
         F.col("tax_amount").cast(MONEY),

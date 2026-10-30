@@ -243,6 +243,16 @@ def _lines(spark, ss, rows):
     return {(r["invoice_number"], r["invoice_item"]): r for r in out.collect()}
 
 
+def test_the_text_null_is_an_empty_value(spark, ss):
+    """30 Oct: the real copy wrote the text "null" for columns the source does not have."""
+    rows = [line("9000000001", salesgroup="null", referencesddocument="NULL", cancelledbillingdocument="None")]
+    got = _lines(spark, ss, rows)[("9000000001", "10")]
+    assert got["sales_group"] is None and got["reference_document"] is None
+    rows = [line("9000000002", material="nan")]
+    fated = ss.assign_fates(frame(spark, rows), ss.Scope(**SCOPE_KW)).collect()
+    assert (fated[0]["_fate"], fated[0]["_reasons"]) == ("quarantined", "missing_key")
+
+
 def test_signs_follow_the_document_category(spark, ss):
     rows = [
         line("9000000001"),
@@ -407,6 +417,25 @@ def test_gold_labels_the_two_sap_document_types_and_uses_the_line_cost(spark, ss
     assert fact["4000000001"]["document_type"] == "Credit memo cancellation"
     assert fact["9000000001"]["cost_amount"] == Decimal("600.00")  # SAP's cost, not 2 x 99.00
     assert fact["9000000001"]["margin_amount"] == Decimal("400.00")
+
+
+def test_gold_counts_every_invoice_type_document_and_labels_client_types(spark, ss):
+    """30 Oct: the real data has ZCF2, ZAEP, ZFV1, ZFV2 (category M): invoiced revenue, labelled Other (<type>)."""
+    from sales_insights.pipeline import gold as g
+
+    rows = [
+        line("9000000001"),
+        line("9100000001", billingdocumenttype="ZCF2"),
+        line("8000000001", billingdocumenttype="S1", sddocumentcategory="N", cancelledbillingdocument="9000000001"),
+    ]
+    fated = ss.assign_fates(frame(spark, rows), ss.Scope(**SCOPE_KW))
+    lines = ss.flag_cancellations(ss.to_invoice_lines(fated, ss.Scope(**SCOPE_KW)))
+    products = spark.createDataFrame([("MC6001LT", Decimal("1.00"))], "product_id string, standard_cost decimal(18,2)")
+    fact = {r["invoice_number"]: r for r in g.build_fact_sales(lines, products).collect()}
+    assert fact["9100000001"]["document_type"] == "Other (ZCF2)"
+    assert fact["9100000001"]["invoiced_revenue_amount"] == Decimal("1000.00")
+    assert fact["9100000001"]["sold_quantity"] == Decimal("2.000")
+    assert fact["8000000001"]["cancellations_amount"] == Decimal("-1000.00")
 
 
 # ---------------------------------------------------------------------------

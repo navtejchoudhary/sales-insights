@@ -154,10 +154,8 @@ def where(name: str, src: TableSource, scope) -> str | None:
 def select_query(name: str, smap: SourceMap, scope) -> str:
     """SELECT <source col> AS <contract col>, ... for one logical table: named columns only, never `*`."""
     src = smap.tables[name]
-    cols = [
-        f"{_ident(s)} AS `{c}`" if s else f"CAST(NULL AS STRING) AS `{c}`"
-        for c, s in src.columns.items()
-    ]  # fmt: skip
+    # columns the source does not have are not asked for: the copy adds them, empty (see complete_columns)
+    cols = [f"{_ident(s)} AS `{c}`" for c, s in src.columns.items() if s]
     sql = f"SELECT {', '.join(cols)}\nFROM {_ident(smap.catalog)}.{_ident(src.table)}"
     condition = where(name, src, scope)
     return sql + (f"\nWHERE {condition}" if condition else "")
@@ -174,6 +172,21 @@ def control_query(smap: SourceMap, scope) -> str:
         f"SUM({net}) AS netamount_sum\nFROM {_ident(smap.catalog)}.{_ident(src.table)}\n"
         f"WHERE {billing_filter(src, scope)}\nGROUP BY {company}, {category}"
     )
+
+
+def complete_columns(df: pd.DataFrame, src: TableSource) -> pd.DataFrame:
+    """Every contract column in contract order; the ones the source does not have are empty."""
+    out = df.copy()
+    for col in src.columns:
+        if col not in out.columns:
+            out[col] = None
+    return out[list(src.columns)]
+
+
+def as_text(df: pd.DataFrame) -> pd.DataFrame:
+    """Every value as text, every missing value as "" (never the text "None", "nan" or "<NA>")."""
+    obj = df.astype(object)
+    return obj.where(pd.notna(obj), "").astype(str)
 
 
 def copy_order(smap: SourceMap) -> list[str]:
@@ -275,6 +288,8 @@ def run_copy(
     for name, sql in run.queries.items():
         t0 = time.perf_counter()
         df = fetch(sql)
+        if name in smap.tables:
+            df = complete_columns(df, smap.tables[name])
         run.seconds[name] = round(time.perf_counter() - t0, 1)
         run.rows[name] = len(df)
         frames[name] = df
@@ -293,7 +308,7 @@ def run_copy(
         run.stopped = "copied rows differ from the source's own totals: " + "; ".join(problems[:5])
         echo(f"  STOP: {run.stopped}. Nothing was written.")
         return run
-    out = {name: df.fillna("").astype(str) for name, df in frames.items()}
+    out = {name: as_text(df) for name, df in frames.items()}
     out["source_counts"] = sap.source_counts(out["billing_items"])
     run.written = sap.write_sap(out, [], staging, None, datetime.now(UTC).date(), source_system=MANIFEST_SOURCE)
     echo(f"  written to {staging} (masters/ and history/, manifests last). Next: run_pipeline --area client")

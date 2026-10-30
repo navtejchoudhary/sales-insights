@@ -242,12 +242,16 @@ resources:
       tasks:
         - task_key: pipeline
           environment_key: default
+          max_retries: 0  # a failed check must stop the run, not start it again
+          disable_auto_optimization: true  # serverless would otherwise retry a failed task by itself
           spark_python_task:
             python_file: ../run.py
             parameters: ["pipeline", "--profile", "dev", "--area", "client", "--date", "today"]
         - task_key: publish
           depends_on: [{task_key: pipeline}]  # only after every check passed
           environment_key: default
+          max_retries: 0
+          disable_auto_optimization: true
           spark_python_task:
             python_file: ../run.py
             parameters: ["kpis", "--profile", "dev", "--area", "client"]
@@ -286,6 +290,8 @@ resources:
       tasks:
         - task_key: copy
           environment_key: default
+          max_retries: 0  # the stop rule must stop the copy: no automatic second attempt on the source
+          disable_auto_optimization: true  # serverless would otherwise retry a failed task by itself
           spark_python_task:
             python_file: ../run.py
             parameters: ["client_copy", "--profile", "dev", "--area", "client", "--source-map", "{{job.parameters.source_map}}", "--mode", "{{job.parameters.mode}}", "--only", "{{job.parameters.only}}"]
