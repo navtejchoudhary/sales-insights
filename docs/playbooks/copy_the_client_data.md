@@ -51,8 +51,8 @@ Never touch `client_dev.raw.landing` (the external inbox).
 
 ## 3. The config for the real data (done 29 Oct)
 
-`config/config.yaml`, `areas.client.dev`: `source: real` and the real scope (company 2010, 2024-01-01 to
-2026-01-31). A Mac and the tests keep the dummy settings (`source: dummy`). Set `scope.excluded_types` once the
+`config/config.yaml`, `areas.client.dev`: `source: real` and the real scope (company 2010, copied 2024-01-01 to
+2026-01-31; shown 2024-01-01 to 2025-12-31, whole months only, because the source ends on 19 Jan 2026). A Mac and the tests keep the dummy settings (`source: dummy`). Set `scope.excluded_types` once the
 business names the type it does not count as sales. After any change:
 `databricks bundle deploy -t dev --profile sales-dev --var schedule_pause_status=PAUSED`.
 With `source: real` the pipeline never generates dummy data, and the copy refuses to run while staging or
