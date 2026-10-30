@@ -253,6 +253,20 @@ def test_the_text_null_is_an_empty_value(spark, ss):
     assert (fated[0]["_fate"], fated[0]["_reasons"]) == ("quarantined", "missing_key")
 
 
+def test_gross_is_net_plus_vat_even_when_the_source_leaves_it_empty(spark, ss):
+    """30 Oct: the client's SAP fills taxamount but leaves grossamount 0.00 on every line."""
+    rows = [
+        line("9000000001", grossamount="0.00"),
+        line("7000000001", billingdocumenttype="ZARE", sddocumentcategory="O", grossamount="0.00",
+             referencesddocument="9000000001"),
+        line("9000000002", billingdocumenttype="ZFOC", netamount="0.00", grossamount="0.00"),
+    ]  # fmt: skip
+    got = _lines(spark, ss, rows)
+    assert got[("9000000001", "10")]["gross_revenue"] == Decimal("1180.00")
+    assert got[("7000000001", "10")]["gross_revenue"] == Decimal("-1180.00")
+    assert got[("9000000002", "10")]["gross_revenue"] == Decimal("180.00")  # free goods: only the VAT
+
+
 def test_signs_follow_the_document_category(spark, ss):
     rows = [
         line("9000000001"),

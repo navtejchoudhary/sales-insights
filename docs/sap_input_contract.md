@@ -69,7 +69,7 @@ Only these columns are copied. Types are as the source delivers them; silver cas
 | `billingquantity`, `billingquantityunit` | decimal(33,3), string | `quantity`, `sales_unit` | sign from the rule below |
 | `billingquantityinbaseunit`, `baseunit` | decimal(33,3), string | `base_quantity`, `base_unit` | |
 | `netamount` | decimal(33,2) | `net_revenue_amount` | sign from the rule below |
-| `grossamount` | decimal(33,2) | `gross_revenue_amount` | |
+| `grossamount` | decimal(33,2) | (not used) | copied, but gross is computed as net + tax: the client's SAP leaves it 0.00 |
 | `taxamount` | decimal(33,2) | `tax_amount` | |
 | `costamount` | decimal(33,2) | `cost_amount` | `margin_amount` = net − cost |
 | `transactioncurrency` | string | `currency` | almost all LKR; see open questions |

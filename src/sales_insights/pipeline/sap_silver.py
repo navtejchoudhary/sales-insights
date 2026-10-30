@@ -330,7 +330,8 @@ def to_invoice_lines(kept: DataFrame, scope: Scope, fiscal_start_month: int = 4)
         (F.coalesce(dec("billingquantityinbaseunit", QTY), F.lit(0)) * sign).cast(QTY).alias("base_quantity"),
         txt("baseunit").alias("base_unit"),
         money("netamount").alias("revenue"),
-        money("grossamount").alias("gross_revenue"),
+        # Gross = net + VAT, never the source's grossamount: the client's SAP leaves it 0.00 on every line (30 Oct)
+        (money("netamount") + money("taxamount")).cast(MONEY).alias("gross_revenue"),
         money("taxamount").alias("tax_amount"),
         money("costamount").alias("cost_amount"),
         currency.alias("currency"),
