@@ -6,10 +6,21 @@
 # the repo is public.
 
 title: Sales Analytics (SAP data)
-description: >-
-  Ask questions about sales from the SAP billing data: net revenue, invoices, units, returns, cancellations,
-  margin, product groups, customer groups, channels and billing types. Whole months, January 2024 to
-  December 2025.
+# The description as pasted into the workspace agent on 2 Nov.
+description: |-
+  Ask plain-English questions about sales from the client's SAP billing data (company 2010), whole months from January 2024 to December 2025. Money is in LKR excluding tax.
+
+  What you can ask:
+  - Net revenue, invoiced revenue, returns, cancellations, price corrections, units, invoices, average invoice value, active customers, cost, gross margin and gross margin %.
+  - Breakdowns by month, quarter, calendar year, fiscal year (April to March), product group, product type, division, customer group, distribution channel and billing type.
+  - Comparisons such as last month vs the same month last year, 2025 vs 2024, top product groups, returns rate and margin trends.
+
+  Good to know:
+  - Revenue is true net revenue: returns, cancellations and price corrections are already included.
+  - "Last month" means December 2025, the last month in the data. FY2024 (April 2024 to March 2025) is the only complete fiscal year.
+  - Customers have no names (shown as "Customer <id>") and products show as material codes, so ask by product group or customer group.
+  - Provinces and districts are not available yet ("Unassigned"), and sales reps are not in this data.
+  - This is a one-time copy of the billing data, not a live daily feed.
 
 # Data assets (6). The metric view carries every KPI definition; the tables cover detail questions.
 data:
@@ -26,6 +37,7 @@ instructions: |
   - "Invoices" or "orders" means distinct invoice_number where is_invoice and not is_cancelled (this includes the client's own invoice types such as ZCF2). Average invoice value = all net revenue / invoices.
   - "Cancellations" means cancellation documents (document_type = 'Cancellation'): count = COUNT(DISTINCT invoice_number), value = -SUM(cancellations_amount).
   - Returns rate = -SUM(returns_amount) / SUM(invoiced_revenue_amount) * 100 (MEASURE(returns_rate_pct)).
+  - "Units" or "units sold" = net units: MEASURE(units) = SUM(quantity). Only "invoiced/gross quantity" = SUM(sold_quantity).
   - The fiscal year runs April to March and is named by its start year: "FY2024" = 1 April 2024 to 31 March 2025 (fiscal_year = 2024). FY2024 is the only complete fiscal year here; FY2023 (January-March 2024) and FY2025 (April-December 2025) are partial: say so. "In 2025" without "fiscal" means the calendar year.
   - Never work out relative dates yourself and never use CURRENT_DATE: filter on the dim_date flags. Last month = is_last_complete_month (December 2025), compared with is_last_complete_month_last_year or is_month_before_last_complete_month; this year = is_current_fiscal_year; last year = is_previous_fiscal_year. Group by month with month_start_date, never DATE_TRUNC.
   - Products have no names in this data: product_description is the material code. For product questions group by product_group_name (or product_type_name); include product_id when listing products.
