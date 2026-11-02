@@ -4,8 +4,9 @@
     uv run python -m sales_insights.semantic.answer_key --genie inventory        # genie/inventory/answer_key.csv
     uv run python -m sales_insights.semantic.answer_key --genie sales_and_stock  # genie/sales_and_stock/...
 
-One answer key per Genie agent (SPACES): Sales (genie/), Inventory (genie/inventory/) and the combined
-Sales & Stock agent (genie/sales_and_stock/). For each question in the agent's benchmarks.yaml:
+One answer key per Genie agent (SPACES): Sales (genie/), Inventory (genie/inventory/), the combined
+Sales & Stock agent (genie/sales_and_stock/) and Sales (SAP data) (genie/client/, real data: its answer key is
+written to output/, never into git). For each question in the agent's benchmarks.yaml:
   - run its SQL on the current gold tables (local Delta or Unity Catalog)
   - keep the answer (up to 10 rows, as readable text) for scoring Genie by hand or by benchmark
   - evaluate its `check`: PASS means the planted story is visible in the data, FAIL means it is not
@@ -42,6 +43,8 @@ class GenieAgent:
     folder: Path
     area: str
     data_until_sql: str  # the latest date the agent's data covers (decides PENDING)
+    own_gold: bool = False  # the area holds the whole sales-shaped gold model itself (client = SAP billing data)
+    private: bool = False  # real data: answers never go into the repo (it is public)
 
     @property
     def benchmarks(self) -> Path:
@@ -49,6 +52,8 @@ class GenieAgent:
 
     @property
     def answer_key(self) -> Path:
+        if self.private:  # output/ is git-ignored
+            return REPO_ROOT / "output" / f"answer_key_{self.name}.csv"
         return self.folder / "answer_key.csv"
 
 
@@ -62,6 +67,14 @@ SPACES = {
         GENIE / "sales_and_stock",
         "inventory",
         "SELECT MAX(activity_date) AS d FROM ${fact_sales_stock_daily}",
+    ),
+    "client": GenieAgent(
+        "client",
+        GENIE / "client",
+        "client",
+        "SELECT MAX(invoice_date) AS d FROM ${fact_sales}",
+        own_gold=True,
+        private=True,
     ),
 }
 
@@ -174,8 +187,9 @@ def main(argv: list[str] | None = None) -> None:
     agent = SPACES[parser.parse_args(argv).genie]
     cfg = load_config(area=agent.area)
     spark = get_spark(cfg, app_name="answer-key")
-    sales_lake = None if cfg.area == "sales" else Lake(spark, cfg.for_area("sales"))
+    sales_lake = None if cfg.area == "sales" or agent.own_gold else Lake(spark, cfg.for_area("sales"))
     rows = build(spark, Lake(spark, cfg), agent=agent, sales_lake=sales_lake)
+    agent.answer_key.parent.mkdir(parents=True, exist_ok=True)
     path = write_csv(rows, agent.answer_key)
     print(f"  {len(rows)} questions, data until {rows[0]['data_until']} -> {path.relative_to(REPO_ROOT)}")
     for r in rows:
