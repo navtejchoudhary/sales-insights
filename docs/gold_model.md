@@ -37,6 +37,7 @@ Sales transactions: one row per invoice line (invoice_number + invoice_item). In
 | `cost_amount` | Cost of the quantity on the line, LKR: quantity x product standard cost, or SAP's own cost on the billing line where the source has it. Same sign as quantity. |
 | `margin_amount` | Net revenue minus cost_amount, LKR. Gross margin % = sum(margin_amount) / sum(net_revenue_amount). |
 | `is_free_of_charge` | True for free-of-charge deliveries (ZFOC): goods given away; revenue is minus the VAT the company bears. |
+| `is_invoice` | True for paid invoices (ZAOR). The Invoices and Active customers measures count these lines when not is_cancelled. |
 | `is_cancelled` | True if this invoice line was later cancelled. Its revenue is already reversed by a Cancellation row, so do not filter it out of revenue totals. |
 | `cancelled_by_invoice_number` | The cancellation document that reversed this line, if any. |
 | `reference_invoice_number` | For returns, cancellations and price corrections: the original invoice they relate to. |

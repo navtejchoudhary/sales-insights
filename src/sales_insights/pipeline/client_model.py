@@ -56,6 +56,7 @@ CHANGES: dict[str, dict] = {
             "tax_amount": "Tax on the line as recorded in SAP, LKR. Mostly VAT (18% on domestic sales; exports are zero-rated), but it may include other taxes or levies.",
             "cost_amount": "SAP's cost on the billing line, LKR. Same sign as quantity.",
             "is_free_of_charge": "True for free-of-charge deliveries (ZFOC): goods given away at no charge.",
+            "is_invoice": "True for paid invoice-type documents: ZAOR and the client's own invoice types (SAP category M), not free of charge. The Invoices and Active customers measures count these lines when not is_cancelled.",
             "source_kind": "Which feed the row came from: always 'history' (one-time copy of the SAP billing data).",
             "loaded_business_date": "Empty: the data comes from a one-time copy, not from daily deliveries.",
             "arrival_delay_days": "Empty: the data comes from a one-time copy, not from daily deliveries.",

@@ -110,6 +110,8 @@ def test_fact_sales_splits_revenue_by_document_type(spark):
     assert (t["sold_quantity"], t["returned_quantity"]) == (Decimal("12.000"), Decimal("-1.000"))
     rows = {r["invoice_number"]: r for r in fact.collect()}
     assert rows["9261013002"]["document_type"] == "Free of charge" and rows["9261013002"]["is_free_of_charge"]
+    assert rows["9261013001"]["is_invoice"] and not rows["9261013002"]["is_invoice"]  # demo: paid invoice = ZAOR
+    assert not rows["7261013009"]["is_invoice"]
     assert rows["9261013001"]["cancelled_by_invoice_number"] == "8261013001"
     assert rows["7261013009"]["source_kind"] == "changes" and rows["9261013001"]["source_kind"] == "orders"
     assert rows["9261013001"]["sales_rep_id"] is None  # column absent before 22 Oct: still in gold, empty

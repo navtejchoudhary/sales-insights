@@ -21,7 +21,7 @@ with a small edit in the metric view and the KPI SQL (the agreement check proves
 | Cancelled invoices (`cancellation_count`) | Number of invoice cancellation documents (S1) | Standard |
 | Returns rate % (`returns_rate_pct`) | Returns ÷ invoiced revenue × 100 | Standard |
 | Units (`units`) | Net cases: sold minus returned and cancelled | Standard |
-| Invoices (`invoice_count`) | Distinct paid invoices (`ZAOR`) that were not cancelled. Free-of-charge deliveries and credit notes are not invoices | Working |
+| Invoices (`invoice_count`) | Distinct paid invoices (`is_invoice`) that were not cancelled. Free-of-charge deliveries and credit notes are not invoices. `is_invoice` = `ZAOR` on the demo data; on the SAP data every invoice-type document (category M) except free of charge, so ZCF2 and the client's other invoice types count too | Working |
 | Average invoice value (`average_invoice_value`) | Net revenue ÷ invoices | Working |
 | Active customers (`active_customers`) | Customers with at least one paid, non-cancelled invoice in the period | Standard |
 | Gross margin (`gross_margin`) | Net revenue − standard cost (quantity × product standard cost) | Working (the reference's `profit` column is an alternative) |

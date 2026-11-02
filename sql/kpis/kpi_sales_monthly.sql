@@ -12,8 +12,8 @@ WITH monthly AS (
     -SUM(f.cancellations_amount)                         AS cancellations_value,
     -SUM(f.price_corrections_amount)                     AS price_corrections_value,
     SUM(f.quantity)                                      AS units,
-    COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.invoice_number END) AS invoice_count,
-    COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END)    AS active_customers,
+    COUNT(DISTINCT CASE WHEN f.is_invoice AND NOT f.is_cancelled THEN f.invoice_number END) AS invoice_count,
+    COUNT(DISTINCT CASE WHEN f.is_invoice AND NOT f.is_cancelled THEN f.customer_id END)    AS active_customers,
     SUM(f.margin_amount)                                 AS gross_margin
   FROM ${fact_sales} f
   JOIN ${dim_date} d ON f.invoice_date = d.date

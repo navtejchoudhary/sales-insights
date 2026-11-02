@@ -441,6 +441,7 @@ def test_gold_counts_every_invoice_type_document_and_labels_client_types(spark, 
         line("9000000001"),
         line("9100000001", billingdocumenttype="ZCF2"),
         line("8000000001", billingdocumenttype="S1", sddocumentcategory="N", cancelledbillingdocument="9000000001"),
+        line("9200000001", billingdocumenttype="ZFOC", netamount="0.00"),
     ]
     fated = ss.assign_fates(frame(spark, rows), ss.Scope(**SCOPE_KW))
     lines = ss.flag_cancellations(ss.to_invoice_lines(fated, ss.Scope(**SCOPE_KW)))
@@ -450,6 +451,9 @@ def test_gold_counts_every_invoice_type_document_and_labels_client_types(spark, 
     assert fact["9100000001"]["invoiced_revenue_amount"] == Decimal("1000.00")
     assert fact["9100000001"]["sold_quantity"] == Decimal("2.000")
     assert fact["8000000001"]["cancellations_amount"] == Decimal("-1000.00")
+    # 2 Nov: the Invoices measure counts the client's own invoice types too, never free goods or cancellations
+    assert fact["9000000001"]["is_invoice"] and fact["9100000001"]["is_invoice"]
+    assert not fact["9200000001"]["is_invoice"] and not fact["8000000001"]["is_invoice"]
 
 
 # ---------------------------------------------------------------------------

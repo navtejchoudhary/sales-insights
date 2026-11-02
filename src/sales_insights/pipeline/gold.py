@@ -73,8 +73,10 @@ def build_fact_sales(lines: DataFrame, products: DataFrame) -> DataFrame:
     if "sd_document_category" in lines.columns:  # SAP billing data: SAP's own classification decides
         category = F.col("sd_document_category")
         is_sale, is_cancellation = category == "M", category == "N"
+        is_invoice = is_sale & (t != "ZFOC")  # paid invoices: every invoice-type document except free goods
     else:  # the dummy sales extract: its fixed billing types
         is_sale, is_cancellation = t.isin(SALES_TYPES), t == "S1"
+        is_invoice = t == "ZAOR"
     rep = F.col("sales_rep_id") if "sales_rep_id" in lines.columns else F.lit(None).cast("string")
     if "cost_amount" in lines.columns:  # SAP billing data carries the line's own cost (already signed)
         f, cost_amount = lines, F.col("cost_amount").cast(MONEY)
@@ -111,6 +113,7 @@ def build_fact_sales(lines: DataFrame, products: DataFrame) -> DataFrame:
         cost_amount.alias("cost_amount"),
         (rev - cost_amount).cast(MONEY).alias("margin_amount"),
         (t == "ZFOC").alias("is_free_of_charge"),
+        is_invoice.alias("is_invoice"),
         F.coalesce(F.col("is_cancelled"), F.lit(False)).alias("is_cancelled"),
         F.col("cancelled_by").alias("cancelled_by_invoice_number"),
         "reference_invoice_number",
