@@ -210,9 +210,11 @@ questions:
     category: basic
     question: How many units did we sell in fiscal year 2024?
     paraphrases:
-      - What quantity did we invoice in FY2024?
+      - What were our net units for FY2024?
       - Total units sold in fiscal year 2024?
+    # Units = net units (sold minus returned and cancelled): the metric view's "units", as on the dashboard.
+    # 2 Nov: the first version used sold_quantity (gross invoiced) and disagreed with the KPI layer.
     sql: |
-      SELECT ROUND(SUM(f.sold_quantity), 3) AS units_sold
+      SELECT ROUND(SUM(f.quantity), 3) AS units
       FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
       WHERE d.fiscal_year = 2024
