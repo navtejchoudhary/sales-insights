@@ -86,7 +86,7 @@ CHANGES: dict[str, dict] = {
         "description": "Products (SAP materials): one row per material, with material group, type and division from SAP's texts.",
         "columns": {
             "product_id": "SAP material code.",
-            "product_description": "Product name in capitals; the material code when the master data has no name; 'UNKNOWN PRODUCT <code>' when billed but missing from the master data.",
+            "product_description": "Product name in capitals; the material code when the master data has no name (all-digit codes without their leading zeros, as SAP shows them); 'UNKNOWN PRODUCT <code>' when billed but missing from the master data.",
             "product_group_code": "SAP material group code.",
             "product_group_name": "Material group name from SAP; 'Unassigned' when unknown.",
             "product_type_code": "SAP material type code.",

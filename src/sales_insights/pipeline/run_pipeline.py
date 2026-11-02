@@ -198,7 +198,11 @@ def _bronze(ctx: dict, d: date) -> str:
 
     r = run_bronze(ctx["spark"], ctx["cfg"], landing=ctx["landing"], lake=ctx["lake"])
     if r.dq_failures:
-        raise StepFailed(f"{r.dq_failures} data-quality failure(s), see ops.dq_results")
+        files = ", ".join(r.unresolved[:3]) + (" ..." if len(r.unresolved) > 3 else "")
+        raise StepFailed(
+            f"{r.dq_failures} file check(s) failed: {files}. Fix the file and reload it "
+            "(docs/playbooks/run_the_client_area.md, 'Reload one file'); see ops.dq_results"
+        )
     waiting = f", waiting for {len(r.incomplete_folders)} incomplete folder(s)" if r.incomplete_folders else ""
     return f"{len(r.loaded) + len(r.reloaded_changed)} file(s) loaded, {sum(r.rows_by_target.values()):,} rows{waiting}"
 

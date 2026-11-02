@@ -480,7 +480,7 @@
               "lines": [
                 "## Sales from SAP billing data\n",
                 "Built from SAP billing documents with the same KPI definitions as the Sales dashboard and Genie.\n",
-                "Month to date = the month of the latest data, against the same days last year.\n",
+                "Latest month = the month of the latest data (to its last day), against the same days last year.\n",
                 "Filters (top left: Product group, Channel). Province is not shown yet: SAP has no district to province list."
               ]
             }
@@ -587,7 +587,7 @@
               "encodings": {
                 "value": {
                   "fieldName": "max(revenue_mtd)",
-                  "displayName": "Net revenue month to date (LKR)",
+                  "displayName": "Net revenue",
                   "format": {
                     "type": "number-plain",
                     "abbreviation": "compact",
@@ -600,7 +600,7 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "Net revenue month to date (LKR)"
+                "title": "Net revenue"
               }
             }
           },
@@ -675,12 +675,12 @@
               "encodings": {
                 "value": {
                   "fieldName": "max(margin_pct_mtd)",
-                  "displayName": "Gross margin month to date (%)"
+                  "displayName": "Gross margin"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Gross margin month to date (%)"
+                "title": "Gross margin"
               }
             }
           },
@@ -777,7 +777,7 @@
                     "displayAs": "number",
                     "visible": true,
                     "order": 100001,
-                    "title": "Month to date",
+                    "title": "Latest month",
                     "displayName": "this_period",
                     "allowSearch": false,
                     "alignContent": "right",
@@ -847,7 +847,7 @@
               },
               "frame": {
                 "showTitle": true,
-                "title": "Month to date vs the same days last year",
+                "title": "Latest month vs the same days last year",
                 "showDescription": true,
                 "description": "Change is % for amounts and counts, percentage points for rates."
               }
@@ -856,8 +856,8 @@
           "position": {
             "x": 0,
             "y": 8,
-            "width": 3,
-            "height": 6
+            "width": 6,
+            "height": 5
           }
         },
         {
@@ -921,9 +921,9 @@
             }
           },
           "position": {
-            "x": 3,
-            "y": 8,
-            "width": 3,
+            "x": 0,
+            "y": 13,
+            "width": 6,
             "height": 6
           }
         }
@@ -950,10 +950,6 @@
                     {
                       "name": "sum(lkr_m)",
                       "expression": "SUM(`lkr_m`)"
-                    },
-                    {
-                      "name": "sum(change_pct)",
-                      "expression": "SUM(`change_pct`)"
                     }
                   ],
                   "disaggregated": false
@@ -961,8 +957,8 @@
               }
             ],
             "spec": {
-              "version": 1,
-              "widgetType": "combo",
+              "version": 3,
+              "widgetType": "bar",
               "encodings": {
                 "x": {
                   "fieldName": "product_group",
@@ -971,35 +967,17 @@
                   },
                   "displayName": "Product group"
                 },
-                "label": {
-                  "show": false
-                },
                 "y": {
-                  "primary": {
-                    "fields": [
-                      {
-                        "fieldName": "sum(lkr_m)"
-                      }
-                    ],
-                    "scale": {
-                      "type": "quantitative"
-                    }
+                  "fieldName": "sum(lkr_m)",
+                  "scale": {
+                    "type": "quantitative"
                   },
-                  "secondary": {
-                    "fields": [
-                      {
-                        "fieldName": "sum(change_pct)"
-                      }
-                    ],
-                    "scale": {
-                      "type": "quantitative"
-                    }
-                  }
+                  "displayName": "LKR m"
                 }
               },
               "frame": {
                 "showTitle": true,
-                "title": "Net revenue by product group, last complete month"
+                "title": "Net revenue by product group, last complete month (LKR m)"
               }
             }
           },
@@ -1249,7 +1227,7 @@
                     "highlightLinks": false,
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
-                    "numberFormat": "0,0.0"
+                    "numberFormat": "0,0"
                   },
                   {
                     "fieldName": "margin_pct",
@@ -1290,8 +1268,8 @@
           "position": {
             "x": 0,
             "y": 6,
-            "width": 3,
-            "height": 7
+            "width": 6,
+            "height": 6
           }
         },
         {
@@ -1475,7 +1453,7 @@
                     "highlightLinks": false,
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
-                    "numberFormat": "0,0.0"
+                    "numberFormat": "0,0"
                   }
                 ]
               },
@@ -1488,10 +1466,10 @@
             }
           },
           "position": {
-            "x": 3,
-            "y": 6,
-            "width": 3,
-            "height": 7
+            "x": 0,
+            "y": 12,
+            "width": 6,
+            "height": 6
           }
         },
         {
@@ -1543,7 +1521,7 @@
           },
           "position": {
             "x": 0,
-            "y": 13,
+            "y": 18,
             "width": 3,
             "height": 5
           }
@@ -1597,7 +1575,7 @@
           },
           "position": {
             "x": 3,
-            "y": 13,
+            "y": 18,
             "width": 3,
             "height": 5
           }
@@ -2049,7 +2027,7 @@
                     "highlightLinks": false,
                     "useMonospaceFont": false,
                     "preserveWhitespace": false,
-                    "numberFormat": "0,0.0"
+                    "numberFormat": "0,0"
                   },
                   {
                     "fieldName": "last_run",

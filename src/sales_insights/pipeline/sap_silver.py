@@ -495,6 +495,11 @@ def build_customers(raw: DataFrame, lines: DataFrame, groups: DataFrame, regions
     )
 
 
+def display_code(code: Column) -> Column:
+    """SAP shows an all-digit material number without its leading zeros (000000000020010440 -> 20010440)."""
+    return F.when(code.rlike("^[0-9]+$"), F.regexp_replace(code, "^0+(?=[0-9])", "")).otherwise(code)
+
+
 def build_products(
     raw: DataFrame, lines: DataFrame, groups: DataFrame, types: DataFrame, divisions: DataFrame
 ) -> DataFrame:
@@ -540,7 +545,8 @@ def build_products(
     )
     return out.select(
         "product_id",
-        F.coalesce(F.col("product_description"), F.col("product_id")).alias("product_description"),
+        # no name in the master: show the code as SAP does (leading zeros of an all-digit code dropped)
+        F.coalesce(F.col("product_description"), display_code(F.col("product_id"))).alias("product_description"),
         "product_group",
         F.coalesce(F.col("product_group_name"), F.lit(UNASSIGNED)).alias("product_group_name"),
         "product_type",

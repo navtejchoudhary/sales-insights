@@ -57,8 +57,21 @@ reconciliation, the data checks). Only you can open it: the bundle gives it no g
 |---|---|---|
 | `CATALOG_NOT_FOUND client_dev` | setup not run | step "Once" above |
 | `the copied SAP files have not landed yet` | `source: real` and no files in the volume | copy the files first (R phase); never switch back to dummy |
+| `file check(s) failed: <file> (row_count_vs_manifest)` (bronze) | a loaded file does not match what was written (e.g. 2 Nov: line breaks inside customer records). It keeps failing on every run until the file is reloaded | fix the cause, then "Reload one file" below |
 | `FAILED: ... see ops.dq_results` (silver) | a data check failed | `SELECT * FROM client_dev.ops.dq_results WHERE status = 'FAIL'` |
 | `FAILED: ... see ops.sap_reconciliation` | a row went missing between source and gold | `SELECT * FROM client_dev.ops.sap_reconciliation WHERE status = 'FAIL'` |
 | `KPI SQL and metric view differ` | a KPI formula changed in one place only | `docs/playbooks/add_or_change_a_kpi.md` |
 
 Run it again after a fix: bronze loads each file only once, and silver, gold and the checks rebuild in full.
+
+## Reload one file
+
+Bronze loads each file once. To load a file again (after a reader fix; the file in the volume is correct),
+remove its earlier load and its "already loaded" entry, then run the pipeline. Databricks only ($0 on the
+source). SQL editor, with the file's path as `dq_results.file_path` shows it:
+```sql
+DELETE FROM client_dev.bronze.masters_customer_master WHERE _source_file = 'masters/customer_master.csv';
+DELETE FROM client_dev.ops.processed_files WHERE file_path = 'masters/customer_master.csv';
+```
+Then `databricks bundle run -t dev client_pipeline --profile sales-dev`: the file is loaded again, its checks
+pass, and silver and gold rebuild from it.
