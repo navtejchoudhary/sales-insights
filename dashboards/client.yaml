@@ -115,27 +115,27 @@ pages:
       - text: |
           ## Sales from SAP billing data
           Built from SAP billing documents with the same KPI definitions as the Sales dashboard and Genie.
-          Month to date = the month of the latest data, against the same days last year.
+          Latest month = the month of the latest data (to its last day), against the same days last year.
           Filters (top left: Product group, Channel). Province is not shown yet: SAP has no district to province list.
         size: [6, 2]
       - table: {dataset: trust, title: Data status, columns: [{field: status, title: " "}]}
         size: [6, 3]
-      - counter: {dataset: headline_mtd, value: revenue_mtd, title: Net revenue month to date (LKR), format: compact}
+      - counter: {dataset: headline_mtd, value: revenue_mtd, title: Net revenue, latest month (LKR), format: compact}
         size: [2, 3]
       - counter: {dataset: headline_mtd, value: revenue_change_pct, title: vs same days last year (%)}
         size: [2, 3]
-      - counter: {dataset: headline_mtd, value: margin_pct_mtd, title: Gross margin month to date (%)}
+      - counter: {dataset: headline_mtd, value: margin_pct_mtd, title: Gross margin, latest month (%)}
         size: [2, 3]
       - table:
           dataset: headline_mtd
-          title: Month to date vs the same days last year
+          title: Latest month vs the same days last year
           description: Change is % for amounts and counts, percentage points for rates.
           columns:
             - {field: kpi, title: KPI}
-            - {field: this_period, title: Month to date, type: number}
+            - {field: this_period, title: Latest month, type: number}
             - {field: same_days_last_year, title: Same days last year, type: number}
             - {field: change_vs_ly, title: Change, type: number}
-        size: [3, 6]
+        size: [6, 5]
       - bar:
           dataset: monthly_by_document_type
           title: Net revenue by month and SAP document type, this and last fiscal year (LKR m)
@@ -143,16 +143,15 @@ pages:
           x: {field: month, title: Month, temporal: month}
           y: {field: lkr_m, title: LKR m}
           color: {field: document_type, title: Document type}
-        size: [3, 6]
+        size: [6, 6]
 
   - title: Products and customers
     widgets:
-      - combo:
+      - bar:
           dataset: product_group_month
-          title: Net revenue by product group, last complete month
+          title: Net revenue by product group, last complete month (LKR m)
           x: {field: product_group, title: Product group}
-          bars: [{field: lkr_m, title: LKR m}]
-          line: [{field: change_pct, title: vs same month last year %}]
+          y: {field: lkr_m, title: LKR m}
         size: [4, 6]
       - bar:
           dataset: channel_fytd
@@ -168,9 +167,9 @@ pages:
             - {field: product_group, title: Group}
             - {field: lkr_m, title: LKR m, type: number}
             - {field: change_pct, title: vs last year %, type: number}
-            - {field: units, title: Units, type: number}
+            - {field: units, title: Units, type: number, format: "0,0"}
             - {field: margin_pct, title: Margin %, type: number}
-        size: [3, 7]
+        size: [6, 6]
       - table:
           dataset: top_customers_fytd
           title: Top 15 customers, fiscal year to date
@@ -180,8 +179,8 @@ pages:
             - {field: customer_group, title: Group}
             - {field: lkr_m, title: LKR m, type: number}
             - {field: change_pct, title: vs last year %, type: number}
-            - {field: invoices, title: Invoices, type: number}
-        size: [3, 7]
+            - {field: invoices, title: Invoices, type: number, format: "0,0"}
+        size: [6, 6]
       - line:
           dataset: returns_by_month
           title: Returns rate % by month
@@ -225,6 +224,6 @@ pages:
             - {field: layer, title: Layer}
             - {field: check_name, title: Check}
             - {field: status, title: Result}
-            - {field: results, title: Results, type: number}
+            - {field: results, title: Results, type: number, format: "0,0"}
             - {field: last_run, title: Last run (Colombo time)}
         size: [6, 6]

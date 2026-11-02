@@ -415,6 +415,24 @@ def test_products_get_names_and_unknown_members(spark, ss):
     assert rows["XX1"]["product_description"] == "UNKNOWN PRODUCT XX1" and not rows["XX1"]["in_master"]
 
 
+def test_a_product_without_a_name_shows_its_code_as_sap_does(spark, ss):
+    """2 Nov: the client's material master has no names; all-digit codes lose their leading zeros, as in SAP."""
+    base = {"productdescription": None, "producttype": None, "productgroup": None, "division": None,
+            "baseunit": "CS", "plant": None, "salesorganization": None, "creationdate": None,
+            "_fivetran_synced": "2026-01-01 00:00:00.000", "_fivetran_deleted": "false", "_source_file": "m",
+            "_load_ts": "1"}  # fmt: skip
+    master = frame(spark, [{"product": "000000000020010440", **base}, {"product": "TR/KU/L4508", **base}])
+    lines = spark.createDataFrame(
+        [("TR/KU/L4508", "2CHE03", "2010")], "product_id string, product_group string, company_code string"
+    )
+    groups = spark.createDataFrame([("2CHE03", "FUNGICIDE")], "product_group string, product_group_name string")
+    types = spark.createDataFrame([("FERT", "Finished goods")], "product_type string, product_type_name string")
+    divisions = spark.createDataFrame([("04", "Crop protection")], "division string, division_name string")
+    rows = {r["product_id"]: r for r in ss.build_products(master, lines, groups, types, divisions).collect()}
+    assert rows["000000000020010440"]["product_description"] == "20010440"  # the key keeps its zeros
+    assert rows["TR/KU/L4508"]["product_description"] == "TR/KU/L4508"
+
+
 def test_gold_labels_the_two_sap_document_types_and_uses_the_line_cost(spark, ss):
     from sales_insights.pipeline import gold as g
 

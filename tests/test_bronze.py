@@ -194,3 +194,52 @@ def test_all_days_accounted_for(world):
     loaded = {r["_business_date"] for r in _orders(world).select("_business_date").distinct().collect()}
     expected = {"2026-10-13", "2026-10-14"} | {(date(2026, 10, 17) + timedelta(days=i)).isoformat() for i in range(7)}
     assert loaded == expected
+
+
+# ---------------------------------------------------------------------------
+# 2 Nov: the real copy's customer master held line breaks inside quoted values
+# ---------------------------------------------------------------------------
+
+
+def _file(path, rel):
+    from sales_insights.pipeline import landing as lz
+
+    header = tuple(path.read_text().splitlines()[0].split(","))
+    return lz.LandingFile(rel, str(path), "masters_x", None, "x", header, None, None, "")
+
+
+def test_a_quoted_line_break_stays_inside_its_record(spark, tmp_path):
+    """75,435 customers were read as 75,440 rows: a city with a line break became two rows."""
+    path = tmp_path / "customer_master.csv"
+    path.write_text('customer,cityname,customergroup\n1001,"COLOMBO\n10",03\n1002,"KANDY ""NORTH""",04\n')
+    rows = b.read_csv_group(spark, [_file(path, "masters/customer_master.csv")], "r1").collect()
+    assert [(r["customer"], r["cityname"], r["customergroup"]) for r in rows] == [
+        ("1001", "COLOMBO\n10", "03"),
+        ("1002", 'KANDY "NORTH"', "04"),
+    ]
+
+
+def test_a_failed_file_check_stops_every_run_until_the_file_is_reloaded(spark, cfg, tmp_path):
+    """The real copy's FAIL vanished on the next run (nothing new to load, so nothing checked)."""
+    staging, landing = tmp_path / "staging", tmp_path / "landing"
+    lake = Lake(spark, cfg, root=tmp_path / "lake")
+    tables, log = m.build_masters(SEED, AS_OF)
+    m.write_masters(tables, log, staging, SEED, AS_OF)
+    h.write_history(h.build_history(SEED, AS_OF, start=date(2026, 9, 28)), staging, SEED, AS_OF)
+    drip.deliver_initial(staging, landing)
+    assert b.run_bronze(spark, cfg, landing=landing, lake=lake).dq_failures == 0
+
+    customers = landing / "masters" / "customers.csv"
+    original = customers.read_text()
+    lines = original.splitlines()
+    customers.write_text("\n".join([*lines, lines[1]]) + "\n")  # one row more than the manifest says
+    failed = b.run_bronze(spark, cfg, landing=landing, lake=lake)
+    assert failed.dq_failures >= 1 and any("customers.csv" in u for u in failed.unresolved)
+
+    again = b.run_bronze(spark, cfg, landing=landing, lake=lake)  # loads nothing new
+    assert again.loaded == [] and again.reloaded_changed == []
+    assert again.dq_failures == failed.dq_failures  # still failing: a FAIL stays a FAIL
+
+    customers.write_text(original)  # the source fixes the file: it is loaded again and passes
+    fixed = b.run_bronze(spark, cfg, landing=landing, lake=lake)
+    assert fixed.reloaded_changed == ["masters/customers.csv"] and fixed.dq_failures == 0

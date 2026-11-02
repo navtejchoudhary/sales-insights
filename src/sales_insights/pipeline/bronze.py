@@ -10,7 +10,9 @@ What bronze does:
   redelivered identical file is skipped; a sent file whose content changed is loaded again
   and flagged
 - adds new source columns to the table instead of failing (schema evolution)
-- checks each file against its manifest (row count, checksum) into ops.dq_results
+- reads a quoted value that holds a line break as part of its record (CSV standard, RFC 4180)
+- checks each file against its manifest (row count, checksum) into ops.dq_results; a failed check
+  stays failed (every later run stops) until the file is reloaded and passes
 
 What bronze does NOT do: dedupe, cast, standardise, quarantine or merge. That is silver.
 
@@ -29,7 +31,7 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
 
-from pyspark.sql import DataFrame, SparkSession
+from pyspark.sql import DataFrame, SparkSession, Window
 from pyspark.sql import functions as F
 from pyspark.sql import types as T
 
@@ -41,6 +43,7 @@ META_COLUMNS = ["_source_file", "_business_date", "_load_ts", "_run_id", "_rescu
 
 PROCESSED_FILES = ("ops", "processed_files")
 DQ_RESULTS = ("ops", "dq_results")
+FILE_CHECKS = ("row_count_vs_manifest", "checksum_vs_manifest")  # a FAIL here stays until the file is reloaded
 
 PROCESSED_SCHEMA = T.StructType(
     [
@@ -81,6 +84,7 @@ class BronzeRun:
     incomplete_folders: list[str] = field(default_factory=list)
     unexpected_files: list[str] = field(default_factory=list)
     dq_failures: int = 0
+    unresolved: list[str] = field(default_factory=list)  # "<file> (<check>)" whose latest check is still FAIL
 
 
 # ---------------------------------------------------------------------------
@@ -108,6 +112,7 @@ def read_csv_group(spark: SparkSession, files: list[lz.LandingFile], run_id: str
         spark.read.option("header", "true")
         .option("inferSchema", "false")
         .option("escape", '"')
+        .option("multiLine", "true")  # a quoted value may hold a line break (RFC 4180): still one record
         .option("mode", "PERMISSIVE")
         .csv([f.abs_path for f in files])
     )
@@ -142,6 +147,24 @@ def manifests_frame(spark: SparkSession, files: list[lz.LandingFile], run_id: st
 # ---------------------------------------------------------------------------
 # Run
 # ---------------------------------------------------------------------------
+
+
+def unresolved_file_checks(lake: Lake) -> list[str]:
+    """Loaded files whose LATEST row-count or checksum check is FAIL. A FAIL stays a FAIL: later runs load
+    nothing new for that file (exactly-once), so without this a failed check would vanish on the next run.
+    It clears only when the file is reloaded and its checks pass."""
+    if not lake.exists(*DQ_RESULTS) or not lake.exists(*PROCESSED_FILES):
+        return []
+    loaded = lake.read(*PROCESSED_FILES).select("file_path").distinct()
+    newest = Window.partitionBy("file_path", "check_name").orderBy(F.col("checked_ts").desc(), F.col("run_id").desc())
+    failed = (
+        lake.read(*DQ_RESULTS)
+        .filter((F.col("layer") == "bronze") & F.col("check_name").isin(*FILE_CHECKS))
+        .withColumn("_rn", F.row_number().over(newest))
+        .filter((F.col("_rn") == 1) & (F.col("status") == "FAIL"))
+        .join(loaded, "file_path", "left_semi")
+    )
+    return sorted({f"{r['file_path']} ({r['check_name']})" for r in failed.collect()})
 
 
 def already_loaded(lake: Lake) -> dict[str, set[str]]:
@@ -272,7 +295,8 @@ def run_bronze(spark: SparkSession, cfg: Config, landing: Path | None = None, la
 
     if dq:
         lake.append(spark.createDataFrame(dq, DQ_SCHEMA), *DQ_RESULTS)
-    run.dq_failures = sum(1 for r in dq if r[-1] == "FAIL")
+    run.unresolved = unresolved_file_checks(lake)  # this run's failures and any earlier one not yet fixed
+    run.dq_failures = len(run.unresolved)
     return run
 
 
