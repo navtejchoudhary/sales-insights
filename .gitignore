@@ -34,3 +34,6 @@ __pycache__/
 .DS_Store
 .vscode/
 .idea/
+
+# Real-data Genie answers (client area): never commit
+genie/client/answer_key.csv

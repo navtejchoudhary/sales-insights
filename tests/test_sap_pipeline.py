@@ -605,6 +605,16 @@ def test_gold_carries_the_client_descriptions(world):
         assert fields == cm.TABLES[table]["columns"], table
 
 
+def test_every_client_genie_benchmark_query_runs(world, spark):
+    """The Sales (SAP data) agent's ground-truth SQL runs on the client's own gold (answers: real data only)."""
+    from sales_insights.semantic import answer_key as ak
+
+    agent = ak.SPACES["client"]
+    rows = ak.build(spark, world["lake"], agent=agent)
+    assert len(rows) == len(ak.load(agent.benchmarks))
+    assert rows[0]["data_until"] not in ("", "None")
+
+
 def test_the_client_area_uses_the_sales_kpis_and_metric_view():
     from sales_insights.semantic import kpis as k
 

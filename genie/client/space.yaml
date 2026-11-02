@@ -1,0 +1,66 @@
+# Genie agent "Sales (SAP data)": the client area's real SAP billing data (catalog client_dev).
+# Setup steps: genie/client/README.md. Same rules as the sales agent (genie/space.yaml): few, focused data
+# assets and instructions; example SQL queries teach the cases that are easy to get wrong.
+# Placeholders like $${fact_sales} are replaced with the client area's own tables (client_dev.gold.*).
+# Never put a real value from the client's data in this file (customer numbers, product codes, figures):
+# the repo is public.
+
+title: Sales Analytics (SAP data)
+description: >-
+  Ask questions about sales from the SAP billing data: net revenue, invoices, units, returns, cancellations,
+  margin, product groups, customer groups, channels and billing types. Whole months, January 2024 to
+  December 2025.
+
+# Data assets (6). The metric view carries every KPI definition; the tables cover detail questions.
+data:
+  - ${sales_metrics}
+  - ${fact_sales}
+  - ${dim_customer}
+  - ${dim_product}
+  - ${dim_date}
+  - ${dim_channel}
+
+instructions: |
+  - The data is SAP billing data for company 2010, whole months from January 2024 to December 2025. Money is Sri Lankan rupees (LKR) excluding tax. Round money to 2 decimals and percentages to 1 decimal.
+  - "Revenue" or "sales" means net revenue: MEASURE(net_revenue) or SUM(net_revenue_amount). It is already net of returns, cancellations and price corrections, so never remove those rows when totalling revenue.
+  - "Invoices" or "orders" means distinct invoice_number where is_invoice and not is_cancelled (this includes the client's own invoice types such as ZCF2). Average invoice value = all net revenue / invoices.
+  - "Cancellations" means cancellation documents (document_type = 'Cancellation'): count = COUNT(DISTINCT invoice_number), value = -SUM(cancellations_amount).
+  - Returns rate = -SUM(returns_amount) / SUM(invoiced_revenue_amount) * 100 (MEASURE(returns_rate_pct)).
+  - The fiscal year runs April to March and is named by its start year: "FY2024" = 1 April 2024 to 31 March 2025 (fiscal_year = 2024). FY2024 is the only complete fiscal year here; FY2023 (January-March 2024) and FY2025 (April-December 2025) are partial: say so. "In 2025" without "fiscal" means the calendar year.
+  - Never work out relative dates yourself and never use CURRENT_DATE: filter on the dim_date flags. Last month = is_last_complete_month (December 2025), compared with is_last_complete_month_last_year or is_month_before_last_complete_month; this year = is_current_fiscal_year; last year = is_previous_fiscal_year. Group by month with month_start_date, never DATE_TRUNC.
+  - Products have no names in this data: product_description is the material code. For product questions group by product_group_name (or product_type_name); include product_id when listing products.
+  - Customers have no names (customer_name is 'Customer <id>'), and districts and provinces are 'Unassigned': say that regional breakdowns are not available yet.
+  - document_type gives the billing type in words; the client's own invoice types show as 'Other (ZCF2)' and similar, and count as sales.
+  - For "which ... most" questions show the full ranking, best first, unless a number is given ("top 5" = LIMIT 5).
+  - When comparing two periods, return one row with a column for each and the % change. Always state the period you used.
+sample_questions:
+  - What was net revenue last month, and how does it compare with the same month last year?
+  - Which product groups sold the most in fiscal year 2024?
+  - How many invoices did we issue each month in 2025?
+  - What was our returns rate in 2025?
+  - How much net revenue came from each billing type in 2025?
+
+# Columns to hide (Configure > Data): technical, empty in this data, or confusing for business questions.
+hidden_columns:
+  fact_sales: [invoice_item, district_code, sales_office_code, plant_code, company_code, sales_rep_id,
+               gross_revenue_amount, tax_amount, cancelled_by_invoice_number, reference_invoice_number,
+               source_kind, loaded_business_date, arrival_delay_days]
+  dim_customer: [customer_full_name, district_code, district_name, province, sales_office_code, sales_office_name,
+                 distribution_channel_code, payer_customer_id, created_date, city_is_canonical]
+  dim_product: [product_group_code, product_type_code, division_code, company_code, plant_code, list_price_amount,
+                standard_cost_amount, launch_date]
+
+# Example SQL queries: teach Genie the cases that are easy to get wrong.
+example_queries:
+  - question: What was net revenue last month compared with the same month last year?
+    from_benchmark: CL06
+  - question: What was the returns rate in 2025?
+    from_benchmark: CL11
+  - question: How many invoices were cancelled in 2025, and what were they worth?
+    from_benchmark: CL13
+  - question: How much net revenue came from each billing type in 2025?
+    from_benchmark: CL14
+
+# Benchmarks: every question in genie/client/benchmarks.yaml EXCEPT the example queries above.
+benchmarks_exclude: [CL06, CL11, CL13, CL14]
+target_accuracy_pct: 90

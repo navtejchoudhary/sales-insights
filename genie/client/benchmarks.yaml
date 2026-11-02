@@ -1,0 +1,218 @@
+# Genie benchmark questions for the "Sales (SAP data)" agent (client area, client_dev).
+#
+# Same format as genie/benchmarks.yaml: each question has the ground-truth SQL that answers it on the gold
+# tables, and two rewordings. There are no planted stories in real data, so there are no `check`s.
+# The answer key holds REAL figures: it is written to output/ (git-ignored), never into this folder.
+# Never put a real value from the client's data here (customer numbers, product codes, figures).
+#
+# Conventions (the same as the metric view):
+#   net revenue = SUM(net_revenue_amount)
+#   invoices    = distinct invoice_number where is_invoice AND NOT is_cancelled
+#   fiscal year = April-March, labelled by start year (FY2024 = 1 Apr 2024 - 31 Mar 2025)
+
+questions:
+  - id: CL01
+    category: basic
+    question: What was total net revenue in fiscal year 2024?
+    paraphrases:
+      - How much did we sell in FY2024?
+      - Total sales for the financial year April 2024 to March 2025?
+    sql: |
+      SELECT ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+      WHERE d.fiscal_year = 2024
+
+  - id: CL02
+    category: basic
+    question: What was net revenue in December 2025?
+    paraphrases:
+      - How much revenue did we make in Dec 2025?
+      - What were total sales for December 2025?
+    sql: |
+      SELECT ROUND(SUM(net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales}
+      WHERE invoice_date BETWEEN DATE'2025-12-01' AND DATE'2025-12-31'
+
+  - id: CL03
+    category: basic
+    question: How many invoices did we issue in November 2025?
+    paraphrases:
+      - How many orders did we get in November 2025?
+      - Number of invoices in Nov 2025?
+    sql: |
+      SELECT COUNT(DISTINCT invoice_number) AS invoices
+      FROM ${fact_sales}
+      WHERE is_invoice AND NOT is_cancelled
+        AND invoice_date BETWEEN DATE'2025-11-01' AND DATE'2025-11-30'
+
+  - id: CL04
+    category: basic
+    question: What was the average invoice value in fiscal year 2024?
+    paraphrases:
+      - What was our average order value in FY2024?
+      - On average, how much was one invoice worth in fiscal year 2024?
+    sql: |
+      SELECT ROUND(SUM(f.net_revenue_amount)
+                   / COUNT(DISTINCT CASE WHEN f.is_invoice AND NOT f.is_cancelled THEN f.invoice_number END), 2)
+             AS average_invoice_value
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+      WHERE d.fiscal_year = 2024
+
+  - id: CL05
+    category: trend
+    question: Show net revenue for each month of 2025.
+    paraphrases:
+      - What were monthly sales in calendar year 2025?
+      - Net revenue by month from January to December 2025?
+    sql: |
+      SELECT d.month_start_date AS month, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+      WHERE d.year = 2025
+      GROUP BY d.month_start_date
+      ORDER BY month
+
+  - id: CL06
+    category: tricky
+    question: What was net revenue last month compared with the same month last year?
+    paraphrases:
+      - How did last month's sales compare with the same month a year earlier?
+      - Last month's revenue versus the same month last year, with the % change?
+    sql: |
+      SELECT ROUND(SUM(CASE WHEN d.is_last_complete_month THEN f.net_revenue_amount END), 2) AS last_month,
+             ROUND(SUM(CASE WHEN d.is_last_complete_month_last_year THEN f.net_revenue_amount END), 2)
+               AS same_month_last_year,
+             ROUND((SUM(CASE WHEN d.is_last_complete_month THEN f.net_revenue_amount END)
+                    / SUM(CASE WHEN d.is_last_complete_month_last_year THEN f.net_revenue_amount END) - 1) * 100, 1)
+               AS change_pct
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+
+  - id: CL07
+    category: trend
+    question: How did net revenue in 2025 compare with 2024?
+    paraphrases:
+      - Calendar year 2025 sales versus 2024, with the % change?
+      - Did we sell more in 2025 than in 2024, and by how much?
+    sql: |
+      SELECT ROUND(SUM(CASE WHEN d.year = 2025 THEN f.net_revenue_amount END), 2) AS net_revenue_2025,
+             ROUND(SUM(CASE WHEN d.year = 2024 THEN f.net_revenue_amount END), 2) AS net_revenue_2024,
+             ROUND((SUM(CASE WHEN d.year = 2025 THEN f.net_revenue_amount END)
+                    / SUM(CASE WHEN d.year = 2024 THEN f.net_revenue_amount END) - 1) * 100, 1) AS change_pct
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+
+  - id: CL08
+    category: basic
+    question: What were the top 5 product groups by net revenue in fiscal year 2024?
+    paraphrases:
+      - Which 5 product groups sold the most in FY2024?
+      - Top five product groups by sales in fiscal year 2024?
+    sql: |
+      SELECT p.product_group_name, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      JOIN ${dim_product} p ON f.product_id = p.product_id
+      WHERE d.fiscal_year = 2024
+      GROUP BY p.product_group_name
+      ORDER BY net_revenue DESC
+      LIMIT 5
+
+  - id: CL09
+    category: basic
+    question: Which customer groups brought the most net revenue in 2025?
+    paraphrases:
+      - Net revenue by customer group in calendar year 2025, highest first?
+      - How were 2025 sales split across customer groups?
+    sql: |
+      SELECT c.customer_group_name, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f
+      JOIN ${dim_customer} c ON f.customer_id = c.customer_id
+      WHERE f.invoice_date BETWEEN DATE'2025-01-01' AND DATE'2025-12-31'
+      GROUP BY c.customer_group_name
+      ORDER BY net_revenue DESC
+
+  - id: CL10
+    category: basic
+    question: What was net revenue by distribution channel in fiscal year 2024?
+    paraphrases:
+      - How did FY2024 sales split across distribution channels?
+      - Which distribution channel sold the most in fiscal year 2024?
+    sql: |
+      SELECT ch.distribution_channel_name, ROUND(SUM(f.net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales} f
+      JOIN ${dim_date} d ON f.invoice_date = d.date
+      JOIN ${dim_channel} ch ON f.distribution_channel_code = ch.distribution_channel_code
+      WHERE d.fiscal_year = 2024
+      GROUP BY ch.distribution_channel_name
+      ORDER BY net_revenue DESC
+
+  - id: CL11
+    category: tricky
+    question: What was the returns rate in 2025?
+    paraphrases:
+      - What share of invoiced revenue was returned in 2025?
+      - Returns as a percentage of invoiced sales for calendar year 2025?
+    sql: |
+      SELECT ROUND(-SUM(returns_amount) / SUM(invoiced_revenue_amount) * 100, 1) AS returns_rate_pct
+      FROM ${fact_sales}
+      WHERE invoice_date BETWEEN DATE'2025-01-01' AND DATE'2025-12-31'
+
+  - id: CL12
+    category: tricky
+    question: What was the gross margin percentage in fiscal year 2024?
+    paraphrases:
+      - What was our margin % in FY2024?
+      - Gross margin as a share of net revenue for fiscal year 2024?
+    sql: |
+      SELECT ROUND(SUM(f.margin_amount) / SUM(f.net_revenue_amount) * 100, 1) AS gross_margin_pct
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+      WHERE d.fiscal_year = 2024
+
+  - id: CL13
+    category: tricky
+    question: How many invoices were cancelled in 2025, and what were they worth?
+    paraphrases:
+      - Number and value of invoice cancellations in calendar year 2025?
+      - How many cancellations did we have in 2025 and for how much?
+    sql: |
+      SELECT COUNT(DISTINCT invoice_number) AS cancellations,
+             ROUND(-SUM(cancellations_amount), 2) AS cancelled_value
+      FROM ${fact_sales}
+      WHERE document_type = 'Cancellation'
+        AND invoice_date BETWEEN DATE'2025-01-01' AND DATE'2025-12-31'
+
+  - id: CL14
+    category: tricky
+    question: How much net revenue came from each billing type in 2025?
+    paraphrases:
+      - Net revenue by billing document type for calendar year 2025?
+      - Split 2025 sales by billing type, largest first.
+    sql: |
+      SELECT document_type, invoice_type, ROUND(SUM(net_revenue_amount), 2) AS net_revenue
+      FROM ${fact_sales}
+      WHERE invoice_date BETWEEN DATE'2025-01-01' AND DATE'2025-12-31'
+      GROUP BY document_type, invoice_type
+      ORDER BY net_revenue DESC
+
+  - id: CL15
+    category: trend
+    question: How many active customers did we have in each month of 2025?
+    paraphrases:
+      - Number of buying customers per month in calendar year 2025?
+      - How many customers bought from us each month in 2025?
+    sql: |
+      SELECT d.month_start_date AS month,
+             COUNT(DISTINCT CASE WHEN f.is_invoice AND NOT f.is_cancelled THEN f.customer_id END) AS active_customers
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+      WHERE d.year = 2025
+      GROUP BY d.month_start_date
+      ORDER BY month
+
+  - id: CL16
+    category: basic
+    question: How many units did we sell in fiscal year 2024?
+    paraphrases:
+      - What quantity did we invoice in FY2024?
+      - Total units sold in fiscal year 2024?
+    sql: |
+      SELECT ROUND(SUM(f.sold_quantity), 3) AS units_sold
+      FROM ${fact_sales} f JOIN ${dim_date} d ON f.invoice_date = d.date
+      WHERE d.fiscal_year = 2024

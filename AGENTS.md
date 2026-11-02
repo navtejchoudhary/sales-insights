@@ -27,7 +27,7 @@ deleted and this repo plus `workspace_export/` are the record.
 | Insights, forecast, alerts | Daily findings table, seasonal forecast, 3 SQL alerts (revenue drop, stock-outs) |
 | Weekly deck | python-pptx deck with native charts |
 | Access | 3 account groups (`sales_team`, `stock_team`, `management`), read-only grants on gold only |
-| Real data (from 28 Oct) | In progress: input contract `docs/sap_input_contract.md`; area `client` (catalog `client_dev`, owner only) runs bronze, silver, gold, reconciliation and the sales KPIs on SAP-shaped dummy data; job `client_pipeline` (manual) and dashboard Sales (SAP data); `docs/playbooks/run_the_client_area.md`. 30 Oct: the one-time copy (`client_copy`, `docs/playbooks/copy_the_client_data.md`) is done and the real data is loaded (company 2010, Jan 2024 - Dec 2025, whole months; every check green). Next: matching the client's QuickSight numbers and sign-off |
+| Real data (from 28 Oct) | In progress: input contract `docs/sap_input_contract.md`; area `client` (catalog `client_dev`, owner only) runs bronze, silver, gold, reconciliation and the sales KPIs on SAP-shaped dummy data; job `client_pipeline` (manual) and dashboard Sales (SAP data); `docs/playbooks/run_the_client_area.md`. 30 Oct: the one-time copy (`client_copy`, `docs/playbooks/copy_the_client_data.md`) is done and the real data is loaded (company 2010, Jan 2024 - Dec 2025, whole months; every check green). 2 Nov: reconciled with the client's own billing table to the cent (Oct-Dec 2025); Genie agent "Sales (SAP data)" prepared (`genie/client/`, answers never in git). Next: Genie setup in the workspace, QuickSight figures, sign-off |
 | Not built | Agent Bricks Supervisor (not available on the workspace), a production target |
 
 ## How data flows
@@ -62,7 +62,7 @@ generator (plain Python) -> staging/ -> drip -> landing/ -> bronze -> silver -> 
 | `sql/metric_views/*.yaml` | Every KPI defined ONCE; `sql/kpis/` holds the readable SQL twin |
 | `sql/setup/` | Catalog setup and `permissions.sql` (grants) |
 | `dashboards/<name>.yaml` | Dashboard source; `<name>.lvdash.json` is GENERATED from it |
-| `genie/`, `genie/inventory/`, `genie/sales_and_stock/` | Per agent: `space.yaml` (instructions), `benchmarks.yaml` (questions + true SQL) |
+| `genie/`, `genie/inventory/`, `genie/sales_and_stock/`, `genie/client/` | Per agent: `space.yaml` (instructions), `benchmarks.yaml` (questions + true SQL); `genie/client/` = the SAP data, its answer key only in `output/` |
 | `databricks.yml`, `bundle/` | Asset Bundle: jobs, dashboards, alerts; `bundle/run.py` is the job entry point |
 | `workspace_export/` | Genie agents and dashboards as exported from the workspace before deletion (no IDs, URLs or e-mails) |
 | `docs/` | Design docs, decisions log, playbooks (`docs/README.md` lists them) |

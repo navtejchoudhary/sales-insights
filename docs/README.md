@@ -47,4 +47,4 @@ says which doc answers which question. "Generated" docs are rewritten by code; e
 | [day15_checklist.md](day15_checklist.md) | Go / no-go results of the Databricks features tested on 15 Oct |
 
 Genie agents have their own setup notes: `genie/README.md`, `genie/inventory/README.md`,
-`genie/sales_and_stock/README.md`.
+`genie/sales_and_stock/README.md`, `genie/client/README.md` (the SAP data).

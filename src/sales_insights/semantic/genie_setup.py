@@ -3,6 +3,7 @@
     uv run python -m sales_insights.semantic.genie_setup --profile dev                      # Sales agent
     uv run python -m sales_insights.semantic.genie_setup --profile dev --genie inventory    # Stock agent
     uv run python -m sales_insights.semantic.genie_setup --profile dev --genie sales_and_stock
+    uv run python -m sales_insights.semantic.genie_setup --profile dev --genie client    # SAP data (client_dev)
 
 Reads the agent's space.yaml, trusted_queries.yaml (sales only) and benchmarks.yaml (genie/ for sales,
 genie/inventory/, genie/sales_and_stock/; no Spark needed) and writes:
@@ -61,8 +62,14 @@ def trusted_queries(path: Path = GENIE / "trusted_queries.yaml") -> list[Trusted
     return [TrustedQuery(**q) for q in raw]
 
 
-def table_names(cfg: Config) -> dict[str, str]:
-    """Every gold object any agent uses: sales objects in the sales catalog, inventory ones in the inventory catalog."""
+def table_names(cfg: Config, agent: ak.GenieAgent | None = None) -> dict[str, str]:
+    """Every gold object any agent uses: sales objects in the sales catalog, inventory ones in the inventory catalog.
+
+    An agent whose area holds its own sales-shaped gold model (client = SAP billing data) gets that area's tables.
+    """
+    if agent is not None and agent.own_gold:
+        own = cfg.for_area(agent.area)
+        return {t: own.table("gold", t) for t in GOLD_OBJECTS}
     sales = cfg.for_area("sales")
     names = {t: sales.table("gold", t) for t in GOLD_OBJECTS}
     if "inventory" in sales.area_names():
@@ -95,7 +102,7 @@ def benchmarks_file(agent: ak.GenieAgent, stem: str = "genie_benchmarks", ext: s
 
 
 def sheet(cfg: Config, as_of: date | None = None, agent: ak.GenieAgent = ak.SPACES["sales"]) -> tuple[str, list[dict]]:
-    sp, tables, questions = space(agent.folder / "space.yaml"), table_names(cfg), ak.load(agent.benchmarks)
+    sp, tables, questions = space(agent.folder / "space.yaml"), table_names(cfg, agent), ak.load(agent.benchmarks)
     tqs = trusted_queries(agent.folder / "trusted_queries.yaml")
     by_id = {q.id: q for q in questions}
     taught = {e["from_benchmark"] for e in sp["example_queries"]}
