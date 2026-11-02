@@ -44,7 +44,8 @@ generator (plain Python) -> staging/ -> drip -> landing/ -> bronze -> silver -> 
 - **silver:** FULL REBUILD every run: newest load per file, dedupe, validate (bad rows to
   `silver.quarantine` with reasons), `try_cast`, enrich from masters.
 - **gold:** FULL REBUILD. Star schemas; every table and column described in `pipeline/gold_model.py` and
-  `pipeline/inventory_model.py` (Genie relies on these comments).
+  `pipeline/inventory_model.py` (Genie relies on these comments); the client area's SAP data carries its own
+  descriptions (`pipeline/client_model.py`: same columns, true for the real data).
 - **checks:** gold vs the source manifests' control totals per invoice date (0.1%), stock roll-forward,
   stock vs sales cross-check. A failed check stops the run before anything is published.
 
@@ -93,7 +94,7 @@ Genie (setup, benchmark sync, failure export) and deployment steps: `docs/playbo
 3. **Databricks-only features** (metric views, Genie, AI functions, alerts, volumes) stay in thin wrappers.
 4. **One definition per KPI:** change a formula in the metric view YAML AND its `sql/kpis` twin;
    `semantic/kpis.py` proves they agree.
-5. **Generated files are never edited by hand:** `dashboards/*.lvdash.json`, `docs/gold_model.md`,
+5. **Generated files are never edited by hand:** `dashboards/*.lvdash.json`, `docs/*gold_model.md`,
    `genie/answer_key.csv`. Edit the source, regenerate, commit both.
 6. **Security (the repo is public):** no real company data (the reference SAP file stays in git-ignored
    `reference/`); no tokens, `.databrickscfg`, workspace URLs, subscription IDs or e-mails in the repo.

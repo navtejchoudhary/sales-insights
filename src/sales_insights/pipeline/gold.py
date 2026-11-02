@@ -256,14 +256,17 @@ def build_dim_date(spark: SparkSession, first: date, last: date, business: dict,
 # ---------------------------------------------------------------------------
 
 
-def write(lake: Lake, df: DataFrame, table: str) -> None:
-    lake.overwrite(gm.with_comments(df, table), "gold", table)
-    lake.describe("gold", table, gm.TABLES[table]["description"], gm.TABLES[table]["columns"])
+def write(lake: Lake, df: DataFrame, table: str, tables: dict[str, dict] | None = None) -> None:
+    """`tables`: the area's descriptions (gold_model.tables_for); default: the sales gold model."""
+    model = tables or gm.TABLES
+    lake.overwrite(gm.with_comments(df, table, model), "gold", table)
+    lake.describe("gold", table, model[table]["description"], model[table]["columns"])
 
 
 def run_gold(spark: SparkSession, cfg: Config, lake: Lake | None = None) -> GoldRun:
     lake = lake or Lake(spark, cfg)
     run = GoldRun()
+    model = gm.tables_for(cfg.area)
     products = lake.read("silver", "products")
 
     builds = {
@@ -274,11 +277,11 @@ def run_gold(spark: SparkSession, cfg: Config, lake: Lake | None = None) -> Gold
         "dim_channel": build_dim_channel(lake.read("silver", "distribution_channels")),
     }
     for table, df in builds.items():
-        write(lake, df, table)
+        write(lake, df, table, model)
 
     first, last = lake.read("gold", "fact_sales").agg(F.min("invoice_date"), F.max("invoice_date")).collect()[0]
     m0 = int(cfg.business.get("fiscal_year_start_month", 4))
-    write(lake, build_dim_date(spark, *fiscal_bounds(first, last, m0), cfg.business, as_of=last), "dim_date")
+    write(lake, build_dim_date(spark, *fiscal_bounds(first, last, m0), cfg.business, as_of=last), "dim_date", model)
 
     for table in gm.TABLES:
         run.rows[table] = lake.read("gold", table).count()
