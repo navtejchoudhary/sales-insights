@@ -240,6 +240,16 @@ def test_a_failed_file_check_stops_every_run_until_the_file_is_reloaded(spark, c
     assert again.loaded == [] and again.reloaded_changed == []
     assert again.dq_failures == failed.dq_failures  # still failing: a FAIL stays a FAIL
 
-    customers.write_text(original)  # the source fixes the file: it is loaded again and passes
+    customers.write_text(original)  # the original content was loaded before: bronze skips it (exactly-once)
+    restored = b.run_bronze(spark, cfg, landing=landing, lake=lake)
+    assert restored.loaded == [] and restored.reloaded_changed == [] and restored.dq_failures >= 1
+
+    # The deliberate reload (playbook "Reload one file"): drop the file's loads and its log entry, then run
+    for layer, table, column in (
+        ("bronze", "masters_customers", "_source_file"),
+        ("ops", "processed_files", "file_path"),
+    ):
+        spark.sql(f"DELETE FROM {lake.sql_name(layer, table)} WHERE {column} = 'masters/customers.csv'")
     fixed = b.run_bronze(spark, cfg, landing=landing, lake=lake)
-    assert fixed.reloaded_changed == ["masters/customers.csv"] and fixed.dq_failures == 0
+    assert fixed.loaded == ["masters/customers.csv"] and fixed.dq_failures == 0
+    assert lake.read("bronze", "masters_customers").count() == 612
