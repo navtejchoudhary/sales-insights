@@ -12,7 +12,7 @@ WITH invoice_flags AS (
   FROM ${fact_sales} f
   JOIN ${dim_date} d ON f.invoice_date = d.date
   LEFT JOIN ${dim_product} p ON f.product_id = p.product_id
-  WHERE f.invoice_type = 'ZAOR' AND NOT f.is_cancelled
+  WHERE f.is_invoice AND NOT f.is_cancelled
   GROUP BY d.month_start_date, f.invoice_number
 )
 SELECT

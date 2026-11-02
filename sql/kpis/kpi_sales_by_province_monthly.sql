@@ -5,10 +5,10 @@ SELECT
   c.province,
   SUM(f.net_revenue_amount)                            AS net_revenue,
   SUM(f.quantity)                                      AS units,
-  COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.invoice_number END) AS invoice_count,
-  COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END)    AS active_customers,
+  COUNT(DISTINCT CASE WHEN f.is_invoice AND NOT f.is_cancelled THEN f.invoice_number END) AS invoice_count,
+  COUNT(DISTINCT CASE WHEN f.is_invoice AND NOT f.is_cancelled THEN f.customer_id END)    AS active_customers,
   ROUND(SUM(f.net_revenue_amount) / NULLIF(
-    COUNT(DISTINCT CASE WHEN f.invoice_type = 'ZAOR' AND NOT f.is_cancelled THEN f.customer_id END), 0), 2)
+    COUNT(DISTINCT CASE WHEN f.is_invoice AND NOT f.is_cancelled THEN f.customer_id END), 0), 2)
                                                        AS revenue_per_active_customer,
   ROUND(SUM(f.margin_amount) / NULLIF(SUM(f.net_revenue_amount), 0) * 100, 2) AS gross_margin_pct
 FROM ${fact_sales} f

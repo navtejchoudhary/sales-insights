@@ -224,9 +224,9 @@ measures:
     comment: Cases sold minus returned and cancelled.
     synonyms: [quantity, volume, cases]
   - name: invoice_count
-    expr: COUNT(DISTINCT CASE WHEN source.invoice_type = 'ZAOR' AND NOT source.is_cancelled THEN source.invoice_number END)
+    expr: COUNT(DISTINCT CASE WHEN source.is_invoice AND NOT source.is_cancelled THEN source.invoice_number END)
     display_name: Invoices
-    comment: Number of paid invoices that were not cancelled (free-of-charge deliveries and credit notes excluded).
+    comment: Number of paid invoices (is_invoice) that were not cancelled (free-of-charge deliveries and credit notes excluded).
     synonyms: [orders, number of invoices]
   - name: average_invoice_value
     expr: MEASURE(net_revenue) / NULLIF(MEASURE(invoice_count), 0)
@@ -234,7 +234,7 @@ measures:
     comment: Net revenue divided by invoices.
     synonyms: [average order value, AOV]
   - name: active_customers
-    expr: COUNT(DISTINCT CASE WHEN source.invoice_type = 'ZAOR' AND NOT source.is_cancelled THEN source.customer_id END)
+    expr: COUNT(DISTINCT CASE WHEN source.is_invoice AND NOT source.is_cancelled THEN source.customer_id END)
     display_name: Active customers
     comment: Customers with at least one paid, non-cancelled invoice.
     synonyms: [buying customers]
