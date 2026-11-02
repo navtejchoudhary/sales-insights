@@ -592,6 +592,15 @@ def test_no_personal_data_reaches_silver_or_gold(world):
         assert not [s for s in samples if s in text], table
 
 
+def test_gold_carries_the_client_descriptions(world):
+    """The client's gold says what is true for the SAP data (client_model), not the sales demo's examples."""
+    from sales_insights.pipeline import client_model as cm
+
+    for table in ("fact_sales", "dim_product"):
+        fields = {f.name: f.metadata.get("comment") for f in world["lake"].read("gold", table).schema.fields}
+        assert fields == cm.TABLES[table]["columns"], table
+
+
 def test_the_client_area_uses_the_sales_kpis_and_metric_view():
     from sales_insights.semantic import kpis as k
 

@@ -36,6 +36,7 @@ says which doc answers which question. "Generated" docs are rewritten by code; e
 |---|---|
 | [gold_model.md](gold_model.md) | `uv run python -m sales_insights.pipeline.gold_model > docs/gold_model.md` |
 | [inventory_gold_model.md](inventory_gold_model.md) | `uv run python -m sales_insights.pipeline.inventory_model > docs/inventory_gold_model.md` |
+| [client_gold_model.md](client_gold_model.md) | `uv run python -m sales_insights.pipeline.client_model > docs/client_gold_model.md` |
 | [master_data.md](master_data.md) | Master data generator (`generator/masters.py`) |
 
 ## History (kept for the record, not current instructions)

@@ -160,6 +160,15 @@ TABLES: dict[str, dict] = {
 }
 
 
+def tables_for(area: str) -> dict[str, dict]:
+    """The descriptions an area's gold tables carry: the client area's SAP data has its own (client_model.py)."""
+    if area == "client":
+        from sales_insights.pipeline import client_model  # lazy: client_model builds on this module
+
+        return client_model.TABLES
+    return TABLES
+
+
 def columns(table: str, tables: dict[str, dict] | None = None) -> list[str]:
     return list((tables or TABLES)[table]["columns"])
 
