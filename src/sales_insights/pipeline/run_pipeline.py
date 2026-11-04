@@ -57,13 +57,17 @@ from sales_insights.generator import inventory as inv
 from sales_insights.generator import masters as m
 from sales_insights.generator import sap
 from sales_insights.generator import simulate as s
+from sales_insights.pipeline.external_source import ensure_external_source
 
 STEPS = ["drip", "bronze", "silver", "gold", "reconcile", "kpis", "answer_key", "insights"]
 INVENTORY_STEPS = ["drip", "bronze", "silver", "gold", "checks", "kpis", "answer_key", "insights"]
 CLIENT_STEPS = ["bronze", "silver", "gold", "reconcile", "kpis"]  # kpis: the sales KPI SQL = the metric view
+# S3 test: the sales files read from S3. The sales data steps only: no KPI views, Genie answer key or insights,
+# because those read or publish the sales area's own tables (sales_dev).
+S3DEMO_STEPS = ["drip", "bronze", "silver", "gold", "reconcile"]
 # Business areas this command can run (config.yaml `areas:`). Sales is the default and runs exactly as before.
 # Inventory reads the sales gold (shared dimensions, cross-area check), so run sales first each day.
-AREA_STEPS = {"sales": STEPS, "inventory": INVENTORY_STEPS, "client": CLIENT_STEPS}
+AREA_STEPS = {"sales": STEPS, "inventory": INVENTORY_STEPS, "client": CLIENT_STEPS, "s3demo": S3DEMO_STEPS}
 
 
 class StepFailed(Exception):
@@ -100,8 +104,14 @@ def day_range(first: date, last: date) -> list[date]:
 # ---------------------------------------------------------------------------
 
 
-def ensure_source(cfg: Config, staging: Path, landing: Path, until: date) -> list[str]:
-    """Generate any missing source files up to `until` and do the one-time initial delivery. Idempotent."""
+def ensure_source(cfg: Config, staging: Path, landing: Path, until: date, first: date | None = None) -> list[str]:
+    """Generate any missing source files up to `until` and do the one-time initial delivery. Idempotent.
+
+    An area with `source: external` (s3demo) never generates: it stops if a delivered file is missing.
+    """
+    if cfg.area_setting("source") == "external":
+        start = first or date.fromisoformat(cfg.business["simulation_start"])
+        return ensure_external_source(staging, landing, start, until)
     if cfg.area == "inventory":
         return ensure_inventory_source(cfg, staging, landing, until)
     if cfg.area == "client":
@@ -363,7 +373,10 @@ def _sap_reconcile(ctx: dict, d: date) -> str:
 CLIENT_STEP_FUNCS: dict[str, Callable[[dict, date], str]] = {
     "bronze": _bronze, "silver": _sap_silver, "gold": _gold, "reconcile": _sap_reconcile, "kpis": _kpis,
 }  # fmt: skip
-AREA_STEP_FUNCS = {"sales": STEP_FUNCS, "inventory": INVENTORY_STEP_FUNCS, "client": CLIENT_STEP_FUNCS}
+S3DEMO_STEP_FUNCS = {step: STEP_FUNCS[step] for step in S3DEMO_STEPS}  # the sales functions, unchanged
+AREA_STEP_FUNCS = {
+    "sales": STEP_FUNCS, "inventory": INVENTORY_STEP_FUNCS, "client": CLIENT_STEP_FUNCS, "s3demo": S3DEMO_STEP_FUNCS,
+}  # fmt: skip
 
 
 def run_day(ctx: dict, d: date, steps: list[str], echo: Callable[[str], None] = print) -> DayResult:
@@ -404,7 +417,7 @@ def run_range(
     sales_lake: Lake | None = None,
     stock_lake: Lake | None = None,
 ) -> list[DayResult]:
-    for note in ensure_source(cfg, staging, landing, max(days)):
+    for note in ensure_source(cfg, staging, landing, max(days), first=min(days)):
         echo(f"  {note}")
     area_steps = AREA_STEPS[cfg.area]
     ctx = {

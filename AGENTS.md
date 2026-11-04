@@ -28,6 +28,7 @@ deleted and this repo plus `workspace_export/` are the record.
 | Weekly deck | python-pptx deck with native charts |
 | Access | 3 account groups (`sales_team`, `stock_team`, `management`), read-only grants on gold only |
 | Real data (from 28 Oct) | In progress: input contract `docs/sap_input_contract.md`; area `client` (catalog `client_dev`, owner only) runs bronze, silver, gold, reconciliation and the sales KPIs on SAP-shaped dummy data; job `client_pipeline` (manual) and dashboard Sales (SAP data); `docs/playbooks/run_the_client_area.md`. 30 Oct: the one-time copy (`client_copy`, `docs/playbooks/copy_the_client_data.md`) is done and the real data is loaded (company 2010, Jan 2024 - Dec 2025, whole months; every check green). 2 Nov: reconciled with the client's own billing table to the cent (Oct-Dec 2025); Genie agent "Sales (SAP data)" prepared (`genie/client/`, answers never in git). Next: Genie setup in the workspace, QuickSight figures, sign-off |
+| S3 input (4 Nov) | Area `s3demo` (catalog `s3demo_dev`, owner only): the sales demo files read from an AWS S3 bucket, read-only (storage credential + external location + external volume `raw.source`), through drip, bronze, silver, gold and reconcile; `source: external` never generates data; job `s3demo_pipeline` (manual); `docs/playbooks/run_the_s3demo_area.md` |
 | Not built | Agent Bricks Supervisor (not available on the workspace), a production target |
 
 ## How data flows

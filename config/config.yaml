@@ -92,6 +92,26 @@ areas:
         date_to: "2025-12-31"
         currency: LKR
         excluded_types: []           # to confirm with the business
+  # S3 test (docs/playbooks/run_the_s3demo_area.md): the sales demo files (masters, history, daily drops, with
+  # their planted dirt), uploaded once to an AWS S3 bucket and read from there, read-only. Same files and steps
+  # as sales (drip, bronze, silver, gold, reconcile), own catalog and folders, so it never touches sales_dev.
+  # `source: external` = the files come from outside: nothing is ever generated, the run stops if any is missing.
+  # On Databricks, staging is an EXTERNAL volume on the S3 folder (created by hand, sql/setup/s3demo_dev.sql);
+  # the bucket name is set only there, in the workspace, never in git.
+  s3demo:
+    file_targets: {orders: orders, changes: changes, invoices: invoices_history}
+    source: external
+    local:
+      staging_path: staging/s3demo
+      landing_path: landing/s3demo
+      lake_path: lake/s3demo
+      processed_files_log: lake/s3demo/ops/_processed_files
+      output_path: output/s3demo
+    dev:
+      staging_path: /Volumes/s3demo_dev/raw/source    # external volume on the S3 folder, read-only
+      landing_path: /Volumes/s3demo_dev/raw/landing
+      catalog: s3demo_dev
+      output_path: /Volumes/s3demo_dev/raw/output
 
 # Business settings shared by all profiles
 business:

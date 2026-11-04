@@ -304,3 +304,37 @@ resources:
               - pandas>=3.0.6
               - pyyaml>=6.0.3
               - python-pptx==1.0.2
+
+    # S3 test (docs/playbooks/run_the_s3demo_area.md): the sales demo files, read from an AWS S3 bucket through the
+    # external volume s3demo_dev.raw.source. NO schedule: it runs only when started by hand
+    #   databricks bundle run -t dev s3demo_pipeline --profile sales-dev
+    # It never generates data (source: external) and stops if a file is missing. Setup first: sql/setup/s3demo_dev.sql.
+    s3demo_pipeline:
+      name: s3demo-pipeline
+      performance_target: STANDARD  # cost: cheaper serverless; a few minutes slower start is fine
+      description: S3 test - the sales demo files from S3 through drip, bronze, silver, gold and reconciliation into s3demo_dev. Manual runs only.
+      max_concurrent_runs: 1
+      timeout_seconds: 3600  # cost guard: stopped after 1 hour
+      email_notifications:
+        on_failure:
+          - ${workspace.current_user.userName}
+      parameters:
+        - name: data_until
+          default: "2026-10-29"  # the last day uploaded to S3
+      tasks:
+        - task_key: pipeline
+          environment_key: default
+          max_retries: 0  # a failed check must stop the run, not start it again
+          disable_auto_optimization: true  # serverless would otherwise retry a failed task by itself
+          spark_python_task:
+            python_file: ../run.py
+            parameters: ["pipeline", "--profile", "dev", "--area", "s3demo", "--from", "2026-10-01", "--to", "{{job.parameters.data_until}}", "--downstream", "last", "--no-deck"]
+      environments:
+        - environment_key: default
+          spec:
+            environment_version: "6"  # serverless environment 6: Python 3.12
+            dependencies:
+              - numpy>=2.5.3
+              - pandas>=3.0.6
+              - pyyaml>=6.0.3
+              - python-pptx==1.0.2
