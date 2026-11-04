@@ -118,17 +118,22 @@ def _job():
     return jobs["s3demo_pipeline"]
 
 
-def test_s3demo_job_runs_by_hand_only_and_never_retries():
+def test_s3demo_job_runs_by_hand_only_never_retries_and_publishes_after_the_checks():
     job = _job()
     assert "schedule" not in job and "trigger" not in job  # never runs (or bills) on its own
     assert job["parameters"] == [{"name": "data_until", "default": "2026-10-29"}]  # the last day on S3
-    (task,) = job["tasks"]
-    assert task["max_retries"] == 0 and task["disable_auto_optimization"] is True
-    p = task["spark_python_task"]["parameters"]
+    pipeline, publish = job["tasks"]
+    for task in (pipeline, publish):
+        assert task["max_retries"] == 0 and task["disable_auto_optimization"] is True, task["task_key"]
+    p = pipeline["spark_python_task"]["parameters"]
     assert p[:3] == ["pipeline", "--profile", "dev"]
     assert p[p.index("--area") + 1] == "s3demo"
     assert (p[p.index("--from") + 1], p[p.index("--to") + 1]) == ("2026-10-01", "{{job.parameters.data_until}}")
     assert p[p.index("--downstream") + 1] == "last"
+    assert "--no-deck" not in p  # the insights step writes the weekly deck
+    q = publish["spark_python_task"]["parameters"]
+    assert q[0] == "kpis" and q[q.index("--area") + 1] == "s3demo"
+    assert publish["depends_on"] == [{"task_key": "pipeline"}] and "run_if" not in publish  # only after a pass
 
 
 def test_s3demo_setup_sql_matches_the_config_grants_nothing_and_holds_no_bucket():
@@ -158,7 +163,7 @@ def test_s3demo_runs_the_sales_data_steps_unchanged():
     pytest.importorskip("pyspark")
     from sales_insights.pipeline import run_pipeline as rp
 
-    assert rp.AREA_STEPS["s3demo"] == ["drip", "bronze", "silver", "gold", "reconcile"]
+    assert rp.AREA_STEPS["s3demo"] == ["drip", "bronze", "silver", "gold", "reconcile", "kpis", "insights"]
     for step in rp.AREA_STEPS["s3demo"]:
         assert rp.AREA_STEP_FUNCS["s3demo"][step] is rp.STEP_FUNCS[step], step  # the sales functions themselves
     assert rp.AREA_STEP_FUNCS["sales"] is rp.STEP_FUNCS  # sales unchanged
@@ -176,3 +181,45 @@ def test_ensure_source_never_generates_for_an_external_area(tmp_path):
     assert rp.ensure_source(cfg, staging, tmp_path / "landing", LAST, first=FIRST) == [
         "initial delivery of master data and history"
     ]
+
+
+# ---------------------------------------------------------------------------
+# KPI layer, dashboard and Genie agent: the sales ones, on s3demo_dev only
+# ---------------------------------------------------------------------------
+
+
+def test_s3demo_publishes_exactly_the_sales_kpis():
+    pytest.importorskip("pyspark")
+    from sales_insights.semantic import kpis as k
+
+    s3, sales = k.AREAS["s3demo"], k.AREAS["sales"]
+    assert (s3.folder, s3.metric_views, s3.agreements, s3.own_gold) == (
+        sales.folder, sales.metric_views, sales.agreements, True)  # fmt: skip
+
+
+def test_s3demo_dashboard_is_the_sales_dashboard_on_s3demo_dev_for_the_owner_only():
+    from sales_insights.semantic import dashboards as db
+
+    spec, sales = db.load("s3demo"), db.load("sales")
+    assert spec["area"] == "s3demo" and spec["audience"] == []
+    assert spec["filters"] == sales["filters"] and spec["pages"][1:] == sales["pages"][1:]
+    assert spec["datasets"] == {k: {"same_as": f"sales.{k}"} for k in sales["datasets"]}
+    board = (ROOT / "dashboards" / "s3demo.lvdash.json").read_text()
+    catalogs = {m.split(".")[0] for m in __import__("re").findall(r"\b\w+_dev\.\w+\.\w+", board)}
+    assert catalogs == {"s3demo_dev"}, catalogs  # never sales_dev, inventory_dev or client_dev
+    bundle = yaml.safe_load((ROOT / "bundle" / "resources" / "dashboards.yml").read_text())["resources"]
+    assert "permissions" not in bundle["dashboards"]["s3demo_dashboard"]
+    for name in ("sales", "stock", "ceo", "client"):
+        assert "s3demo_dev." not in (ROOT / "dashboards" / f"{name}.lvdash.json").read_text(), name
+
+
+def test_s3demo_genie_agent_asks_the_sales_questions_on_s3demo_dev():
+    from sales_insights.semantic import answer_key as ak
+    from sales_insights.semantic import genie_setup as gs
+
+    agent, sales = ak.SPACES["s3demo"], ak.SPACES["sales"]
+    assert agent.folder == sales.folder and agent.benchmarks == sales.benchmarks  # the same questions
+    assert agent.answer_key != sales.answer_key  # never overwrites genie/answer_key.csv
+    tables = gs.table_names(load_config("dev"), agent)
+    assert tables and all(t.startswith("s3demo_dev.gold.") for t in tables.values()), tables
+    assert gs.benchmarks_file(agent) == "genie_benchmarks_s3demo.csv"

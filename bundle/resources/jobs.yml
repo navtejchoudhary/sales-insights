@@ -309,10 +309,11 @@ resources:
     # external volume s3demo_dev.raw.source. NO schedule: it runs only when started by hand
     #   databricks bundle run -t dev s3demo_pipeline --profile sales-dev
     # It never generates data (source: external) and stops if a file is missing. Setup first: sql/setup/s3demo_dev.sql.
+    # The weekly deck goes to /Volumes/s3demo_dev/raw/output/weekly_deck_<data date>.pptx.
     s3demo_pipeline:
       name: s3demo-pipeline
       performance_target: STANDARD  # cost: cheaper serverless; a few minutes slower start is fine
-      description: S3 test - the sales demo files from S3 through drip, bronze, silver, gold and reconciliation into s3demo_dev. Manual runs only.
+      description: S3 test - the sales demo files from S3 through drip, bronze, silver, gold, reconciliation, KPI check and insights (+ weekly deck) into s3demo_dev, then publishes the KPI views and the metric view s3demo_dev.gold.sales_metrics. Manual runs only.
       max_concurrent_runs: 1
       timeout_seconds: 3600  # cost guard: stopped after 1 hour
       email_notifications:
@@ -328,7 +329,15 @@ resources:
           disable_auto_optimization: true  # serverless would otherwise retry a failed task by itself
           spark_python_task:
             python_file: ../run.py
-            parameters: ["pipeline", "--profile", "dev", "--area", "s3demo", "--from", "2026-10-01", "--to", "{{job.parameters.data_until}}", "--downstream", "last", "--no-deck"]
+            parameters: ["pipeline", "--profile", "dev", "--area", "s3demo", "--from", "2026-10-01", "--to", "{{job.parameters.data_until}}", "--downstream", "last"]
+        - task_key: publish
+          depends_on: [{task_key: pipeline}]  # only after every check passed
+          environment_key: default
+          max_retries: 0
+          disable_auto_optimization: true
+          spark_python_task:
+            python_file: ../run.py
+            parameters: ["kpis", "--profile", "dev", "--area", "s3demo"]
       environments:
         - environment_key: default
           spec:

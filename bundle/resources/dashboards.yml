@@ -48,3 +48,10 @@ resources:
       file_path: ../../dashboards/client.lvdash.json
       warehouse_id: ${var.warehouse_id}
       embed_credentials: false
+
+    # The S3 test (the sales demo files read from AWS S3, catalog s3demo_dev): no `permissions`, owner only.
+    s3demo_dashboard:
+      display_name: Sales (S3 data)
+      file_path: ../../dashboards/s3demo.lvdash.json
+      warehouse_id: ${var.warehouse_id}
+      embed_credentials: false

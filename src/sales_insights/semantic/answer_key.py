@@ -76,6 +76,11 @@ SPACES = {
         own_gold=True,
         private=True,
     ),
+    # The S3 test (s3demo_dev): the Sales agent's instructions and questions on the same files, read from S3.
+    # private only so its answer key goes to output/ and never overwrites the Sales agent's genie/answer_key.csv
+    "s3demo": GenieAgent(
+        "s3demo", GENIE, "s3demo", "SELECT MAX(invoice_date) AS d FROM ${fact_sales}", own_gold=True, private=True
+    ),
 }
 
 
