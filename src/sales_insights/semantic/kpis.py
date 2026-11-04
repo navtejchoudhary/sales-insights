@@ -163,6 +163,8 @@ AREAS = {
     ),
     # The same KPI SQL and metric view as sales (one definition per KPI), published in the client catalog
     "client": AreaSemantic(KPI_SQL, ("sales_metrics",), tuple(AGREEMENTS), own_gold=True),
+    # The S3 test: the sales demo files read from S3, so exactly the sales KPIs, published in s3demo_dev
+    "s3demo": AreaSemantic(KPI_SQL, ("sales_metrics",), tuple(AGREEMENTS), own_gold=True),
 }
 
 

@@ -62,9 +62,10 @@ from sales_insights.pipeline.external_source import ensure_external_source
 STEPS = ["drip", "bronze", "silver", "gold", "reconcile", "kpis", "answer_key", "insights"]
 INVENTORY_STEPS = ["drip", "bronze", "silver", "gold", "checks", "kpis", "answer_key", "insights"]
 CLIENT_STEPS = ["bronze", "silver", "gold", "reconcile", "kpis"]  # kpis: the sales KPI SQL = the metric view
-# S3 test: the sales files read from S3. The sales data steps only: no KPI views, Genie answer key or insights,
-# because those read or publish the sales area's own tables (sales_dev).
-S3DEMO_STEPS = ["drip", "bronze", "silver", "gold", "reconcile"]
+# S3 test: the sales files read from S3, through the sales steps themselves, writing only to s3demo_dev.
+# kpis checks the KPI SQL against the metric view; insights writes its findings, forecast and the weekly deck.
+# No answer_key: the Genie answer key of the sales files is the Sales agent's (genie/answer_key.csv).
+S3DEMO_STEPS = ["drip", "bronze", "silver", "gold", "reconcile", "kpis", "insights"]
 # Business areas this command can run (config.yaml `areas:`). Sales is the default and runs exactly as before.
 # Inventory reads the sales gold (shared dimensions, cross-area check), so run sales first each day.
 AREA_STEPS = {"sales": STEPS, "inventory": INVENTORY_STEPS, "client": CLIENT_STEPS, "s3demo": S3DEMO_STEPS}

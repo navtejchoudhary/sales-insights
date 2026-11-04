@@ -3,11 +3,12 @@
     uv run python -m sales_insights.semantic.dashboards              # rewrite dashboards/*.lvdash.json (dev names)
     databricks bundle deploy -t dev                                  # creates / updates the 3 dashboards
 
-Four dashboards, one per audience (docs/access.md):
+Five dashboards, one per audience (docs/access.md):
     sales.yaml   Sales (3 pages)          sales_team, management
     stock.yaml   Stock (1 page)           stock_team, management
     ceo.yaml     Company overview (1 page) management
     client.yaml  Sales (SAP data) (2 pages) the owner only (the client area: SAP billing data)
+    s3demo.yaml  Sales (S3 data) (3 pages)  the owner only (the Sales dashboard on the files read from S3)
 
 `area: client` in a dashboard YAML: the sales-shaped tables and the sales metric view are read from that
 area's catalog instead of the sales one (same placeholders, same metric view definition).
@@ -55,7 +56,7 @@ from sales_insights.common.config import REPO_ROOT, Config
 from sales_insights.semantic import metric_views as mvs
 
 DASHBOARDS = REPO_ROOT / "dashboards"
-NAMES = ["sales", "stock", "ceo", "client"]
+NAMES = ["sales", "stock", "ceo", "client", "s3demo"]
 GRID_WIDTH = 6
 METRIC_VIEWS = {"sales_metrics": "sales", "inventory_metrics": "inventory", "sales_and_stock": "inventory"}
 # Non-gold-model tables the datasets read: placeholder -> (area, layer, table)

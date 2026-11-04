@@ -1,0 +1,212 @@
+# Sales (S3 data) dashboard (AI/BI): the Sales dashboard on the sales demo files read from AWS S3 (the s3demo
+# area, docs/playbooks/run_the_s3demo_area.md). Source of dashboards/s3demo.lvdash.json, which the Asset Bundle
+# deploys (bundle/resources/dashboards.yml), shared with nobody but its owner. After editing this file:
+#   uv run python -m sales_insights.semantic.dashboards        # rewrites dashboards/*.lvdash.json
+#
+# `area: s3demo`: ${fact_sales}, ${dim_*}, the sales_metrics metric view, the insights, forecast and data checks
+# are read from the s3demo catalog (s3demo_dev.*), so every dataset is `same_as: sales.<dataset>` and the pages
+# are the Sales dashboard's: the same KPIs on the same files, delivered through S3. Change the Sales dashboard,
+# then copy its pages here.
+
+title: Sales (S3 data)
+area: s3demo
+audience: []  # the owner only (no group grants on the s3demo catalog; sql/setup/s3demo_dev.sql)
+
+filters:
+  - param: province
+    title: Province
+    description: Province of the customer
+    values: province_values
+    fields: {sales_metrics: province}
+  - param: product_group
+    title: Product group
+    description: e.g. WEEDICIDE, INSECTICIDE
+    values: product_group_values
+    fields: {sales_metrics: product_group}
+  - param: channel
+    title: Channel
+    description: General Trade, Export Sales or Modern Trade
+    values: channel_values
+    fields: {sales_metrics: channel}
+
+
+datasets:
+  province_values:
+    same_as: sales.province_values
+  product_group_values:
+    same_as: sales.product_group_values
+  channel_values:
+    same_as: sales.channel_values
+  headline_mtd:
+    same_as: sales.headline_mtd
+  revenue_trend:
+    same_as: sales.revenue_trend
+  what_changed:
+    same_as: sales.what_changed
+  trust:
+    same_as: sales.trust
+  province_month:
+    same_as: sales.province_month
+  product_group_month:
+    same_as: sales.product_group_month
+  monthly_by_product_group:
+    same_as: sales.monthly_by_product_group
+  top_products_fytd:
+    same_as: sales.top_products_fytd
+  channel_fytd:
+    same_as: sales.channel_fytd
+  top_customers_fytd:
+    same_as: sales.top_customers_fytd
+  customer_group_month:
+    same_as: sales.customer_group_month
+  returns_by_month:
+    same_as: sales.returns_by_month
+  data_checks:
+    same_as: sales.data_checks
+  dirt_caught:
+    same_as: sales.dirt_caught
+
+pages:
+  - title: How are we doing?
+    widgets:
+      - text: |
+          ## Sales (S3 data): how are we doing?
+          Month to date against the same days last year (never a part month against a whole month).
+          Every number comes from the sales metric view, the same definitions Genie and the alerts use.
+          Filters (top left: Province, Product group, Channel) apply to every chart except the forecast and What changed, which are company-wide.
+        size: [6, 2]
+      - table: {dataset: trust, title: Data status, columns: [{field: status, title: " "}]}
+        size: [6, 3]
+      - counter: {dataset: headline_mtd, value: revenue_mtd, title: Net revenue month to date (LKR), format: compact}
+        size: [2, 3]
+      - counter: {dataset: headline_mtd, value: revenue_change_pct, title: vs same days last year (%)}
+        size: [2, 3]
+      - counter: {dataset: headline_mtd, value: margin_pct_mtd, title: Gross margin month to date (%)}
+        size: [2, 3]
+      - table:
+          dataset: headline_mtd
+          title: Month to date vs the same days last year
+          description: Change is % for amounts and counts, percentage points for rates.
+          columns:
+            - {field: kpi, title: KPI}
+            - {field: this_period, title: Month to date, type: number}
+            - {field: same_days_last_year, title: Same days last year, type: number}
+            - {field: change_vs_ly, title: Change, type: number}
+        size: [3, 6]
+      - table:
+          dataset: what_changed
+          title: What changed (latest daily insights, company-wide)
+          columns:
+            - {field: priority, title: Priority}
+            - {field: type, title: Type}
+            - {field: finding, title: Finding, wide: true}
+        size: [3, 6]
+      - line:
+          dataset: revenue_trend
+          title: Net revenue by month and forecast to March, company total (LKR m)
+          description: Forecast = same month last year x fiscal-year-to-date growth; low/high = the likely range.
+          x: {field: month, title: Month, temporal: month}
+          y: {field: lkr_m, title: LKR m}
+          color: {field: series, title: Series}
+        size: [6, 6]
+
+  - title: Where the money comes from
+    widgets:
+      - text: |
+          ## Where the money comes from
+          Bars: net revenue of the last complete month. Line: change against the same month last year (%).
+        size: [6, 1]
+      - combo:
+          dataset: province_month
+          title: Net revenue by province, last complete month
+          x: {field: province, title: Province}
+          bars: [{field: lkr_m, title: LKR m}]
+          line: [{field: change_pct, title: vs same month last year %}]
+        size: [3, 6]
+      - combo:
+          dataset: product_group_month
+          title: Net revenue by product group, last complete month
+          x: {field: product_group, title: Product group}
+          bars: [{field: lkr_m, title: LKR m}]
+          line: [{field: change_pct, title: vs same month last year %}]
+        size: [3, 6]
+      - bar:
+          dataset: monthly_by_product_group
+          title: Net revenue by month and product group, this and last fiscal year (LKR m)
+          x: {field: month, title: Month, temporal: month}
+          y: {field: lkr_m, title: LKR m}
+          color: {field: product_group, title: Product group}
+        size: [6, 6]
+      - table:
+          dataset: top_products_fytd
+          title: Top 10 products, fiscal year to date
+          columns:
+            - {field: product, title: Product}
+            - {field: product_group, title: Group}
+            - {field: lkr_m, title: LKR m, type: number}
+            - {field: change_pct, title: vs last year %, type: number}
+            - {field: units, title: Units, type: number}
+            - {field: margin_pct, title: Margin %, type: number}
+        size: [4, 6]
+      - bar:
+          dataset: channel_fytd
+          title: Net revenue by channel, fiscal year to date (LKR m)
+          x: {field: channel, title: Channel}
+          y: {field: lkr_m, title: LKR m}
+        size: [2, 6]
+
+  - title: Customers and data trust
+    widgets:
+      - table:
+          dataset: top_customers_fytd
+          title: Top 15 customers, fiscal year to date
+          columns:
+            - {field: customer_name, title: Customer}
+            - {field: customer_group, title: Group}
+            - {field: province, title: Province}
+            - {field: lkr_m, title: LKR m, type: number}
+            - {field: change_pct, title: vs last year %, type: number}
+            - {field: invoices, title: Invoices, type: number}
+        size: [4, 7]
+      - bar:
+          dataset: customer_group_month
+          title: Active customers by customer group, last complete month
+          x: {field: customer_group, title: Customer group}
+          y: {field: active_customers, title: Active customers}
+        size: [2, 7]
+      - line:
+          dataset: returns_by_month
+          title: Returns rate % by month
+          x: {field: month, title: Month, temporal: month}
+          y: {field: returns_rate_pct, title: Returns rate %}
+        size: [3, 5]
+      - line:
+          dataset: returns_by_month
+          title: Gross margin % by month
+          x: {field: month, title: Month, temporal: month}
+          y: {field: margin_pct, title: Gross margin %}
+        size: [3, 5]
+      - text: |
+          ## Can we trust the numbers?
+          The source sends deliberately dirty files. Every day the pipeline checks each file, quarantines bad
+          rows, fixes what it can and reconciles gold with the SAP control totals.
+        size: [6, 2]
+      - table:
+          dataset: data_checks
+          title: Latest data checks
+          columns:
+            - {field: layer, title: Layer}
+            - {field: check_name, title: Check}
+            - {field: status, title: Result}
+            - {field: results, title: Results, type: number}
+            - {field: last_run, title: Last run (Colombo time)}
+        size: [3, 6]
+      - table:
+          dataset: dirt_caught
+          title: Problems in the source files, caught by the pipeline
+          columns:
+            - {field: problem, title: Problem}
+            - {field: file, title: File}
+            - {field: row_count, title: Rows, type: number}
+            - {field: day_count, title: Days, type: number}
+        size: [3, 6]

@@ -2,8 +2,10 @@
 
 The s3demo area proves that the pipeline can take its input straight from an AWS S3 bucket. The files are the
 sales demo files (master data, 18-month history, daily drops 1-29 Oct 2026, with their planted dirt), uploaded
-once to S3. Databricks reads them read-only and runs the sales steps on them: drip, bronze, silver, gold and
-reconciliation, into its own catalog `s3demo_dev`.
+once to S3. Databricks reads them read-only and runs the sales steps on them: drip, bronze, silver, gold,
+reconciliation, KPI check and insights (findings, forecast and the weekly PowerPoint deck), into its own catalog
+`s3demo_dev`, then publishes the KPI views and the metric view `s3demo_dev.gold.sales_metrics`. On top: the
+dashboard **Sales (S3 data)** (the Sales dashboard's pages) and a Genie agent with the Sales agent's questions.
 
 What it never does:
 - write to S3 (the credential, the external location and the volume are all read-only);
@@ -11,8 +13,8 @@ What it never does:
 - touch `sales_dev`, `inventory_dev`, `client_dev` or Redshift (own catalog, own folders, own job);
 - run by itself (no schedule) or retry by itself (`max_retries: 0`).
 
-Not included: KPI views, metric view, dashboard, Genie, insights. Those read or publish the sales area's own
-tables; the gold tables are there to query directly.
+Not included: the Genie answer-key step and the SQL alerts (the Sales agent's answer key and the demo alerts
+cover the same files). Everything is owner only: no group grants, the dashboard has no `permissions`.
 
 Never put the bucket name, the role ARN or the account ID in git: the repo is public and the bucket is the
 client's. They live only in the workspace (credential, external location, volume).
@@ -53,6 +55,35 @@ databricks bundle run -t dev s3demo_pipeline --profile sales-dev
 - The run delivers each day from the S3 volume to `raw.landing` (the same drip rules as sales: 18 Oct arrives
   on 19 Oct, Sunday's orders file again on Monday), then bronze, silver, gold and reconcile once at the end.
 - Or in the workspace: Jobs & Pipelines > `[dev] s3demo-pipeline` > Run now.
+- Two tasks: `pipeline` (the steps above, about 10-15 minutes), then `publish` (KPI views + metric view), which
+  starts only when every check of `pipeline` passed.
+
+## The weekly deck
+
+The insights step writes `/Volumes/s3demo_dev/raw/output/weekly_deck_2026-10-29.pptx` (data date in the name):
+Catalog > s3demo_dev > raw > output > the file > Download. Same slides as the sales deck: KPI cards, trend,
+outlook with the forecast, what moved revenue, alerts, summary, how the numbers were checked.
+
+## The dashboard
+
+Dashboards > **Sales (S3 data)** (deployed with the bundle, owner only). The Sales dashboard's three pages on
+`s3demo_dev`; it shows data once the job (both tasks) has run.
+
+## The Genie agent (by hand, once)
+
+1. Write the setup sheet and benchmarks with the S3 tables:
+   ```bash
+   uv run python -m sales_insights.semantic.genie_setup --profile dev --genie s3demo --as-of 2026-10-29
+   ```
+   -> `output/genie_setup_s3demo.md` and `output/genie_benchmarks_s3demo.csv`.
+2. Genie Agents > New: title **Sales Analytics (S3 data)**, then follow the sheet: data assets (all in
+   `s3demo_dev.gold`; never `client_src_catalog`), hidden columns, instructions, sample questions, trusted and
+   example queries.
+3. Benchmarks (the Agent ID is on the About tab):
+   ```bash
+   uv run python -m sales_insights.semantic.genie_sync --space-id <agent id> --csv output/genie_benchmarks_s3demo.csv
+   ```
+   Run them in **Chat** mode. The questions and data are the Sales agent's, so its score (93-97%) is the yardstick.
 
 ## Check the result
 
